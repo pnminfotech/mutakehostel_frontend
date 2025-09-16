@@ -57,7 +57,6 @@ export default function RoomManager() {
   price: bedForm.price ? Number(bedForm.price) : null
 });
 
-
       fetchRooms();
       setShowAddBedModal(false);
       setBedForm({ bedNo: "", price: "" });
@@ -144,53 +143,57 @@ export default function RoomManager() {
       </div>
 
       {/* Rooms & Beds Table */}
-      <div className="card">
-        <div className="card-header">Rooms & Beds</div>
-        <div className="card-body table-responsive">
-          <table className="table table-bordered">
-            <thead>
-              <tr>
-                <th>Room No</th>
-                <th>Floor No</th>
-                <th>Beds</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rooms.map((room) => (
-                <tr key={room.roomNo}>
-                  <td>{room.roomNo}</td>
-                  <td>{room.floorNo}</td>
-                  <td>
-                    {room.beds?.map((bed) => (
-                      <div
-                        key={bed.bedNo}
-                        className="d-flex justify-content-between align-items-center"
-                      >
-                        <span>{bed.bedNo}</span>
-                        <span
-                          style={{ cursor: "pointer", color: "blue" }}
-                          onClick={() => openEditModal(room.roomNo, bed.bedNo, bed.price)}
-                        >
-                          ₹{bed.price ?? "-"}
-                        </span>
-                      </div>
-                    ))}
-                  </td>
-                  <td>
-                    <button
-                      className="btn btn-sm btn-primary"
-                      onClick={() => openAddBedModal(room)}
-                    >
-                      Add Bed
-                    </button>
-                  </td>
-                </tr>
+   
+<div className="card">
+  <div className="card-header">Rooms & Beds</div>
+  <div className="card-body table-responsive">
+    <table className="table table-bordered">
+      <thead>
+        <tr>
+          <th>Room No</th>
+          <th>Floor No</th>
+          <th>Category</th> {/* ✅ Added new column */}
+          <th>Beds</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rooms.map((room) => (
+          <tr key={room.roomNo}>
+            <td>{room.roomNo}</td>
+            <td>{room.floorNo}</td>
+            <td>{room.category || "-"}</td> {/* ✅ Show category */}
+            <td>
+              {room.beds?.map((bed) => (
+                <div
+                  key={bed.bedNo}
+                  className="d-flex justify-content-between align-items-center"
+                >
+                  <span>{bed.bedNo}</span>
+                  <span
+                    style={{ cursor: "pointer", color: "blue" }}
+                    onClick={() => openEditModal(room.roomNo, bed.bedNo, bed.price)}
+                  >
+                    ₹{bed.price ?? "-"}
+                  </span>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </td>
+            <td>
+              <button
+                className="btn btn-sm btn-primary"
+                onClick={() => openAddBedModal(room)}
+              >
+                Add Bed
+              </button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 
       {/* Add Bed Modal */}
       {showAddBedModal && (

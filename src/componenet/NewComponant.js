@@ -15,11 +15,6 @@ import FormDownload from '../componenet/Maintanace/FormDownload';
 import RoomManager from './RoomManager'; // adjust path if needed
 // import { useNavigate } from 'react-router-dom';
 import { FaMoneyBillWave, FaPhoneAlt, FaCalendarAlt } from "react-icons/fa";
-// inside your component function, before return
-const COL1_WIDTH = 110;    // Bed column width (px)
-const COL2_WIDTH = 300;    // Name column width (px)
-const RENT_MONTH_WIDTH = 100; // each month cell width (px)
-const RENT_MONTH_GAP = 12;    // gap between month cells (px)
 
 function NewComponant() {
   const [formData, setFormData] = useState([]);
@@ -104,7 +99,7 @@ const openAddModal = () => {
   setShowAddModal(true);
 };
 
-  const apiUrl = 'http://localhost:5000/api/';
+  const apiUrl = 'https://hostelpaymentmanger.onrender.com/api/';
 const correctPassword = "987654";
 
   useEffect(() => {
@@ -139,7 +134,7 @@ useEffect(() => {
     .catch(err => console.error("Error fetching archived tenants:", err));
 }, []);
 useEffect(() => {
-  axios.get('http://localhost:5000/api/rooms')
+  axios.get('https://hostelpaymentmanger.onrender.com/api/rooms')
     .then(response => setRoomsData(response.data))
     .catch(err => console.error("Failed to fetch rooms:", err));
 }, []);
@@ -797,55 +792,21 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
         </div>
       </div> */}
 
-  <div className="card shadow-sm">
+    <div className="card shadow-sm">
   <div className="card-body">
     <h5 className="fw-bold mb-3">Bed-wise Rent and Deposit Tracker</h5>
-
-    {/* horizontal-scroll wrapper (single shared scrollbar) */}
-    <div style={{ overflowX: 'auto', width: '100%' }}>
-
-      <table className="table align-middle" style={{ minWidth: 900, borderCollapse: 'separate' }}>
+    <div className="table-responsive">
+      <table className="table align-middle">
         <thead className="table-borderless">
           <tr className="fw-semibold text-secondary">
-            {/* Bed - sticky */}
-            <th
-              style={{
-                minWidth: COL1_WIDTH,
-                position: 'sticky',
-                left: 0,
-                top: 0,
-                zIndex: 6,
-                background: '#fff'
-              }}
-            >
-              Bed
-            </th>
-
-            {/* Name - sticky to the right of Bed */}
-            <th
-              style={{
-                minWidth: COL2_WIDTH,
-                position: 'sticky',
-                left: COL1_WIDTH,
-                top: 0,
-                zIndex: 6,
-                background: '#fff',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis'
-              }}
-            >
-              Name
-            </th>
-
-            {/* The rest will scroll horizontally */}
-            <th style={{ minWidth: Math.max(600, RENT_MONTH_WIDTH * 6) }}>Rent</th>
-            <th style={{ minWidth: 100 }}>Due</th>
-            <th style={{ minWidth: 140 }}>Rent Status</th>
-            <th style={{ minWidth: 220 }}>Actions</th>
+            <th>Bed</th>
+            <th>Name</th>
+            <th>Rent</th>
+            <th>Due</th>
+            <th>Rent Status</th>
+            <th>Actions</th>
           </tr>
         </thead>
-
         <tbody>
           {formData
             .filter((tenant) => {
@@ -862,7 +823,7 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
               );
             })
             .map((tenant) => {
-              const sortedRents = (tenant.rents || [])
+              const sortedRents = tenant.rents
                 .map((r) => ({ ...r, dateObj: new Date(r.date) }))
                 .sort((a, b) => a.dateObj - b.dateObj);
 
@@ -872,98 +833,118 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
                   r.dateObj.getMonth() === today.getMonth() &&
                   r.dateObj.getFullYear() === today.getFullYear()
               );
+              const prevIndex = currentIndex - 1 >= 0 ? currentIndex - 1 : null;
+              const nextIndex =
+                currentIndex + 1 < sortedRents.length ? currentIndex + 1 : null;
+
+              // Default three months (previous, current, next)
+              const defaultThree = [
+                prevIndex !== null ? sortedRents[prevIndex] : null,
+                sortedRents[currentIndex],
+                nextIndex !== null ? sortedRents[nextIndex] : null,
+              ].filter(Boolean);
 
               const dueAmount = calculateDue(tenant.rents, tenant.joiningDate);
 
               return (
                 <tr key={tenant._id}>
-                  {/* Bed (sticky cell) */}
-                  <td
-                    style={{
-                      minWidth: COL1_WIDTH,
-                      position: 'sticky',
-                      left: 0,
-                      background: '#fff',
-                      zIndex: 3,
-                      verticalAlign: 'middle',
-                      whiteSpace: 'nowrap'
-                    }}
-                  >
-                    {tenant.roomNo}
-                    <div className="text-muted small">bed {tenant.bedNo}</div>
+                  <td>
+                    {tenant.roomNo} <div className="text-muted small">bed {tenant.bedNo}</div>
                   </td>
 
-                  {/* Name (sticky cell) */}
-                  <td
-                    style={{
-                      minWidth: COL2_WIDTH,
-                      position: 'sticky',
-                      left: COL1_WIDTH,
-                      background: '#fff',
-                      zIndex: 3,
-                      verticalAlign: 'middle',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => { setSelectedRowData(tenant); setShowFModal(true); }}
-                  >
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <strong style={{ color: '#007bff' }}>{tenant.name}</strong>
-                      <small className="text-muted">Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString('en-IN')}</small>
+                  <td>
+                    <span
+                      style={{ cursor: 'pointer', color: '#007bff' }}
+                      onClick={() => {
+                        setSelectedRowData(tenant);
+                        setShowFModal(true);
+                      }}
+                    >
+                      {tenant.name}
+                      <br />
                       <small className="text-muted">
-                        <FaPhoneAlt style={{ marginRight: '5px' }} />{tenant.phoneNo}
+                        Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString('en-IN')}
                       </small>
+                      <br />
+                      <small className="text-muted">
+                        <FaPhoneAlt style={{ marginRight: '5px' }} />
+                        {tenant.phoneNo}
+                      </small>
+                      <br />
                       <small className="text-muted">
                         <FaCalendarAlt style={{ marginRight: '5px' }} />
                         {new Date(tenant.joiningDate).toLocaleDateString()}
                       </small>
-                    </div>
+                    </span>
                   </td>
 
-                  {/* Rent (this area is part of the scrollable table width) */}
-                  <td style={{ minWidth: Math.max(600, RENT_MONTH_WIDTH * (sortedRents.length || 6)) }}>
-                    {/* inline horizontal months — do NOT make each row scrollable, let container scrollbar handle it */}
-                    <div style={{ display: 'flex', whiteSpace: 'nowrap', alignItems: 'center' }}>
-                      {sortedRents
-                        .filter((rent, index, self) =>
-                          index === self.findIndex(r => r.dateObj.getMonth() === rent.dateObj.getMonth() && r.dateObj.getFullYear() === rent.dateObj.getFullYear())
-                        )
-                        .map((rent, idx) => {
-                          const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1);
-                          const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1);
-                          const isDefault =
-                            (rent.dateObj.getMonth() === prevMonth.getMonth() && rent.dateObj.getFullYear() === prevMonth.getFullYear()) ||
-                            (rent.dateObj.getMonth() === today.getMonth() && rent.dateObj.getFullYear() === today.getFullYear()) ||
-                            (rent.dateObj.getMonth() === nextMonth.getMonth() && rent.dateObj.getFullYear() === nextMonth.getFullYear());
+                  {/* Rent Table */}
+                 {/* Rent Table */}
+<td style={{ minWidth: '300px' }}>
+  <div
+    className="d-flex overflow-auto"
+    style={{ whiteSpace: 'nowrap', cursor: 'pointer' }}
+    ref={(el) => {
+      if (el) {
+        const childWidth = 100 + 12; // width + margin
+        const today = new Date();
+        const currentIndex = sortedRents.findIndex(
+          r =>
+            r.dateObj.getMonth() === today.getMonth() &&
+            r.dateObj.getFullYear() === today.getFullYear()
+        );
+        if (currentIndex !== -1) {
+          el.scrollLeft = currentIndex * childWidth; // scroll to current month
+        }
+      }
+    }}
+    onClick={() => handleEdit(tenant)}
+  >
+    {sortedRents
+      // Remove duplicate months (take first rent of each month)
+      .filter(
+        (rent, index, self) =>
+          index ===
+          self.findIndex(
+            r =>
+              r.dateObj.getMonth() === rent.dateObj.getMonth() &&
+              r.dateObj.getFullYear() === rent.dateObj.getFullYear()
+          )
+      )
+      .map((rent, idx) => {
+        const today = new Date();
+        const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1);
+        const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1);
 
-                          return (
-                            <div
-                              key={idx}
-                              className={`text-center me-3 rounded ${isDefault ? 'bg-light' : ''}`}
-                              style={{
-                                minWidth: RENT_MONTH_WIDTH,
-                                marginRight: RENT_MONTH_GAP,
-                                padding: '6px 4px',
-                                display: 'inline-block',
-                                textAlign: 'center',
-                                cursor: 'pointer'
-                              }}
-                              onClick={() => handleEdit(tenant)}
-                            >
-                              ₹{Number(rent.rentAmount).toLocaleString('en-IN')}
-                              <br />
-                              <small>{rent.dateObj.toLocaleString('default', { month: 'short', year: 'numeric' })}</small>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </td>
+        const isDefault =
+          (rent.dateObj.getMonth() === prevMonth.getMonth() &&
+            rent.dateObj.getFullYear() === prevMonth.getFullYear()) ||
+          (rent.dateObj.getMonth() === today.getMonth() &&
+            rent.dateObj.getFullYear() === today.getFullYear()) ||
+          (rent.dateObj.getMonth() === nextMonth.getMonth() &&
+            rent.dateObj.getFullYear() === nextMonth.getFullYear());
+
+        return (
+          <div
+            key={idx}
+            className={`text-center me-3 rounded ${isDefault ? 'bg-light' : ''}`}
+            style={{ minWidth: '100px' }}
+          >
+            ₹{Number(rent.rentAmount).toLocaleString('en-IN')}
+            <br />
+            <small>
+              {rent.dateObj.toLocaleString('default', { month: 'short', year: 'numeric' })}
+            </small>
+          </div>
+        );
+      })}
+  </div>
+</td>
+
 
                   {/* Due */}
                   <td
-                    style={{ minWidth: 100, cursor: 'pointer', color: dueAmount > 0 ? 'red' : 'inherit' }}
+                    style={{ cursor: 'pointer', color: dueAmount > 0 ? 'red' : 'inherit' }}
                     onClick={() => {
                       const dueList = getDueMonths(tenant.rents, tenant.joiningDate);
                       setDueMonths(dueList);
@@ -975,13 +956,18 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
                   </td>
 
                   {/* Rent Status */}
-                  <td style={{ minWidth: 140 }}>
+                  <td>
                     <span
-                      className={`badge rounded-pill px-3 py-2 ${dueAmount === 0 ? 'bg-success' : 'bg-warning text-dark'}`}
+                      className={`badge rounded-pill px-3 py-2 ${
+                        dueAmount === 0 ? 'bg-success' : 'bg-warning text-dark'
+                      }`}
                       style={{ cursor: dueAmount > 0 ? 'pointer' : 'default' }}
                       onClick={() => {
                         if (dueAmount > 0) {
-                          const pending = getPendingMonthsForStatus(tenant.rents, tenant.joiningDate);
+                          const pending = getPendingMonthsForStatus(
+                            tenant.rents,
+                            tenant.joiningDate
+                          );
                           setStatusMonths(pending);
                           setStatusTenantName(tenant.name);
                           setShowStatusModal(true);
@@ -993,26 +979,51 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
                   </td>
 
                   {/* Actions */}
-                  <td style={{ minWidth: 220 }}>
-                    <button className="btn btn-sm btn-outline-primary me-2" onClick={() => { setEditTenantData(tenant); setShowEditModal(true); }}>
+                  <td>
+                    <button
+                      className="btn btn-sm btn-outline-primary me-2"
+                      onClick={() => {
+                        setEditTenantData(tenant);
+                        setShowEditModal(true);
+                      }}
+                    >
                       <FaEdit />
                     </button>
 
-                    <button className="btn btn-sm me-2" style={{ backgroundColor: '#3db7b1', color: 'white' }} onClick={() => { setSelectedTenant(tenant); setShowDetailsModal(true); }}>
+                    <button
+                      className="btn btn-sm"
+                      style={{ backgroundColor: '#3db7b1', color: 'white' }}
+                      onClick={() => {
+                        setSelectedTenant(tenant);
+                        setShowDetailsModal(true);
+                      }}
+                    >
                       <FaEye />
                     </button>
 
-                    <button className="btn btn-sm me-2" onClick={() => handleLeave(tenant)} style={{ backgroundColor: '#f49f36', color: 'white' }}>
+                    <button
+                      className="btn btn-sm me-2"
+                      onClick={() => handleLeave(tenant)}
+                      style={{ backgroundColor: '#f49f36', color: 'white' }}
+                    >
                       <FaSignOutAlt />
                     </button>
 
-                    <button className="btn btn-sm btn-danger" onClick={() => openDeleteConfirmation(tenant._id)}>
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => openDeleteConfirmation(tenant._id)}
+                    >
                       <FaTrash />
                     </button>
 
                     {leaveDates[tenant._id] && (
                       <div className="text-danger mt-1" style={{ fontSize: '12px' }}>
-                        Leave on: {new Date(leaveDates[tenant._id]).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        Leave on:{' '}
+                        {new Date(leaveDates[tenant._id]).toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
                       </div>
                     )}
                   </td>
@@ -1021,55 +1032,69 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
             })}
         </tbody>
       </table>
+
+      {/* Leaved Tenants Section */}
+      {deletedData.length > 0 && (
+        <div className="mt-5">
+          <h5 style={{ fontWeight: 'bold' }}>Leaved Tenants</h5>
+          <table className="table table-bordered">
+            <thead>
+              <tr>
+                <th>Room No</th>
+                <th>Name</th>
+                <th>Joining Date</th>
+                <th>Leave Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredDeletedData.map((tenant, index) => {
+                const leaveDate = new Date(tenant.leaveDate);
+                const now = new Date();
+                const currentMonth = now.getMonth();
+                const lastMonth = (currentMonth - 1 + 12) % 12;
+
+                const isLastMonth =
+                  leaveDate.getMonth() === lastMonth &&
+                  leaveDate.getFullYear() === now.getFullYear(); // same year check
+
+                return (
+                  <tr key={index}>
+                    <td>
+                      {tenant.roomNo} <div className="text-muted small">bed {tenant.bedNo}</div>
+                    </td>
+                    <td style={{ cursor: 'pointer' }} onClick={() => showRentHistory(tenant)}>
+                      {tenant.name}
+                    </td>
+                    <td>{new Date(tenant.joiningDate).toLocaleDateString()}</td>
+                    <td>{new Date(tenant.leaveDate).toLocaleDateString()}</td>
+                    <td>
+                      {isLastMonth && (
+                        <button
+                          className="btn btn-sm btn-success me-2"
+                          onClick={() => handleUndoClick(tenant)}
+                        >
+                          <FaUndo />
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-sm"
+                        style={{ backgroundColor: '#416ed7d1', color: 'white' }}
+                        onClick={() => handleDownloadForm(tenant)}
+                      >
+                        <FaDownload />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
-
-    {/* Leaved Tenants Section — keep as before (no horizontal months) */}
-    {deletedData.length > 0 && (
-      <div className="mt-5">
-        <h5 style={{ fontWeight: 'bold' }}>Leaved Tenants</h5>
-        <table className="table table-bordered">
-          <thead>
-            <tr>
-              <th>Room No</th>
-              <th>Name</th>
-              <th>Joining Date</th>
-              <th>Leave Date</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredDeletedData.map((tenant, index) => {
-              const leaveDate = new Date(tenant.leaveDate);
-              const now = new Date();
-              const currentMonth = now.getMonth();
-              const lastMonth = (currentMonth - 1 + 12) % 12;
-
-              const isLastMonth =
-                leaveDate.getMonth() === lastMonth &&
-                leaveDate.getFullYear() === now.getFullYear();
-
-              return (
-                <tr key={index}>
-                  <td>{tenant.roomNo} <div className="text-muted small">bed {tenant.bedNo}</div></td>
-                  <td style={{ cursor: 'pointer' }} onClick={() => showRentHistory(tenant)}>{tenant.name}</td>
-                  <td>{new Date(tenant.joiningDate).toLocaleDateString()}</td>
-                  <td>{new Date(tenant.leaveDate).toLocaleDateString()}</td>
-                  <td>
-                    {isLastMonth && (
-                      <button className="btn btn-sm btn-success me-2" onClick={() => handleUndoClick(tenant)}><FaUndo /></button>
-                    )}
-                    <button className="btn btn-sm" style={{ backgroundColor: '#416ed7d1', color: 'white' }} onClick={() => handleDownloadForm(tenant)}><FaDownload /></button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    )}
   </div>
 </div>
-
 
 {showAddModal && (
   <div className="modal d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
