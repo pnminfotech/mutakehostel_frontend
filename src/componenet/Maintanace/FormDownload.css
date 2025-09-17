@@ -1,0 +1,102 @@
+.form-container {
+    font-family: Arial, sans-serif;
+    border: 2px solid #ffc0cb; /* Light pink border */
+    padding: 10px;
+    background-color: #fff5f8; /* Very light pink background */
+    color: #333;
+    margin: 20px auto;
+    width: 80%;
+    height: 100%;
+
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .form-title {
+    text-align: center;
+    font-size: 12px;
+    margin-bottom: 20px;
+    color: #333;
+  }
+  
+  .form-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  
+  .form-logo {
+    height: 40px;
+    margin-top: -30px;
+
+  }
+  
+  .form-title {
+    text-align: center;
+    flex: 1;
+    margin-bottom: -42px;
+  }
+  
+  .form-no {
+    margin-top: -13px;
+  }
+  
+  .form-box {
+    display: inline-block;
+    width: 36px;
+    height: 13px;
+    border: 1px solid #ffc0cb;
+    margin-left: 10px;
+  }
+  
+  .form-photo-box {
+    width: 1.5cm;
+    height: 1.5cm;
+    border: 1px solid #ffc0cb;
+    background-color: #fff;
+  }
+  
+  .form-body {
+    margin: 0px 0px 0px 0px;
+    text-align: left;
+    font-size:13px;
+  }
+  
+  .form-body p {
+    margin-bottom: 5px 0;
+  }
+  
+  .form-body hr {
+    border: none;
+    border-top:4px solid #ff9dae;
+    margin: 10px 0;
+  }
+  
+  .form-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 11px 0px 0px 0px;
+  }
+  
+  .signature {
+    text-align: center;
+    flex: 1;
+  }
+  .download-button {
+    margin: 20px 20px;
+    display: inline;
+    /* padding: 10px 20px; */
+    background-color: #ffccd5; /* Light pink */
+    color: #333;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .download-button:hover {
+    background-color: #ffc0cb; /* Slightly darker pink */
+  }
+  
