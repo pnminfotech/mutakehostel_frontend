@@ -15,7 +15,7 @@ import FormDownload from '../componenet/Maintanace/FormDownload';
 import RoomManager from './RoomManager'; // adjust path if needed
 // import { useNavigate } from 'react-router-dom';
 import { FaMoneyBillWave, FaPhoneAlt, FaCalendarAlt } from "react-icons/fa";
-
+import { api } from "../api";
 function NewComponant() {
   const [formData, setFormData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +23,7 @@ function NewComponant() {
   const [roomsData, setRoomsData] = useState([]);
 
 const [rentStart, setRentStart] = useState(null); // shared 3-month window start
-
+const [docs, setDocs] = useState([]);
   const [editingTenant, setEditingTenant] = useState(null);
   const [editRentAmount, setEditRentAmount] = useState('');
   const [editRentDate, setEditRentDate] = useState('');
@@ -84,6 +84,9 @@ const [selectedYear, setSelectedYear] = useState('All Records');
 const years = ['All Records', ...Array.from(new Set(
   formData.map(d => new Date(d.joiningDate).getFullYear())
 )).sort((a, b) => b - a)];
+
+
+
 
 
 const fetchSrNo = async () => {
@@ -200,33 +203,34 @@ const removeDoc = (idx) => setCompressedDocs((prev) => prev.filter((_, i) => i !
 // If you already post in handleAddTenant, you can move the FormData logic there instead.
 async function handleAddTenantWithDocs() {
   try {
-    const fd = new FormData();
+    // 1) upload docs
+    let uploaded = [];
+    if (docs.length) {
+      const fd = new FormData();
+      docs.forEach(f => fd.append("documents", f));
+      const up = await axios.post("http://localhost:5000/api/uploads/docs", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      uploaded = up.data?.files || [];
+    }
 
-    // Append your existing fields (skip helper fields used by bed-inline UI)
-    Object.entries(newTenant).forEach(([k, v]) => {
-      if (["newBedNo","newBedPrice","__bedMsg","__savingBed"].includes(k)) return;
-      fd.append(k, v ?? "");
-    });
+    // 2) create tenant via your existing route
+    const payload = {
+      ...newTenant,
+      documentUrls: uploaded.map(f => f.url),   // <-- save these URLs in your form data
+    };
 
-    // Append compressed image files
-    compressedDocs.forEach((file) => fd.append("documents", file));
+    // THIS is the correct endpoint from your routes:
+    const res = await axios.post("http://localhost:5000/api/forms", payload);
 
-    // POST to your create-tenant API. Adjust URL if needed.
-    // import axios from "axios" at top if not already.
-    await axios.post("http://localhost:5000/api/tenants", fd);
-
-    // success UX
-    setDocMsg("");
-    setCompressedDocs([]);
-    // If you also keep your existing handler logic, call it here or close modal
-    // setShowAddModal(false);
+    console.log("Saved:", res.data);
+    setShowAddModal(false);
+    // refresh list, etc.
   } catch (err) {
     console.error(err);
-    setDocMsg("Could not upload documents. Check network/API route.");
+    alert(err?.response?.data?.message || err.message || "Failed to save tenant");
   }
 }
-
-
 
 
 
