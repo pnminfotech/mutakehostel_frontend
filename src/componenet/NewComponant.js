@@ -5,6 +5,8 @@ import axios from 'axios';
 import { FaPlus, FaEdit } from "react-icons/fa";
 import { FaInfoCircle } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
+import { getDocHref } from "../utils/getDocHref"; // adjust path if needed
+
 import { saveAs } from 'file-saver';
 import { FaArrowLeft } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
@@ -21,6 +23,8 @@ function NewComponant() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [roomsData, setRoomsData] = useState([]);
+
+  const [tenants, setTenants] = useState([]);
 
 const [rentStart, setRentStart] = useState(null); // shared 3-month window start
 const [docs, setDocs] = useState([]);
@@ -67,6 +71,7 @@ const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
 const [password, setPassword] = useState("");
 const [currentDeleteId, setCurrentDeleteId] = useState(null);
 const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+const [editPaymentMode, setEditPaymentMode] = useState("Cash");
 
 const [showEditModal, setShowEditModal] = useState(false);
 const [editTenantData, setEditTenantData] = useState(null);
@@ -109,11 +114,147 @@ const correctPassword = "987654";
 
 
 
+
+
+
+
+
+// existing line in your file
+
+
+// // ✅ add these right below apiUrl
+// const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || "http://localhost:5000";
+
+// const getDocHref = (doc) => {
+//   // absolute URL already? use it
+//   if (doc?.url && /^https?:\/\//i.test(doc.url)) return doc.url;
+
+//   // relative URL from backend like "/api/documents/:id"
+//   if (doc?.url) return `${API_ORIGIN}${doc.url}`;
+
+//   // ID-only record
+//   if (doc?.fileId) return `${API_ORIGIN}/api/documents/${doc.fileId}`;
+
+//   return "#";
+// };
+
+
+
+
+
+
+
+
+// state at top of component
+const [docFiles, setDocFiles] = useState([]); // [{file: File, relation: "Self"}]
+const [docMsg, setDocMsg] = useState("");
+
+// onChange for <input type="file" multiple>
+function handleDocsChange(e) {
+  const files = Array.from(e.target.files || []);
+  const mapped = files.map(f => ({ file: f, relation: "Self" }));
+  setDocFiles(prev => [...prev, ...mapped]);
+}
+
+function removeDoc(i) {
+  setDocFiles(prev => prev.filter((_, idx) => idx !== i));
+}
+
+// SAVE handler (posts form + files)
+// --- NEW: save wrapper that includes docs ---
+async function handleAddTenantWithDocs() {
+  try {
+    let uploaded = [];
+
+    if (docFiles.length) {
+      const fd = new FormData();
+      docFiles.forEach((d) => {
+        fd.append("documents", d.file);   // file is inside d.file
+      });
+
+      const up = await axios.post("http://localhost:5000/api/uploads/docs", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const uploadedFiles = up.data?.files || [];
+
+      // attach relation from docFiles
+      uploaded = uploadedFiles.map((f, i) => ({
+        fileName: docFiles[i]?.file?.name || f.filename || `doc-${i + 1}`,
+        relation: docFiles[i]?.relation || "Self",
+        url: f.url,  // must come from your upload API
+      }));
+    }
+
+    const payload = {
+      ...newTenant,
+      documents: uploaded,  // ✅ now contains actual docs
+    };
+
+    console.log("🚀 Payload sending:", JSON.stringify(payload, null, 2));
+
+    await axios.post("http://localhost:5000/api/forms", payload);
+
+    setShowAddModal(false);
+
+    const tenantsRes = await axios.get("http://localhost:5000/api/forms");
+    setTenants(tenantsRes.data);
+  } catch (err) {
+    console.error(err);
+    alert(err?.response?.data?.message || err.message || "Failed to save tenant");
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 //  for file less than 10 kb
 
 // --- NEW: document upload state ---
 const [compressedDocs, setCompressedDocs] = React.useState([]); // Array<File>
-const [docMsg, setDocMsg] = React.useState("");                 // inline message
+// const [docMsg, setDocMsg] = React.useState("");                 // inline message
 
 // Read a File into an <img>
 const loadImage = (file) =>
@@ -174,74 +315,81 @@ async function compressImageToTarget(file, maxBytes = 10 * 1024) {
 }
 
 // Handle file choose: allow multiple, images only, compress to <=10KB
-async function handleDocsChange(e) {
-  setDocMsg("");
-  const files = Array.from(e.target.files || []);
-  if (!files.length) return;
+// async function handleDocsChange(e) {
+//   setDocMsg("");
+//   const files = Array.from(e.target.files || []);
+//   if (!files.length) return;
 
-  const accepted = [];
-  for (const f of files) {
-    if (!f.type.startsWith("image/")) {
-      setDocMsg("Only images are allowed for 10KB storage (jpg/png/webp).");
-      continue;
-    }
-    try {
-      const c = await compressImageToTarget(f, 10 * 1024);
-      if (c) accepted.push(c);
-      else setDocMsg((m) => (m ? m + " " : "") + `“${f.name}” couldn’t be reduced to ≤ 10KB.`);
-    } catch {
-      setDocMsg((m) => (m ? m + " " : "") + `Failed to process “${f.name}”.`);
-    }
-  }
-  setCompressedDocs((prev) => [...prev, ...accepted]);
-  e.target.value = ""; // allow selecting same file later
-}
+//   const accepted = [];
+//   for (const f of files) {
+//     if (!f.type.startsWith("image/")) {
+//       setDocMsg("Only images are allowed for 10KB storage (jpg/png/webp).");
+//       continue;
+//     }
+//     try {
+//       const c = await compressImageToTarget(f, 10 * 1024);
+//       if (c) accepted.push(c);
+//       else setDocMsg((m) => (m ? m + " " : "") + `“${f.name}” couldn’t be reduced to ≤ 10KB.`);
+//     } catch {
+//       setDocMsg((m) => (m ? m + " " : "") + `Failed to process “${f.name}”.`);
+//     }
+//   }
+//   setCompressedDocs((prev) => [...prev, ...accepted]);
+//   e.target.value = ""; // allow selecting same file later
+// }
 
-const removeDoc = (idx) => setCompressedDocs((prev) => prev.filter((_, i) => i !== idx));
+// const removeDoc = (idx) => setCompressedDocs((prev) => prev.filter((_, i) => i !== idx));
 
 // --- NEW: save wrapper that includes docs ---
+// async function handleAddTenantWithDocs() {
+//   try {
+//     let uploaded = [];
+
+//     if (compressedDocs.length) {
+//       const fd = new FormData();
+//       compressedDocs.forEach(doc => {
+//         fd.append("documents", doc.file); // only raw files go to upload API
+//       });
+
+//       const up = await axios.post("http://localhost:5000/api/uploads/docs", fd, {
+//         headers: { "Content-Type": "multipart/form-data" },
+//       });
+
+//       const uploadedFiles = up.data?.files || [];
+
+//       // merge relation + url here
+//       uploaded = uploadedFiles.map((f, i) => ({
+//         fileName: compressedDocs[i].name,
+//         relation: compressedDocs[i].relation,
+//         url: f.url,
+//       }));
+//     }
+
+//     const payload = {
+//       ...newTenant,
+//       documents: uploaded, // ✅ don't remap again
+//     };
+
+//     console.log("🚀 Payload sending:", JSON.stringify(payload, null, 2));
+
+//     const res = await axios.post("http://localhost:5000/api/forms", payload);
+//     console.log("Saved:", res.data);
+
+//     setShowAddModal(false);
+
+//     // refresh list
+//     const tenantsRes = await axios.get("http://localhost:5000/api/forms");
+//     setTenants(tenantsRes.data);
+//   } catch (err) {
+//     console.error(err);
+//     alert(err?.response?.data?.message || err.message || "Failed to save tenant");
+//   }
+// }
+
+
+
+
 // If you already post in handleAddTenant, you can move the FormData logic there instead.
-async function handleAddTenantWithDocs() {
-  try {
-    // 1) upload docs
-    let uploaded = [];
-    if (docs.length) {
-      const fd = new FormData();
-      docs.forEach(f => fd.append("documents", f));
-      const up = await axios.post("http://localhost:5000/api/uploads/docs", fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      uploaded = up.data?.files || [];
-    }
-
-    // 2) create tenant via your existing route
-    const payload = {
-      ...newTenant,
-      documentUrls: uploaded.map(f => f.url),   // <-- save these URLs in your form data
-    };
-
-    // THIS is the correct endpoint from your routes:
-    const res = await axios.post("http://localhost:5000/api/forms", payload);
-
-    console.log("Saved:", res.data);
-    setShowAddModal(false);
-    // refresh list, etc.
-  } catch (err) {
-    console.error(err);
-    alert(err?.response?.data?.message || err.message || "Failed to save tenant");
-  }
-}
-
-
-
-
-
-
-
-
-
-
-
 
 
 const PAGE = 3; // number of month sub-columns under Rent
@@ -569,112 +717,8 @@ const getPendingMonthsForStatus = (rents = [], joiningDateStr) => {
 
   return months;
 };
-/////////////leave tenant should go to leaved tenant table the row will be fixed in 1st table with room no. and bed no.////////
-
-// All physical slots (one row per bed), regardless of occupancy
-const slots = useMemo(() => {
-  return (roomsData || []).flatMap(room =>
-    (room.beds || []).map(bed => ({
-      roomNo: String(room.roomNo),
-      floorNo: room.floorNo,
-      bedNo: String(bed.bedNo),
-      price: toNum(bed.price),
-      category: bed.category || ""
-    }))
-  );
-}, [roomsData]);
-
-// Active (not left) tenants keyed by room-bed
-const activeTenantBySlot = useMemo(() => {
-  const map = new Map();
-  (formData || [])
-    .filter(t => {
-      const leaveISO = leaveDates[t._id];
-      const isLeaved = leaveISO && new Date(leaveISO) < new Date();
-      return !isLeaved;
-    })
-    .forEach(t => {
-      if (t.roomNo != null && t.bedNo != null) {
-        map.set(`${t.roomNo}-${t.bedNo}`, t);
-      }
-    });
-  return map;
-}, [formData, leaveDates]);
-function openAddForSlot(roomNo, bedNo) {
-  // Find price/category to auto-fill
-  const room = roomsData.find(r => String(r.roomNo) === String(roomNo));
-  const bed  = room?.beds?.find(b => String(b.bedNo) === String(bedNo));
-
-  // Make sure the Sr No is fetched (like your openAddModal does)
-  fetchSrNo();
-
-  setNewTenant(prev => ({
-    ...prev,
-    srNo: prev.srNo, // will be set by fetchSrNo
-    name: "",
-    joiningDate: "",
-    roomNo: String(roomNo),
-    bedNo: String(bedNo),
-    floorNo: room?.floorNo ?? "",
-    depositAmount: "",
-    address: "",
-    phoneNo: "",
-    relativeAddress1: "",
-    relativeAddress2: "",
-    companyAddress: "",
-    dateOfJoiningCollege: "",
-    dob: "",
-    baseRent: bed?.price ?? "",   // auto-fill from bed
-    rentAmount: bed?.price ?? "", // mirror
-    newBedNo: "",
-    newBedPrice: "",
-    __bedMsg: "",
-    __savingBed: false,
-  }));
-  setShowAddModal(true);
-}
-// (A) keep your visible tenants (same filter you used before)
-const visibleTenants = useMemo(() => {
-  return formData.filter((tenant) => {
-    const name = tenant.name?.toLowerCase() || "";
-    const bed  = tenant.bedNo?.toString() || "";
-    const joinYear = tenant.joiningDate ? new Date(tenant.joiningDate).getFullYear() : null;
-    const leaveDate = leaveDates[tenant._id];
-    const isLeaved = leaveDate && new Date(leaveDate) < new Date();
-
-    return (
-      !isLeaved &&
-      (name.includes((searchText || "").toLowerCase()) || bed.includes(searchText || "")) &&
-      (selectedYear === "All Records" || joinYear === Number(selectedYear))
-    );
-  });
-}, [formData, leaveDates, searchText, selectedYear]);
-
-// (B) only the EXTRA vacant slots (i.e., no active tenant in that room/bed)
-const extraVacantSlots = useMemo(() => {
-  const search = (searchText || "").toLowerCase();
-
-  return slots.filter(slot => {
-    const key = `${slot.roomNo}-${slot.bedNo}`;
-    if (activeTenantBySlot.has(key)) return false; // occupied, skip
-
-    // Search behavior: allow bed/room filter when vacant
-    const matchesSearch =
-      !search ||
-      String(slot.bedNo).toLowerCase().includes(search) ||
-      String(slot.roomNo).toLowerCase().includes(search);
-
-    // Only show vacant for "All Records" (since there's no joining year)
-    const matchesYear = selectedYear === "All Records";
-
-    return matchesSearch && matchesYear;
-  });
-}, [slots, activeTenantBySlot, searchText, selectedYear]);
 
 
-
-
-/////////////leave tenant should go to leaved tenant table the row will be fixed in 1st table with room no. and bed no.////////
 
 const handleDownloadExcel = () => {
   const sheetData = formData.map(item => ({
@@ -1019,20 +1063,45 @@ const showRentHistory = (tenant) => {
   setShowRentModal(true);
 };
 
+  // const handleSave = async () => {
+  //   if (!editingTenant) return;
+  //   try {
+  //     await axios.put(`${apiUrl}form/${editingTenant._id}`, {
+  //       rentAmount: editRentAmount,
+  //       date: editRentDate,
+  //       month: new Date(editRentDate).toLocaleString('default', { month: 'short', year: '2-digit' })
+  //     });
+  //     setEditingTenant(null);
+  //     // window.location.reload();
+  //   } catch (error) {
+  //     alert('Failed to update rent');
+  //   }
+  // };
+
+
   const handleSave = async () => {
-    if (!editingTenant) return;
-    try {
-      await axios.put(`${apiUrl}form/${editingTenant._id}`, {
-        rentAmount: editRentAmount,
-        date: editRentDate,
-        month: new Date(editRentDate).toLocaleString('default', { month: 'short', year: '2-digit' })
-      });
-      setEditingTenant(null);
-      // window.location.reload();
-    } catch (error) {
-      alert('Failed to update rent');
-    }
-  };
+  if (!editingTenant) return;
+
+  try {
+    const payload = {
+      rentAmount: editRentAmount,
+      date: editRentDate,
+      month: new Date(editRentDate).toLocaleString("default", { month: "short", year: "2-digit" }),
+      paymentMode: editPaymentMode || "Cash", // 👈 include payment mode (default to Cash)
+    };
+
+    await axios.put(`${apiUrl}form/${editingTenant._id}`, payload);
+
+    setEditingTenant(null);
+
+    // refresh UI
+    // window.location.reload(); // or better: refetch tenants
+  } catch (error) {
+    console.error(error);
+    alert("Failed to update rent");
+  }
+};
+
   const navigate = useNavigate();
   const handleNavigation = (path) => {
     navigate(path);
@@ -1296,197 +1365,232 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
           </tr>
         </thead>
 
-      <tbody>
-  {/* 1) EXISTING TENANT ROWS (unchanged UI) */}
-  {visibleTenants.map((tenant, rowIdx) => {
-    const dueAmount = calculateDue(tenant.rents, tenant.joiningDate);
+        <tbody>
+          {formData
+            .filter((tenant) => {
+              const name = tenant.name?.toLowerCase() || "";
+              const bed = tenant.bedNo?.toString() || "";
+              const joinYear = tenant.joiningDate ? new Date(tenant.joiningDate).getFullYear() : null;
+              const leaveDate = leaveDates[tenant._id];
+              const isLeaved = leaveDate && new Date(leaveDate) < new Date();
 
+              return (
+                !isLeaved &&
+                (name.includes((searchText || "").toLowerCase()) || bed.includes(searchText || "")) &&
+                (selectedYear === "All Records" || joinYear === Number(selectedYear))
+              );
+            })
+            .map((tenant, rowIdx) => {
+              const dueAmount = calculateDue(tenant.rents, tenant.joiningDate);
+
+              return (
+                <tr key={tenant._id}>
+                  {/* Sr */}
+                  <td className="text-muted">{rowIdx + 1}</td>
+
+                  {/* ✅ Name column with Deposit restored */}
+                  <td>
+                    <div
+                      style={{ cursor: "pointer", color: "#111" }}
+                      onClick={() => { setSelectedRowData(tenant); setShowFModal(true); }}
+                    >
+                      <div className="fw-semibold">{tenant.name}</div>
+
+                      {/* Deposit amount */}
+                      <small className="text-muted d-block">
+                        Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
+                      </small>
+
+                      {/* Phone */}
+                      <div className="text-muted small">{tenant.phoneNo}</div>
+
+                      {/* Room badge + base monthly rent */}
+                      <div className="d-flex align-items-center gap-2 mt-1">
+                        <span
+                          className="badge rounded-pill"
+                          style={{ background: "#f7a3ad", color: "#fff", fontWeight: 600 }}
+                        >
+                          {tenant.roomNo || "—"}
+                        </span>
+
+                        {/* <span className="text-muted small">
+                          <span className="me-1">👤</span>
+                          ₹ {Number(tenant.rent || tenant.expectedRent || 0).toLocaleString("en-IN")}
+                        </span> */}
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* Month cells: badge + date + amount + extra */}
+               {visibleMonths.map((m, i) => {
+  const c = getMonthCell(tenant, m.y, m.m);
+  const extraNum = Number(c.extra || 0);
+
+  // 📌 Compare this month vs tenant's joining month
+  const joinDate = new Date(tenant.joiningDate);
+  const joinYM = joinDate.getFullYear() * 12 + joinDate.getMonth();
+  const cellYM = m.y * 12 + m.m;
+
+  // 👉 If this cell is before joining, return blank
+  if (cellYM < joinYM) {
     return (
-      <tr key={tenant._id}>
-        {/* Sr */}
-        <td className="text-muted">{rowIdx + 1}</td>
+      <td
+        key={`${tenant._id}-${m.y}-${m.m}-${i}`}
+        className="text-center text-muted"
+      >
+        —
+      </td>
+    );
+  }
 
-        {/* Name column (your current content) */}
-        <td>
-          <div
-            style={{ cursor: "pointer", color: "#111" }}
-            onClick={() => { setSelectedRowData(tenant); setShowFModal(true); }}
-          >
-            <div className="fw-semibold">{tenant.name}</div>
-            <small className="text-muted d-block">
-              Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
-            </small>
-            <div className="text-muted small">{tenant.phoneNo}</div>
-            <div className="d-flex align-items-center gap-2 mt-1">
-              <span
-                className="badge rounded-pill"
-                style={{ background: "#f7a3ad", color: "#fff", fontWeight: 600 }}
-              >
-                {tenant.roomNo} • Bed {tenant.bedNo}
+  return (
+    <td key={`${tenant._id}-${m.y}-${m.m}-${i}`} className="text-center">
+      <div
+        style={{ cursor: "pointer" }}
+        onClick={() => handleEdit(tenant)}
+        title="Click to edit this tenant's rent"
+      >
+        {/* Status badge */}
+        <span className={`badge rounded-pill px-3 py-2 ${c.cls}`}>{c.label}</span>
+
+        {/* Paid/record date */}
+        <div className="small text-muted mt-1" style={{ lineHeight: 1 }}>
+          {c.dateStr}
+        </div>
+
+        {/* Amounts */}
+        {c.label === "Paid" && (
+          <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
+            ₹{c.amountPaid.toLocaleString("en-IN")}
+            {c.expected > c.amountPaid && (
+              <span className="text-danger ms-1">
+                (−₹{(c.expected - c.amountPaid).toLocaleString("en-IN")})
               </span>
-            </div>
+            )}
           </div>
-        </td>
+        )}
 
-        {/* Month cells (reuse your logic) */}
-        {visibleMonths.map((m, i) => {
-          const c = getMonthCell(tenant, m.y, m.m);
-          const extraNum = Number(c.extra || 0);
-          return (
-            <td key={`${tenant._id}-${m.y}-${m.m}-${i}`} className="text-center">
-              <div style={{ cursor: "pointer" }} onClick={() => handleEdit(tenant)}>
-                <span className={`badge rounded-pill px-3 py-2 ${c.cls}`}>{c.label}</span>
-                <div className="small text-muted mt-1" style={{ lineHeight: 1 }}>{c.dateStr}</div>
+        {c.label === "Pend" && (
+          <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
+            ₹{c.amountPaid.toLocaleString("en-IN")}{" "}
+            <span className="text-muted">/ ₹{c.expected.toLocaleString("en-IN")}</span>
+            {c.outstanding > 0 && (
+              <div className="text-danger" style={{ lineHeight: 1 }}>
+                Due: ₹{c.outstanding.toLocaleString("en-IN")}
+              </div>
+            )}
+          </div>
+        )}
 
-                {c.label === "Paid" && (
-                  <div className="small mt-1" style={{ lineHeight: 1, fontWeight: 600 }}>
-                    ₹{c.amountPaid.toLocaleString("en-IN")}
-                    {c.expected > c.amountPaid && (
-                      <span className="text-danger ms-1">
-                        (−₹{(c.expected - c.amountPaid).toLocaleString("en-IN")})
-                      </span>
-                    )}
-                  </div>
-                )}
+        {c.label === "Due" && (
+          <div className="small mt-1 fw-semibold text-danger" style={{ lineHeight: 1 }}>
+            {
+              (() => {
+                const val = toNum(c.outstanding);
+                const fb = expectFromTenant(tenant, roomsData);
+                return `₹${(val || fb).toLocaleString("en-IN")}`;
+              })()
+            }
+          </div>
+        )}
 
-                {c.label === "Pend" && (
-                  <div className="small mt-1" style={{ lineHeight: 1, fontWeight: 600 }}>
-                    ₹{c.amountPaid.toLocaleString("en-IN")}{" "}
-                    <span className="text-muted">/ ₹{c.expected.toLocaleString("en-IN")}</span>
-                    {c.outstanding > 0 && (
-                      <div className="text-danger" style={{ lineHeight: 1 }}>
-                        Due: ₹{c.outstanding.toLocaleString("en-IN")}
+        {/* Extra amount */}
+        {extraNum !== 0 && (
+          <div
+            className="small mt-1 fw-semibold"
+            style={{ color: extraNum > 0 ? "#d63384" : "#198754" }}
+          >
+            {extraNum > 0
+              ? `+₹${extraNum.toLocaleString("en-IN")}`
+              : `-₹${Math.abs(extraNum).toLocaleString("en-IN")}`}
+          </div>
+        )}
+      </div>
+    </td>
+  );
+})}
+
+
+                  {/* Total Due */}
+                  <td
+                    style={{ cursor: "pointer", color: dueAmount > 0 ? "red" : "inherit" }}
+                    onClick={() => {
+                      const dueList = getDueMonths(tenant.rents, tenant.joiningDate);
+                      setDueMonths(dueList);
+                      setSelectedTenantName(tenant.name);
+                      setShowDueModal(true);
+                    }}
+                  >
+                    ₹{dueAmount.toLocaleString("en-IN")}
+                  </td>
+
+                  {/* Overall Rent Status */}
+                  <td>
+                    <span
+                      className={`badge rounded-pill px-3 py-2 ${
+                        dueAmount === 0 ? "bg-success" : "bg-warning text-dark"
+                      }`}
+                      style={{ cursor: dueAmount > 0 ? "pointer" : "default" }}
+                      onClick={() => {
+                        if (dueAmount > 0) {
+                          const pending = getPendingMonthsForStatus(tenant.rents, tenant.joiningDate);
+                          setStatusMonths(pending);
+                          setStatusTenantName(tenant.name);
+                          setShowStatusModal(true);
+                        }
+                      }}
+                    >
+                      {dueAmount === 0 ? "Paid" : "Pending"}
+                    </span>
+                  </td>
+
+                  {/* Actions — unchanged */}
+                  <td>
+                    <button
+                      className="btn btn-sm btn-outline-primary me-2"
+                      onClick={() => { setEditTenantData(tenant); setShowEditModal(true); }}
+                    >
+                      <FaEdit />
+                    </button>
+
+                    <button
+                      className="btn btn-sm"
+                      style={{ backgroundColor: "#3db7b1", color: "white" }}
+                      onClick={() => { setSelectedTenant(tenant); setShowDetailsModal(true); }}
+                    >
+                      <FaEye />
+                    </button>
+
+                    <button
+                      className="btn btn-sm me-2"
+                      onClick={() => handleLeave(tenant)}
+                      style={{ backgroundColor: "#f49f36", color: "white" }}
+                    >
+                      <FaSignOutAlt />
+                    </button>
+
+                    <button
+                      className="btn btn-sm btn-danger"
+                      onClick={() => openDeleteConfirmation(tenant._id)}
+                    >
+                      <FaTrash />
+                    </button>
+
+                    {leaveDates[tenant._id] && (
+                      <div className="text-danger mt-1" style={{ fontSize: 12 }}>
+                        Leave on{" "}
+                        {new Date(leaveDates[tenant._id]).toLocaleDateString("en-GB", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "numeric",
+                        })}
                       </div>
                     )}
-                  </div>
-                )}
-
-                {c.label === "Due" && (
-                  <div className="small mt-1" style={{ lineHeight: 1, fontWeight: 600, color: "#dc3545" }}>
-                    {`₹${(toNum(c.outstanding) || expectFromTenant(tenant, roomsData)).toLocaleString("en-IN")}`}
-                  </div>
-                )}
-
-                {extraNum !== 0 && (
-                  <div
-                    className="small mt-1"
-                    style={{ lineHeight: 1, fontWeight: 600, color: extraNum > 0 ? "#d63384" : "#198754" }}
-                  >
-                    {extraNum > 0 ? `+₹${extraNum.toLocaleString("en-IN")}` : `-₹${Math.abs(extraNum).toLocaleString("en-IN")}`}
-                  </div>
-                )}
-              </div>
-            </td>
-          );
-        })}
-
-        {/* Due */}
-        <td
-          style={{ cursor: dueAmount > 0 ? "pointer" : "default", color: dueAmount > 0 ? "red" : "inherit" }}
-          onClick={() => {
-            if (dueAmount > 0) {
-              setDueMonths(getDueMonths(tenant.rents, tenant.joiningDate));
-              setSelectedTenantName(tenant.name);
-              setShowDueModal(true);
-            }
-          }}
-        >
-          ₹{dueAmount.toLocaleString("en-IN")}
-        </td>
-
-        {/* Status */}
-        <td>
-          <span
-            className={`badge rounded-pill px-3 py-2 ${dueAmount === 0 ? "bg-success" : "bg-warning text-dark"}`}
-            style={{ cursor: dueAmount > 0 ? "pointer" : "default" }}
-            onClick={() => {
-              if (dueAmount > 0) {
-                setStatusMonths(getPendingMonthsForStatus(tenant.rents, tenant.joiningDate));
-                setStatusTenantName(tenant.name);
-                setShowStatusModal(true);
-              }
-            }}
-          >
-            {dueAmount === 0 ? "Paid" : "Pending"}
-          </span>
-        </td>
-
-        {/* Actions (your same buttons) */}
-        <td>
-          <button className="btn btn-sm btn-outline-primary me-2"
-                  onClick={() => { setEditTenantData(tenant); setShowEditModal(true); }}>
-            <FaEdit />
-          </button>
-          <button className="btn btn-sm" style={{ backgroundColor: "#3db7b1", color: "white" }}
-                  onClick={() => { setSelectedTenant(tenant); setShowDetailsModal(true); }}>
-            <FaEye />
-          </button>
-          <button className="btn btn-sm me-2" style={{ backgroundColor: "#f49f36", color: "white" }}
-                  onClick={() => handleLeave(tenant)}>
-            <FaSignOutAlt />
-          </button>
-          <button className="btn btn-sm btn-danger" onClick={() => openDeleteConfirmation(tenant._id)}>
-            <FaTrash />
-          </button>
-          {leaveDates[tenant._id] && (
-            <div className="text-danger mt-1" style={{ fontSize: 12 }}>
-              Leave on{" "}
-              {new Date(leaveDates[tenant._id]).toLocaleDateString("en-GB", {
-                day: "2-digit", month: "short", year: "numeric",
-              })}
-            </div>
-          )}
-        </td>
-      </tr>
-    );
-  })}
-
-  {/* 2) EXTRA VACANT ROWS (append with Add Tenant) */}
-  {extraVacantSlots.map((slot, i) => {
-    const key = `${slot.roomNo}-${slot.bedNo}`;
-    return (
-      <tr key={`vacant-${key}`}>
-        <td className="text-muted">{visibleTenants.length + i + 1}</td>
-        <td>
-          <div>
-            <div className="fw-semibold text-muted">Vacant</div>
-            <div className="text-muted small">
-              Room {slot.roomNo} • Bed {slot.bedNo} {slot.category ? `• ${slot.category}` : ""}
-            </div>
-            {toNum(slot.price) > 0 && (
-              <small className="text-muted d-block">Base Rent: ₹{toNum(slot.price).toLocaleString("en-IN")}</small>
-            )}
-          </div>
-        </td>
-
-        {visibleMonths.map((m, idx) => (
-          <td key={`${key}-${m.y}-${m.m}-${idx}`} className="text-center">
-            <span className="badge rounded-pill px-3 py-2 bg-danger text-white">Due</span>
-            {toNum(slot.price) > 0 && (
-              <div className="small mt-1" style={{ lineHeight: 1, fontWeight: 600, color: "#dc3545" }}>
-                ₹{toNum(slot.price).toLocaleString("en-IN")}
-              </div>
-            )}
-          </td>
-        ))}
-
-        <td>—</td>
-        <td><span className="badge rounded-pill px-3 py-2 bg-secondary">Vacant</span></td>
-        <td>
-          <button
-            className="btn btn-sm"
-            style={{ backgroundColor: "#3db7b1", color: "white" }}
-            onClick={() => openAddForSlot(slot.roomNo, slot.bedNo)}
-          >
-            <FaPlus className="me-1" /> Add Tenant
-          </button>
-        </td>
-      </tr>
-    );
-  })}
-</tbody>
-
-
+                  </td>
+                </tr>
+              );
+            })}
+        </tbody>
       </table>
 
       {/* Leaved Tenants Section (unchanged) */}
@@ -1576,7 +1680,7 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
         { label: 'Relative Address 2', key: 'relativeAddress2' },
         // { label: 'Floor No', key: 'floorNo' },
         { label: 'Company Address / College', key: 'companyAddress' },
-        { label: 'Date of Joining College', key: 'dateOfJoiningCollege', type: 'date' },
+        { label: 'Date of Joining College / Company', key: 'dateOfJoiningCollege', type: 'date' },
         { label: 'Date of Birth', key: 'dob', type: 'date' },
       ].map(({ label, key, type = 'text', readOnly = false }) => (
         <div className="col-md-6" key={key}>
@@ -1829,42 +1933,46 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
       </div>
 
       {/* --- NEW: Documents field (images only, auto-compress to ≤10KB each) --- */}
-      <div className="col-md-12">
-        <label className="form-label">Documents (images, auto-compressed to ≤10KB each)</label>
-        <input
-          type="file"
-          className="form-control"
-          multiple
-          accept="image/*"
-          onChange={handleDocsChange}
-        />
-        {docMsg && <small className="d-block mt-2 text-danger">{docMsg}</small>}
+      <div className="col-md-6">
+  <label className="form-label">Upload Documents</label>
+  <input
+    type="file"
+    className="form-control form-control-sm"
+    multiple
+    accept="image/*"
+    onChange={handleDocsChange}
+  />
 
-        {compressedDocs.length > 0 && (
-          <ul className="mt-2 list-unstyled">
-            {compressedDocs.map((f, i) => (
-              <li
-                key={i}
-                className="d-flex align-items-center justify-content-between border rounded px-2 py-1 mb-1"
-              >
-                <span className="text-truncate" style={{ maxWidth: "75%" }}>
-                  {f.name} <small className="text-muted">({Math.ceil(f.size / 1024)} KB)</small>
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline-danger"
-                  onClick={() => removeDoc(i)}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-        <small className="text-muted">
-          Accepted: JPG/PNG/WebP. Each file is compressed client-side to ≤10KB before upload.
-        </small>
-      </div>
+  {docMsg && <small className="d-block mt-2 text-danger">{docMsg}</small>}
+
+  {docFiles.length > 0 && (
+    <ul className="mt-2 list-unstyled">
+      {docFiles.map((d, i) => (
+        <li key={i} className="d-flex align-items-center justify-content-between border rounded px-2 py-1 mb-1" style={{fontSize:"0.85rem"}}>
+          <div className="d-flex flex-column flex-md-row align-items-md-center gap-2" style={{maxWidth:"75%"}}>
+            <span className="text-truncate">{d.file.name} <small className="text-muted">({Math.ceil(d.file.size/1024)} KB raw)</small></span>
+            <select
+              className="form-select form-select-sm"
+              value={d.relation}
+              onChange={(e)=> {
+                const copy = [...docFiles];
+                copy[i] = {...copy[i], relation: e.target.value};
+                setDocFiles(copy);
+              }}
+            >
+              <option value="Self">Self</option>
+              <option value="Father">Father</option>
+              <option value="Mother">Mother</option>
+              <option value="Husband">Husband</option>
+            </select>
+          </div>
+          <button type="button" className="btn btn-sm btn-outline-danger" onClick={()=>removeDoc(i)}>Remove</button>
+        </li>
+      ))}
+    </ul>
+  )}
+</div>
+
       {/* --- END Documents --- */}
     </div>
   </div>
@@ -2284,66 +2392,251 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
 {showDetailsModal && selectedTenant && (
   <div className="modal d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
     <div className="modal-dialog modal-lg">
-      <div className="modal-content">
-        <div className="modal-header">
-          <h5 className="modal-title">Tenant Details - {selectedTenant.name}</h5>
-          <button className="btn-close" onClick={() => setShowDetailsModal(false)}></button>
-        </div>
-        <div className="modal-body">
-          {/* Personal Info */}
-          <h6>Personal Information</h6>
-          <ul className="list-group mb-3">
-            <li className="list-group-item">Name:  {selectedTenant.name}</li>
-            <li className="list-group-item">Room No: {selectedTenant.roomNo}</li>
-            <li className="list-group-item">Bed No: {selectedTenant.bedNo}</li>
-            <li className="list-group-item">Phone: {selectedTenant.phoneNo}</li>
-            <li className="list-group-item">Joining Date: {new Date(selectedTenant.joiningDate).toLocaleDateString()}</li>
-            <li className="list-group-item">Deposit: ₹{Number(selectedTenant.depositAmount || 0).toLocaleString('en-IN')}</li>
-            <li className="list-group-item">Address: {selectedTenant.address}</li>
-            <li className="list-group-item">Company Address: {selectedTenant.companyAddress}</li>
-          </ul>
+   
+   
 
-          {/* Rent Info */}
-          <h6>Rent History ({new Date().getFullYear()})</h6>
-          <ul className="list-group">
-            {Array.from({ length: 12 }, (_, i) => {
-              const monthDate = new Date(new Date().getFullYear(), i, 1);
-              const key = monthDate.toLocaleString('default', { month: 'short' }) + '-' + String(monthDate.getFullYear()).slice(-2);
+   <div className="modal-content">
+  <div className="modal-header">
+    <h5 className="modal-title">Tenant Details - {selectedTenant.name}</h5>
+    <button className="btn-close" onClick={() => setShowDetailsModal(false)}></button>
+  </div>
 
-              const rent = selectedTenant.rents?.find(r =>
-                new Date(r.date).getMonth() === i &&
-                new Date(r.date).getFullYear() === monthDate.getFullYear()
-              );
+  <div className="modal-body">
+    {/* Tabs */}
+    <ul className="nav nav-tabs" id="tenantTabs" role="tablist">
+      <li className="nav-item" role="presentation">
+        <button
+          className="nav-link"
+          id="personal-tab"
+          data-bs-toggle="tab"
+          data-bs-target="#personal"
+          type="button"
+          role="tab"
+          aria-controls="personal"
+          aria-selected="false"
+        >
+          Personal Information
+        </button>
+      </li>
+      <li className="nav-item" role="presentation">
+        <button
+          className="nav-link active"
+          id="rent-tab"
+          data-bs-toggle="tab"
+          data-bs-target="#rent"
+          type="button"
+          role="tab"
+          aria-controls="rent"
+          aria-selected="true"
+        >
+          Rent History
+        </button>
+      </li>
+    </ul>
 
-              const isPast = monthDate < new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-        const joiningDate = new Date(selectedTenant.joiningDate);
-const rentStartMonth = new Date(joiningDate.getFullYear(), joiningDate.getMonth() + 1, 1);
-const isFutureMonth = monthDate > new Date();
-const isBeforeRentStart = monthDate < rentStartMonth;
+    {/* Tab Content */}
+    <div className="tab-content mt-3">
+      {/* Personal Info Tab */}
+<div className="tab-pane fade" id="personal" role="tabpanel" aria-labelledby="personal-tab">
+  <h6>Personal Information</h6>
+  <ul className="list-group mb-3">
+    <li className="list-group-item">Name: {selectedTenant.name}</li>
+    <li className="list-group-item">Room No: {selectedTenant.roomNo}</li>
+    <li className="list-group-item">Bed No: {selectedTenant.bedNo}</li>
+    <li className="list-group-item">Phone: {selectedTenant.phoneNo}</li>
+    <li className="list-group-item">
+      Joining Date:{" "}
+      {selectedTenant.joiningDate
+        ? new Date(selectedTenant.joiningDate).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          })
+        : "—"}
+    </li>
+    <li className="list-group-item">
+      Deposit: ₹{Number(selectedTenant.depositAmount || 0).toLocaleString("en-IN")}
+    </li>
+    <li className="list-group-item">Address: {selectedTenant.address}</li>
+    <li className="list-group-item">Company Address: {selectedTenant.companyAddress}</li>
+    <li className="list-group-item">
+      Date of Birth:{" "}
+      {selectedTenant.dob
+        ? new Date(selectedTenant.dob).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          })
+        : "—"}
+    </li>
+    <li className="list-group-item">
+      Date of Joining College/Company:{" "}
+      {selectedTenant.dateOfJoiningCollege
+        ? new Date(selectedTenant.dateOfJoiningCollege).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          })
+        : "—"}
+    </li>
+  </ul>
+
+  {/* Documents Section */}
+  <h6>Uploaded Documents</h6>
+  {selectedTenant.documents?.length > 0 ? (
+    <ul className="list-group mb-3">
+      {selectedTenant.documents.map((doc, i) => (
+        <li
+          key={i}
+          className="list-group-item d-flex justify-content-between align-items-center"
+        >
+          <span>
+            <strong>{doc.relation}</strong> — {doc.fileName}
+          </span>
+
+          <div className="btn-group">
+            {/* View Button */}
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                const url = getDocHref(doc);
+                if (!url || url === "#") {
+                  alert("No file URL available for this document.");
+                  return;
+                }
+                window.open(url, "_blank", "noopener,noreferrer");
+              }}
+            >
+              View
+            </button>
+
+            {/* Download Button */}
+            <button
+              type="button"
+              className="btn btn-sm btn-outline-success"
+              onClick={async (e) => {
+                e.stopPropagation();
+                const url = getDocHref(doc);
+                if (!url || url === "#") {
+                  alert("No file URL available for download.");
+                  return;
+                }
+
+                try {
+                  const response = await fetch(url, { mode: "cors" });
+                  const blob = await response.blob();
+
+                  const link = document.createElement("a");
+                  link.href = window.URL.createObjectURL(blob);
+                  link.download = doc.fileName || `document-${i + 1}`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  window.URL.revokeObjectURL(link.href);
+                } catch (err) {
+                  console.error("Download failed", err);
+                  alert("Download failed. Please try again.");
+                }
+              }}
+            >
+              Download
+            </button>
+          </div>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <p className="text-muted">No documents uploaded</p>
+  )}
+</div>
 
 
-             return (
-  <li key={i} className="list-group-item d-flex justify-content-between align-items-center">
-    {monthDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
-    {isBeforeRentStart ? (
-      <span className="badge bg-secondary">Not Applicable</span>
-    ) : rent ? (
-      <span className="badge bg-success">₹{Number(rent.rentAmount).toLocaleString('en-IN')} on {new Date(rent.date).toLocaleDateString()}</span>
-    ) : isFutureMonth ? (
-      <span className="badge bg-warning text-dark">Upcoming</span>
-    ) : (
-      <span className="badge bg-danger">Pending</span>
-    )}
-  </li>
-);
 
-            })}
-          </ul>
-        </div>
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={() => setShowDetailsModal(false)}>Close</button>
-        </div>
-      </div>
+
+      {/* Rent History Tab */}
+ <div className="tab-pane fade show active" id="rent" role="tabpanel" aria-labelledby="rent-tab">
+  <h6>Rent History ({new Date().getFullYear()})</h6>
+
+  <div className="table-responsive">
+    <table className="table table-striped table-hover align-middle">
+      <thead className="table-light">
+        <tr>
+          <th>Month</th>
+          <th>Date</th>
+          <th>Payment Mode</th>
+          <th>Amount</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {Array.from({ length: 12 }, (_, i) => {
+          const monthDate = new Date(new Date().getFullYear(), i, 1);
+          const rent = selectedTenant.rents?.find(
+            (r) =>
+              new Date(r.date).getMonth() === i &&
+              new Date(r.date).getFullYear() === monthDate.getFullYear()
+          );
+
+          const joiningDate = new Date(selectedTenant.joiningDate);
+          const rentStartMonth = new Date(joiningDate.getFullYear(), joiningDate.getMonth() + 1, 1);
+          const isFutureMonth = monthDate > new Date();
+          const isBeforeRentStart = monthDate < rentStartMonth;
+
+          return (
+            <tr key={i}>
+              {/* Month */}
+              <td>{monthDate.toLocaleString("default", { month: "long", year: "numeric" })}</td>
+
+              {/* Date */}
+              <td>{rent ? new Date(rent.date).toLocaleDateString() : "—"}</td>
+
+              {/* Payment Mode */}
+              <td>{rent ? (rent.paymentMode || "Cash") : "—"}</td>
+
+              {/* Amount */}
+              <td>{rent ? `₹${Number(rent.rentAmount).toLocaleString("en-IN")}` : "—"}</td>
+
+              {/* Status */}
+              <td>
+                {isBeforeRentStart ? (
+                  <span className="badge bg-secondary">Not Applicable</span>
+                ) : rent ? (
+                  <span className="badge bg-success">Paid</span>
+                ) : isFutureMonth ? (
+                  <span className="badge bg-warning text-dark">Upcoming</span>
+                ) : (
+                  <span className="badge bg-danger">Pending</span>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+
+    </div>
+  </div>
+
+  <div className="modal-footer">
+    <button className="btn btn-secondary" onClick={() => setShowDetailsModal(false)}>
+      Close
+    </button>
+  </div>
+</div>
+
+
+
+
+
+
+
+      
     </div>
   </div>
 )}
@@ -2354,26 +2647,52 @@ const isBeforeRentStart = monthDate < rentStartMonth;
       {editingTenant && (
         <div className="modal d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="modal-dialog">
-            <div className="modal-content">
-              <div className="modal-header">
-                <h5 className="modal-title">Edit Rent for {editingTenant.name}</h5>
-                <button type="button" className="btn-close" onClick={() => setEditingTenant(null)}></button>
-              </div>
-              <div className="modal-body">
-                <div className="mb-3">
-                  <label className="form-label">Rent Amount</label>
-                  <input type="number" className="form-control" value={editRentAmount} onChange={e => setEditRentAmount(e.target.value)} />
-                </div>
-                <div className="mb-3">
-                  <label className="form-label">Date</label>
-                  <input type="date" className="form-control" value={editRentDate} onChange={e => setEditRentDate(e.target.value)} />
-                </div>
-              </div>
-              <div className="modal-footer">
-                <button type="button" className="btn btn-secondary" onClick={() => setEditingTenant(null)}>Cancel</button>
-                <button type="button" className="btn btn-primary" onClick={handleSave}>Save</button>
-              </div>
-            </div>
+           <div className="modal-content">
+  <div className="modal-header">
+    <h5 className="modal-title">Edit Rent for {editingTenant.name}</h5>
+    <button type="button" className="btn-close" onClick={() => setEditingTenant(null)}></button>
+  </div>
+  <div className="modal-body">
+    <div className="mb-3">
+      <label className="form-label">Rent Amount</label>
+      <input
+        type="number"
+        className="form-control"
+        value={editRentAmount}
+        onChange={(e) => setEditRentAmount(e.target.value)}
+      />
+    </div>
+
+    <div className="mb-3">
+      <label className="form-label">Date</label>
+      <input
+        type="date"
+        className="form-control"
+        value={editRentDate}
+        onChange={(e) => setEditRentDate(e.target.value)}
+      />
+    </div>
+
+    {/* ✅ New Payment Mode field */}
+    <div className="mb-3">
+      <label className="form-label">Payment Mode</label>
+      <select
+        className="form-control"
+        value={editPaymentMode}
+        onChange={(e) => setEditPaymentMode(e.target.value)}
+      >
+        <option value="Cash">Cash</option>
+        <option value="Online">Online</option>
+      </select>
+    </div>
+  </div>
+
+  <div className="modal-footer">
+    <button type="button" className="btn btn-secondary" onClick={() => setEditingTenant(null)}>Cancel</button>
+    <button type="button" className="btn btn-primary" onClick={handleSave}>Save</button>
+  </div>
+</div>
+
           </div>
         </div>
       )}
