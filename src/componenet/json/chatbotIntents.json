@@ -1,0 +1,147 @@
+[
+  {
+    "intent": "rent_status",
+    "examples": [
+      "rent status of {name}",
+      "status for {name}",
+      "what is the rent status of {name}",
+      "how is {name}'s rent",
+      "is {name} paid this year",
+      "has {name} paid rent",
+      "{name} rent status please",
+      "{name} ke rent ka status",
+      "{name} ka rent hua kya",
+      "current rent state of {name}",
+      "show rent status for {name}",
+      "rent update for {name}"
+    ]
+  },
+  {
+    "intent": "due_amount",
+    "examples": [
+      "how much due for {name}",
+      "dues of {name}",
+      "pending amount for {name}",
+      "total due for {name}",
+      "kitna due hai {name} ka",
+      "{name} ka kitna bacha hai",
+      "{name} remaining rent amount",
+      "outstanding for {name}",
+      "{name} rent balance",
+      "show due for {name}",
+      "what is {name}'s outstanding",
+      "{name} total pending"
+    ]
+  },
+  {
+    "intent": "pending_months",
+    "examples": [
+      "pending months for {name}",
+      "which months are pending for {name}",
+      "dues months of {name}",
+      "{name} ke kaunse mahine pending hai",
+      "months left for {name}",
+      "{name} pending month list",
+      "{name} rent months due",
+      "show months due for {name}",
+      "{name} not paid months",
+      "{name} ke kitne mahine due hai",
+      "list pending months of {name}",
+      "unpaid months for {name}"
+    ]
+  },
+  {
+    "intent": "vacant_beds_in_room",
+    "examples": [
+      "vacant beds in room {room}",
+      "empty beds in room {room}",
+      "which beds are free in room {room}",
+      "room {room} me kaunse bed khali hai",
+      "free slots in room {room}",
+      "show vacancy in room {room}",
+      "bed availability in room {room}",
+      "any empty beds in {room}",
+      "{room} room vacant list",
+      "{room} me bed available?",
+      "what is free in room {room}",
+      "room {room} free beds please"
+    ]
+  },
+  {
+    "intent": "who_has_pending",
+    "examples": [
+      "who has pending",
+      "which tenants have dues",
+      "show pending list",
+      "count pending rents",
+      "who hasn't paid this year",
+      "pending renters list",
+      "kis kis ka rent pending hai",
+      "show all with dues",
+      "list people with pending",
+      "total pending count",
+      "who still owes rent",
+      "give me pending tenants"
+    ]
+  },
+  {
+    "intent": "phone_of",
+    "examples": [
+      "phone of {name}",
+      "mobile of {name}",
+      "contact for {name}",
+      "{name} ka phone number",
+      "{name} contact details",
+      "call number for {name}",
+      "{name} mobile please",
+      "{name} ko call karne ka number",
+      "{name} ke contact do",
+      "{name} phone?",
+      "share phone for {name}",
+      "what is {name}'s mobile"
+    ]
+  },
+  {
+    "intent": "deposit_of",
+    "examples": [
+      "deposit of {name}",
+      "security for {name}",
+      "{name} ka deposit kitna hai",
+      "{name} security amount",
+      "{name} ne kitna deposit diya",
+      "show deposit for {name}",
+      "{name} deposit figure",
+      "{name} ka security",
+      "{name} deposit details",
+      "{name} refundable deposit?",
+      "how much is {name}'s deposit",
+      "deposit amount for {name}"
+    ]
+  },
+  {
+    "intent": "left_last_month",
+    "examples": [
+      "who left last month",
+      "leaved last month",
+      "moved out last month",
+      "last month who vacated",
+      "pichle mahine kaun gaya",
+      "show exits last month",
+      "tenants who left recently",
+      "last month move-outs list"
+    ]
+  },
+  {
+    "intent": "help",
+    "examples": [
+      "help",
+      "commands",
+      "what can you do",
+      "examples",
+      "show help",
+      "how to ask",
+      "features",
+      "usage"
+    ]
+  }
+]

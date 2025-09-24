@@ -12,6 +12,8 @@ import { FaBolt, FaReceipt,FaEye ,FaTrash } from 'react-icons/fa'; // example ic
 import { FaSearch } from 'react-icons/fa';
 import { FaSignOutAlt, FaUndo, FaDownload } from "react-icons/fa";
 import FormDownload from '../componenet/Maintanace/FormDownload';
+import TenantChatbot from '../componenet/TenantChatbot';
+
 import RoomManager from './RoomManager'; // adjust path if needed
 // import { useNavigate } from 'react-router-dom';
 import { FaMoneyBillWave, FaPhoneAlt, FaCalendarAlt } from "react-icons/fa";
@@ -45,7 +47,7 @@ const [selectedTenant, setSelectedTenant] = useState(null);
 ////form
 const [showFModal, setShowFModal] = useState(false);
 const [selectedRowData, setSelectedRowData] = useState(null);
-
+const [lang, setLang] = useState("en"); // 'en' | 'hi' | 'mr'
 const [showAddModal, setShowAddModal] = useState(false);
 const [newTenant, setNewTenant] = useState({
   srNo: '',
@@ -672,6 +674,20 @@ const extraVacantSlots = useMemo(() => {
 }, [slots, activeTenantBySlot, searchText, selectedYear]);
 
 
+// ADD THIS helper in NewComponant component (near other handlers)
+const openEditForTenantMonth = (tenantId, monthIdx, year) => {
+  const tenant = formData.find(t => t._id === tenantId);
+  if (!tenant) return;
+
+  // Prefill the modal to the 1st of the requested month/year
+  const date = new Date(year, monthIdx, 1).toISOString().split('T')[0];
+
+  setEditingTenant(tenant);
+  setEditRentDate(date);
+
+  // Optional: clear or auto-suggest amount
+  // setEditRentAmount(expectFromTenant(tenant, roomsData));
+};
 
 
 /////////////leave tenant should go to leaved tenant table the row will be fixed in 1st table with room no. and bed no.////////
@@ -1072,6 +1088,15 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
     // <div className="container-fluid py-4" style={{ fontFamily: 'Inter, sans-serif' }}>
       <div className="container-fluid px-4 py-3" style={{ fontFamily: 'Poppins, sans-serif' }}>
       <h3 className="fw-bold mb-4">Rent & Deposite Tracker</h3>
+          {/* Language selector (sticky and simple) */}
+     <div className="d-flex align-items-center gap-2 mb-3">
+       <span className="text-muted me-2">Language:</span>
+       <div className="btn-group">
+         <button className={`btn btn-sm ${lang==='en'?'btn-primary':'btn-outline-primary'}`} onClick={()=>setLang('en')}>English</button>
+         <button className={`btn btn-sm ${lang==='hi'?'btn-primary':'btn-outline-primary'}`} onClick={()=>setLang('hi')}>हिन्दी</button>
+         <button className={`btn btn-sm ${lang==='mr'?'btn-primary':'btn-outline-primary'}`} onClick={()=>setLang('mr')}>मराठी</button>
+       </div>
+     </div>
      <div className="d-flex align-items-center mb-4 flex-wrap"> 
   <select
     className="form-select me-2"
@@ -2478,6 +2503,23 @@ const isBeforeRentStart = monthDate < rentStartMonth;
   </div>
 )}
 
+<>
+  {/* ...your existing JSX... */}
+<TenantChatbot
+  formData={formData}
+  roomsData={roomsData}
+  leaveDates={leaveDates}
+  lang={lang}
+  helpers={{
+    calculateDue,
+    expectFromTenant: (tenant, roomsData) => expectFromTenant(tenant, roomsData),
+    toNum: (v) => Number(String(v).replace(/[,₹\s]/g, "")) || 0,
+  }}
+  onOpenEdit={openEditForTenantMonth}   // <--- NEW
+/>
+
+
+</>
 
     </div>
   );
