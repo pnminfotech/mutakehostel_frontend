@@ -720,6 +720,67 @@ const getPendingMonthsForStatus = (rents = [], joiningDateStr) => {
   return months;
 };
 
+// All room-bed slots from roomsData
+const slots = useMemo(() => {
+  return (roomsData || []).flatMap(room =>
+    (room.beds || []).map(bed => ({
+      roomNo: String(room.roomNo),
+      floorNo: room.floorNo,
+      bedNo: String(bed.bedNo),
+      price: toNum(bed.price),
+      category: bed.category || "",
+    }))
+  );
+}, [roomsData]);
+
+// Tenants to show in the main table (hide those who have left)
+const visibleTenants = useMemo(() => {
+  const search = (searchText || "").toLowerCase();
+  return (formData || []).filter(t => {
+    const name = (t.name || "").toLowerCase();
+    const bed  = (t.bedNo != null ? String(t.bedNo) : "");
+    const joinYear = t.joiningDate ? new Date(t.joiningDate).getFullYear() : null;
+
+    const leaveISO = leaveDates[t._id];
+    const isLeaved = leaveISO && new Date(leaveISO) < new Date();
+
+    return (
+      !isLeaved &&
+      (name.includes(search) || bed.includes(search)) &&
+      (selectedYear === "All Records" || joinYear === Number(selectedYear))
+    );
+  });
+}, [formData, leaveDates, searchText, selectedYear]);
+
+// Vacant slots = slots that are not currently occupied (by a visible, non-leaved tenant)
+const extraVacantSlots = useMemo(() => {
+  const activeKeys = new Set(
+    (formData || [])
+      .filter(t => {
+        const leaveISO = leaveDates[t._id];
+        const isLeaved = leaveISO && new Date(leaveISO) < new Date();
+        return !isLeaved;
+      })
+      .map(t => `${t.roomNo}-${t.bedNo}`)
+  );
+
+  const search = (searchText || "").toLowerCase();
+
+  return (slots || []).filter(slot => {
+    const key = `${slot.roomNo}-${slot.bedNo}`;
+    if (activeKeys.has(key)) return false; // occupied
+
+    const matchesSearch =
+      !search ||
+      String(slot.bedNo).toLowerCase().includes(search) ||
+      String(slot.roomNo).toLowerCase().includes(search);
+
+    // year filter applies only to tenants; for slots, show them unless user picked a specific year
+    const matchesYear = selectedYear === "All Records";
+
+    return matchesSearch && matchesYear;
+  });
+}, [slots, formData, leaveDates, searchText, selectedYear]);
 
 // ADD THIS helper in NewComponant component (near other handlers)
 const openEditForTenantMonth = (tenantId, monthIdx, year) => {
@@ -734,6 +795,26 @@ const openEditForTenantMonth = (tenantId, monthIdx, year) => {
 
   // Optional: clear or auto-suggest amount
   // setEditRentAmount(expectFromTenant(tenant, roomsData));
+};
+const openAddForSlot = (roomNo, bedNo) => {
+  const room = roomsData.find(r => String(r.roomNo) === String(roomNo));
+  const bed  = room?.beds?.find(b => String(b.bedNo) === String(bedNo));
+
+  // Optionally fetch SrNo if you use it
+  fetchSrNo?.();
+
+  setNewTenant(prev => ({
+    ...prev,
+    roomNo: String(roomNo),
+    bedNo: String(bedNo),
+    floorNo: room?.floorNo ?? "",
+    baseRent: bed?.price ?? "",
+    rentAmount: bed?.price ?? "",
+    // clear inline “other bed” form fields if you use them
+    newBedNo: "",
+    newBedPrice: "",
+  }));
+  setShowAddModal(true);
 };
 
 const handleDownloadExcel = () => {
@@ -1390,232 +1471,271 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
           </tr>
         </thead>
 
-        <tbody>
-          {formData
-            .filter((tenant) => {
-              const name = tenant.name?.toLowerCase() || "";
-              const bed = tenant.bedNo?.toString() || "";
-              const joinYear = tenant.joiningDate ? new Date(tenant.joiningDate).getFullYear() : null;
-              const leaveDate = leaveDates[tenant._id];
-              const isLeaved = leaveDate && new Date(leaveDate) < new Date();
+      <tbody>
+  {/* Occupied rows */}
+  {visibleTenants.map((tenant, rowIdx) => {
+    const dueAmount = calculateDue(tenant.rents, tenant.joiningDate);
 
-              return (
-                !isLeaved &&
-                (name.includes((searchText || "").toLowerCase()) || bed.includes(searchText || "")) &&
-                (selectedYear === "All Records" || joinYear === Number(selectedYear))
-              );
-            })
-            .map((tenant, rowIdx) => {
-              const dueAmount = calculateDue(tenant.rents, tenant.joiningDate);
-
-              return (
-                <tr key={tenant._id}>
-                  {/* Sr */}
-                  <td className="text-muted">{rowIdx + 1}</td>
-
-                  {/* ✅ Name column with Deposit restored */}
-                  <td>
-                    <div
-                      style={{ cursor: "pointer", color: "#111" }}
-                      onClick={() => { setSelectedRowData(tenant); setShowFModal(true); }}
-                    >
-                      <div className="fw-semibold">{tenant.name}</div>
-
-                      {/* Deposit amount */}
-                      <small className="text-muted d-block">
-                        Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
-                      </small>
-
-                      {/* Phone */}
-                      <div className="text-muted small">{tenant.phoneNo}</div>
-
-                      {/* Room badge + base monthly rent */}
-                      <div className="d-flex align-items-center gap-2 mt-1">
-                        <span
-                          className="badge rounded-pill"
-                          style={{ background: "#f7a3ad", color: "#fff", fontWeight: 600 }}
-                        >
-                          {tenant.roomNo || "—"}
-                        </span>
-
-                        {/* <span className="text-muted small">
-                          <span className="me-1">👤</span>
-                          ₹ {Number(tenant.rent || tenant.expectedRent || 0).toLocaleString("en-IN")}
-                        </span> */}
-                      </div>
-                    </div>
-                  </td>
-
-                  {/* Month cells: badge + date + amount + extra */}
-               {visibleMonths.map((m, i) => {
-  const c = getMonthCell(tenant, m.y, m.m);
-  const extraNum = Number(c.extra || 0);
-
-  // 📌 Compare this month vs tenant's joining month
-  const joinDate = new Date(tenant.joiningDate);
-  const joinYM = joinDate.getFullYear() * 12 + joinDate.getMonth();
-  const cellYM = m.y * 12 + m.m;
-
-  // 👉 If this cell is before joining, return blank
-  if (cellYM < joinYM) {
     return (
-      <td
-        key={`${tenant._id}-${m.y}-${m.m}-${i}`}
-        className="text-center text-muted"
-      >
-        —
-      </td>
-    );
-  }
+      <tr key={tenant._id}>
+        {/* Sr */}
+        <td className="text-muted">{rowIdx + 1}</td>
 
-  return (
-    <td key={`${tenant._id}-${m.y}-${m.m}-${i}`} className="text-center">
-      <div
-        style={{ cursor: "pointer" }}
-        onClick={() => handleEdit(tenant)}
-        title="Click to edit this tenant's rent"
-      >
-        {/* Status badge */}
-        <span className={`badge rounded-pill px-3 py-2 ${c.cls}`}>{c.label}</span>
-
-        {/* Paid/record date */}
-        <div className="small text-muted mt-1" style={{ lineHeight: 1 }}>
-          {c.dateStr}
-        </div>
-
-        {/* Amounts */}
-        {c.label === "Paid" && (
-          <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
-            ₹{c.amountPaid.toLocaleString("en-IN")}
-            {c.expected > c.amountPaid && (
-              <span className="text-danger ms-1">
-                (−₹{(c.expected - c.amountPaid).toLocaleString("en-IN")})
-              </span>
-            )}
-          </div>
-        )}
-
-        {c.label === "Pend" && (
-          <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
-            ₹{c.amountPaid.toLocaleString("en-IN")}{" "}
-            <span className="text-muted">/ ₹{c.expected.toLocaleString("en-IN")}</span>
-            {c.outstanding > 0 && (
-              <div className="text-danger" style={{ lineHeight: 1 }}>
-                Due: ₹{c.outstanding.toLocaleString("en-IN")}
-              </div>
-            )}
-          </div>
-        )}
-
-        {c.label === "Due" && (
-          <div className="small mt-1 fw-semibold text-danger" style={{ lineHeight: 1 }}>
-            {
-              (() => {
-                const val = toNum(c.outstanding);
-                const fb = expectFromTenant(tenant, roomsData);
-                return `₹${(val || fb).toLocaleString("en-IN")}`;
-              })()
-            }
-          </div>
-        )}
-
-        {/* Extra amount */}
-        {extraNum !== 0 && (
+        {/* Name + meta */}
+        <td>
           <div
-            className="small mt-1 fw-semibold"
-            style={{ color: extraNum > 0 ? "#d63384" : "#198754" }}
+            style={{ cursor: "pointer", color: "#111" }}
+            onClick={() => {
+              setSelectedRowData(tenant);
+              setShowFModal(true);
+            }}
           >
-            {extraNum > 0
-              ? `+₹${extraNum.toLocaleString("en-IN")}`
-              : `-₹${Math.abs(extraNum).toLocaleString("en-IN")}`}
+            <div className="fw-semibold">{tenant.name}</div>
+
+            {/* Deposit */}
+            <small className="text-muted d-block">
+              Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
+            </small>
+
+            {/* Phone */}
+            <div className="text-muted small">{tenant.phoneNo}</div>
+
+            {/* Room badge */}
+            <div className="d-flex align-items-center gap-2 mt-1">
+              <span
+                className="badge rounded-pill"
+                style={{ background: "#f7a3ad", color: "#fff", fontWeight: 600 }}
+              >
+                {tenant.roomNo || "—"}
+              </span>
+            </div>
           </div>
-        )}
-      </div>
-    </td>
-  );
-})}
+        </td>
 
+        {/* Month cells */}
+        {visibleMonths.map((m, i) => {
+          const c = getMonthCell(tenant, m.y, m.m);
+          const extraNum = Number(c.extra || 0);
 
-                  {/* Total Due */}
-                  <td
-                    style={{ cursor: "pointer", color: dueAmount > 0 ? "red" : "inherit" }}
-                    onClick={() => {
-                      const dueList = getDueMonths(tenant.rents, tenant.joiningDate);
-                      setDueMonths(dueList);
-                      setSelectedTenantName(tenant.name);
-                      setShowDueModal(true);
-                    }}
-                  >
-                    ₹{dueAmount.toLocaleString("en-IN")}
-                  </td>
+          // hide months before joining
+          const joinDate = new Date(tenant.joiningDate);
+          const joinYM = joinDate.getFullYear() * 12 + joinDate.getMonth();
+          const cellYM = m.y * 12 + m.m;
+          if (cellYM < joinYM) {
+            return (
+              <td
+                key={`${tenant._id}-${m.y}-${m.m}-${i}`}
+                className="text-center text-muted"
+              >
+                —
+              </td>
+            );
+          }
 
-                  {/* Overall Rent Status */}
-                  <td>
-                    <span
-                      className={`badge rounded-pill px-3 py-2 ${
-                        dueAmount === 0 ? "bg-success" : "bg-warning text-dark"
-                      }`}
-                      style={{ cursor: dueAmount > 0 ? "pointer" : "default" }}
-                      onClick={() => {
-                        if (dueAmount > 0) {
-                          const pending = getPendingMonthsForStatus(tenant.rents, tenant.joiningDate);
-                          setStatusMonths(pending);
-                          setStatusTenantName(tenant.name);
-                          setShowStatusModal(true);
-                        }
-                      }}
-                    >
-                      {dueAmount === 0 ? "Paid" : "Pending"}
-                    </span>
-                  </td>
+          return (
+            <td key={`${tenant._id}-${m.y}-${m.m}-${i}`} className="text-center">
+              <div
+                style={{ cursor: "pointer" }}
+                onClick={() => handleEdit(tenant)}
+                title="Click to edit this tenant's rent"
+              >
+                {/* Status */}
+                <span className={`badge rounded-pill px-3 py-2 ${c.cls}`}>{c.label}</span>
 
-                  {/* Actions — unchanged */}
-                  <td>
-                    <button
-                      className="btn btn-sm btn-outline-primary me-2"
-                      onClick={() => { setEditTenantData(tenant); setShowEditModal(true); }}
-                    >
-                      <FaEdit />
-                    </button>
+                {/* Date */}
+                <div className="small text-muted mt-1" style={{ lineHeight: 1 }}>
+                  {c.dateStr}
+                </div>
 
-                    <button
-                      className="btn btn-sm"
-                      style={{ backgroundColor: "#3db7b1", color: "white" }}
-                      onClick={() => { setSelectedTenant(tenant); setShowDetailsModal(true); }}
-                    >
-                      <FaEye />
-                    </button>
+                {/* Amounts */}
+                {c.label === "Paid" && (
+                  <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
+                    ₹{c.amountPaid.toLocaleString("en-IN")}
+                    {c.expected > c.amountPaid && (
+                      <span className="text-danger ms-1">
+                        (−₹{(c.expected - c.amountPaid).toLocaleString("en-IN")})
+                      </span>
+                    )}
+                  </div>
+                )}
 
-                    <button
-                      className="btn btn-sm me-2"
-                      onClick={() => handleLeave(tenant)}
-                      style={{ backgroundColor: "#f49f36", color: "white" }}
-                    >
-                      <FaSignOutAlt />
-                    </button>
-
-                    <button
-                      className="btn btn-sm btn-danger"
-                      onClick={() => openDeleteConfirmation(tenant._id)}
-                    >
-                      <FaTrash />
-                    </button>
-
-                    {leaveDates[tenant._id] && (
-                      <div className="text-danger mt-1" style={{ fontSize: 12 }}>
-                        Leave on{" "}
-                        {new Date(leaveDates[tenant._id]).toLocaleDateString("en-GB", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
+                {c.label === "Pend" && (
+                  <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
+                    ₹{c.amountPaid.toLocaleString("en-IN")}{" "}
+                    <span className="text-muted">/ ₹{c.expected.toLocaleString("en-IN")}</span>
+                    {c.outstanding > 0 && (
+                      <div className="text-danger" style={{ lineHeight: 1 }}>
+                        Due: ₹{c.outstanding.toLocaleString("en-IN")}
                       </div>
                     )}
-                  </td>
-                </tr>
-              );
-            })}
-        </tbody>
+                  </div>
+                )}
+
+                {c.label === "Due" && (
+                  <div className="small mt-1 fw-semibold text-danger" style={{ lineHeight: 1 }}>
+                    {(() => {
+                      const val = toNum(c.outstanding);
+                      const fb = expectFromTenant(tenant, roomsData);
+                      return `₹${(val || fb).toLocaleString("en-IN")}`;
+                    })()}
+                  </div>
+                )}
+
+                {/* Extra */}
+                {extraNum !== 0 && (
+                  <div
+                    className="small mt-1 fw-semibold"
+                    style={{ color: extraNum > 0 ? "#d63384" : "#198754" }}
+                  >
+                    {extraNum > 0
+                      ? `+₹${extraNum.toLocaleString("en-IN")}`
+                      : `-₹${Math.abs(extraNum).toLocaleString("en-IN")}`}
+                  </div>
+                )}
+              </div>
+            </td>
+          );
+        })}
+
+        {/* Due total */}
+        <td
+          style={{ cursor: "pointer", color: dueAmount > 0 ? "red" : "inherit" }}
+          onClick={() => {
+            const dueList = getDueMonths(tenant.rents, tenant.joiningDate);
+            setDueMonths(dueList);
+            setSelectedTenantName(tenant.name);
+            setShowDueModal(true);
+          }}
+        >
+          ₹{dueAmount.toLocaleString("en-IN")}
+        </td>
+
+        {/* Overall status */}
+        <td>
+          <span
+            className={`badge rounded-pill px-3 py-2 ${
+              dueAmount === 0 ? "bg-success" : "bg-warning text-dark"
+            }`}
+            style={{ cursor: dueAmount > 0 ? "pointer" : "default" }}
+            onClick={() => {
+              if (dueAmount > 0) {
+                const pending = getPendingMonthsForStatus(tenant.rents, tenant.joiningDate);
+                setStatusMonths(pending);
+                setStatusTenantName(tenant.name);
+                setShowStatusModal(true);
+              }
+            }}
+          >
+            {dueAmount === 0 ? "Paid" : "Pending"}
+          </span>
+        </td>
+
+        {/* Actions */}
+        <td>
+          <button
+            className="btn btn-sm btn-outline-primary me-2"
+            onClick={() => {
+              setEditTenantData(tenant);
+              setShowEditModal(true);
+            }}
+          >
+            <FaEdit />
+          </button>
+
+          <button
+            className="btn btn-sm"
+            style={{ backgroundColor: "#3db7b1", color: "white" }}
+            onClick={() => {
+              setSelectedTenant(tenant);
+              setShowDetailsModal(true);
+            }}
+          >
+            <FaEye />
+          </button>
+
+          <button
+            className="btn btn-sm me-2"
+            onClick={() => handleLeave(tenant)}
+            style={{ backgroundColor: "#f49f36", color: "white" }}
+          >
+            <FaSignOutAlt />
+          </button>
+
+          <button
+            className="btn btn-sm btn-danger"
+            onClick={() => openDeleteConfirmation(tenant._id)}
+          >
+            <FaTrash />
+          </button>
+
+          {leaveDates[tenant._id] && (
+            <div className="text-danger mt-1" style={{ fontSize: 12 }}>
+              Leave on{" "}
+              {new Date(leaveDates[tenant._id]).toLocaleDateString("en-GB", {
+                day: "2-digit",
+                month: "short",
+                year: "numeric",
+              })}
+            </div>
+          )}
+        </td>
+      </tr>
+    );
+  })}
+
+  {/* Vacant rows */}
+  {extraVacantSlots.map((slot, i) => {
+    const rowNumber = visibleTenants.length + i + 1;
+    const key = `${slot.roomNo}-${slot.bedNo}`;
+    return (
+      <tr key={`vacant-${key}`}>
+        <td className="text-muted">{rowNumber}</td>
+        <td>
+          <div>
+            <div className="fw-semibold text-muted">Vacant</div>
+            <div className="text-muted small">
+              Room {slot.roomNo} • Bed {slot.bedNo} {slot.category ? `• ${slot.category}` : ""}
+            </div>
+            {toNum(slot.price) > 0 && (
+              <small className="text-muted d-block">
+                Base Rent: ₹{toNum(slot.price).toLocaleString("en-IN")}
+              </small>
+            )}
+          </div>
+        </td>
+
+        {visibleMonths.map((m, idx) => (
+          <td key={`${key}-${m.y}-${m.m}-${idx}`} className="text-center">
+            <span className="badge rounded-pill px-3 py-2 bg-danger text-white">Due</span>
+            {toNum(slot.price) > 0 && (
+              <div
+                className="small mt-1 fw-semibold"
+                style={{ lineHeight: 1, color: "#dc3545" }}
+              >
+                ₹{toNum(slot.price).toLocaleString("en-IN")}
+              </div>
+            )}
+          </td>
+        ))}
+
+        <td>—</td>
+        <td>
+          <span className="badge rounded-pill px-3 py-2 bg-secondary">Vacant</span>
+        </td>
+        <td>
+          <button
+            className="btn btn-sm"
+            style={{ backgroundColor: "#3db7b1", color: "white" }}
+            onClick={() => openAddForSlot(slot.roomNo, slot.bedNo)}
+          >
+            <FaPlus className="me-1" /> Add Tenant
+          </button>
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
+
       </table>
 
       {/* Leaved Tenants Section (unchanged) */}
