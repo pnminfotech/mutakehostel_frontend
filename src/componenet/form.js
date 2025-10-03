@@ -282,8 +282,6 @@ const handleSubmit = async (e) => {
     </button>
   </>
 )}
-
-
         {/* <button type="button" className="back-btn" onClick={() => handleNavigation('/mainpage')}>
           Back
         </button> */}
