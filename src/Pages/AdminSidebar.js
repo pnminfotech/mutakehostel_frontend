@@ -10,7 +10,7 @@ const AdminSidebar =()=>{
     const [selectedSupplier, setSelectedSupplier] = useState(null);
   
     useEffect(() => {
-      axios.get("https://hostelpaymentmanger.onrender.com/api/suppliers")
+      axios.get("http://localhost:8000/api/suppliers")
         .then((res) => setSuppliers(res.data))
         .catch((err) => console.log(err));
     }, []);
@@ -19,7 +19,7 @@ const AdminSidebar =()=>{
       e.preventDefault();
       if (!selectedSupplier) return;
   
-      axios.put(`https://hostelpaymentmanger.onrender.com/api/suppliers/${selectedSupplier._id}/payments`, transaction)
+      axios.put(`http://localhost:8000/api/suppliers/${selectedSupplier._id}/payments`, transaction)
         .then((res) => {
           setSuppliers(suppliers.map((s) => (s._id === selectedSupplier._id ? res.data : s)));
           setTransaction({ given: "", received: "" });

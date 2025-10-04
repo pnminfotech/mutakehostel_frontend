@@ -14,7 +14,7 @@ const Maintenance = () => {
 
   useEffect(() => {
     axios
-      .get("https://hostelpaymentmanger.onrender.com/api/projects")
+      .get("http://localhost:8000/api/projects")
       .then((res) => setProjects(res.data))
       .catch((err) => console.error("Error fetching projects:", err));
   }, []);
@@ -34,7 +34,7 @@ const Maintenance = () => {
   
     try {
       const res = await axios.post(
-        "https://hostelpaymentmanger.onrender.com/api/emp/projects",
+        "http://localhost:8000/api/emp/projects",
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
@@ -72,7 +72,7 @@ const Maintenance = () => {
 
     try {
       const res = await axios.put(
-        `https://hostelpaymentmanger.onrender.com/api/projects/${editProject}`,
+        `http://localhost:8000/api/projects/${editProject}`,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );

@@ -82,13 +82,13 @@ const ProjectDashboard = (projectId) => {
   // Fetch project details (employees & suppliers)
   useEffect(() => {
     axios
-      .get(`https://hostelpaymentmanger.onrender.com/api/projects/${id}`)
+      .get(`http://localhost:8000/api/projects/${id}`)
       .then((res) => setProject(res.data))
       .catch((err) => console.log(err));
   }, [id]);
   useEffect(() => {
     axios
-      .get(`hhttps://hostelpaymentmanger.onrender.com/api/suppliers`)
+      .get(`hhttp://localhost:8000/api/suppliers`)
       .then((res) => {
         console.log("✅ Fetched Suppliers:", res.data);
         setSuppliers(res.data || []);
@@ -179,7 +179,7 @@ const ProjectDashboard = (projectId) => {
           alert("Error: Employee ID is missing!");
           return;
         }
-        apiUrl = `hhttps://hostelpaymentmanger.onrender.com/api/projectEmpayment/${project._id}/employees/${selectedItem._id}/payments`;
+        apiUrl = `hhttp://localhost:8000/api/projectEmpayment/${project._id}/employees/${selectedItem._id}/payments`;
       } else if (selectedType === "supplier") {
         if (!selectedMaterial?.materialId || !selectedItem?.supplierId) {
           console.error(
@@ -190,7 +190,7 @@ const ProjectDashboard = (projectId) => {
           alert("Error: Supplier or Material ID is missing!");
           return;
         }
-        apiUrl = `hhttps://hostelpaymentmanger.onrender.com/api/projectSpayment/${project._id}/suppliers/${selectedItem.supplierId}/materials/${selectedMaterial.materialId}/payments`;
+        apiUrl = `hhttp://localhost:8000/api/projectSpayment/${project._id}/suppliers/${selectedItem.supplierId}/materials/${selectedMaterial.materialId}/payments`;
       }
 
       console.log("Submitting payment to:", apiUrl, "with data:", paymentData);
@@ -218,7 +218,7 @@ const ProjectDashboard = (projectId) => {
     }
     try {
       const response = await axios.post(
-        `hhttps://hostelpaymentmanger.onrender.com/api/suppliers/projects/${id}/suppliers`,
+        `hhttp://localhost:8000/api/suppliers/projects/${id}/suppliers`,
         supplierData
       );
       console.log("✅ Supplier added successfully:", response.data);
@@ -250,7 +250,7 @@ const ProjectDashboard = (projectId) => {
     e.preventDefault();
     axios
       .post(
-        `https://hostelpaymentmanger.onrender.com/api/projects/${id}/employees`,
+        `http://localhost:8000/api/projects/${id}/employees`,
         newEmployee
       )
       .then((res) => {
@@ -336,7 +336,7 @@ const ProjectDashboard = (projectId) => {
     console.log("Received projectId:", projectId, "supplierId:", supplierId); // Debugging
 
     const response = await fetch(
-      `hhttps://hostelpaymentmanger.onrender.com/api/projects/${projectId}/suppliers/${supplierId}`,
+      `hhttp://localhost:8000/api/projects/${projectId}/suppliers/${supplierId}`,
       {
         method: "POST",
         headers: {
@@ -368,8 +368,8 @@ const ProjectDashboard = (projectId) => {
     try {
       const endpoint =
         type === "employee"
-          ? `hhttps://hostelpaymentmanger.onrender.com/api/project/${payment.projectId}/employee/${payment.employeeId}/payment/${payment._id}`
-          : `hhttps://hostelpaymentmanger.onrender.com/api/project/${payment.projectId}/supplier/${payment.supplierId}/material/${payment.materialId}/payment/${payment._id}`;
+          ? `hhttp://localhost:8000/api/project/${payment.projectId}/employee/${payment.employeeId}/payment/${payment._id}`
+          : `hhttp://localhost:8000/api/project/${payment.projectId}/supplier/${payment.supplierId}/material/${payment.materialId}/payment/${payment._id}`;
 
       const response = await fetch(endpoint, {
         method: "PUT",

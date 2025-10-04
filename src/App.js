@@ -26,43 +26,36 @@ import Maintenance from './Pages/Maintenance';
 import AdminSidebar from './Pages/AdminSidebar';
 import Record from './Pages/record';
 import MaintenanceManager from './componenet/Maintanace/MaintenanceManager';
-import Add_Data_Demo from './componenet/Add_Data_Demo';
+import AddDataDemo from './componenet/Add_Data_Demo';
+
 import LightbillMaintenace from './componenet/Maintanace/LightbillMaintance';
 import NewComponant from './componenet/NewComponant';
 import MainDashboard from './componenet/MainDashboard';
-import Log from './componenet/Log';
 import NewComponantOriginal from './componenet/NewComponantOriginal';
 import LightBillMatrixView from './componenet/Maintanace/LightBillMatrixView';
 import LightbillOtherExpenses from './componenet/Maintanace/LightbillOtherExpenses';
 import RoomManager from './componenet/RoomManager';
 import FormSubmitted from './componenet/FormSubmitted';
-// import FormDownload from '../src/componenet/Maintanace/FormDownload';
+
+import TenantApp from "./tenant/TenantApp";
+
 function Layout() {
   const location = useLocation();
-
-  const showSidebarRoutes = [
-    '/dashboard',
-    '/suppliers',
-    '/maintenance',
-    '/record',
-    '/manual-entry'
-  ];
-
+  const showSidebarRoutes = ['/dashboard','/suppliers','/maintenance','/record','/manual-entry'];
   const shouldShowSidebar = showSidebarRoutes.includes(location.pathname);
 
   return (
     <div className="App">
       <Routes>
-        {/* Auth routes */}
+        {/* Auth */}
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
-        {/* ✅ Public Tenant Form (no ProtectedRoute) */}
+        {/* Public tenant admission form */}
         <Route path="/form" element={<Form />} />
         <Route path="/form-submitted" element={<FormSubmitted />} />
-      
 
-        {/* Admin / Protected routes */}
+        {/* Admin / Protected */}
         <Route path="/add-data" element={<ProtectedRoute><AddData /></ProtectedRoute>} />
         <Route path="/update-data" element={<ProtectedRoute><UpdateData /></ProtectedRoute>} />
         <Route path="/duplicate-data" element={<ProtectedRoute><DuplicateForm /></ProtectedRoute>} />
@@ -79,9 +72,9 @@ function Layout() {
         <Route path="/setting" element={<ProtectedRoute><AdminSidebar /></ProtectedRoute>} />
         <Route path="/record" element={<ProtectedRoute><Record /></ProtectedRoute>} />
 
-        {/* Maintenance manager and others */}
+        {/* Others */}
         <Route path="/maintenance-manager" element={<MaintenanceManager />} />
-        <Route path="/Adddatademo" element={<Add_Data_Demo />} />
+       <Route path="/Adddatademo" element={<AddDataDemo />} />
         <Route path="/lightbillmaintance" element={<LightbillMaintenace />} />
         <Route path="/lightbillotherexpenses" element={<LightbillOtherExpenses />} />
         <Route path="/NewComponant" element={<NewComponant />} />
@@ -89,7 +82,13 @@ function Layout() {
         <Route path="/maindashboard" element={<MainDashboard />} />
         <Route path="/LightBillMatrixView" element={<LightBillMatrixView />} />
         <Route path="/roommanager" element={<RoomManager />} />
-         <Route path="/formdownload" element={<FormDownload />} />
+        <Route path="/formdownload" element={<FormDownload />} />
+
+        {/* ✅ Tenant app mounted ONCE, with wildcard */}
+        <Route path="/tenant/*" element={<TenantApp />} />
+
+        {/* Fallback */}
+        {/* <Route path="*" element={<div style={{padding:16}}>Not found</div>} /> */}
       </Routes>
 
       {shouldShowSidebar && (
@@ -101,12 +100,10 @@ function Layout() {
   );
 }
 
-function App() {
+export default function App() {
   return (
     <BrowserRouter basename="/HostelManager">
       <Layout />
     </BrowserRouter>
   );
 }
-
-export default App;

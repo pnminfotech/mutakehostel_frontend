@@ -6,7 +6,7 @@ const TenantForm = ({ mode }) => {
     e.preventDefault();
     try {
       await axios.post(
-        'http://localhost:5000/api/forms',
+        'http://localhost:8000/api/forms',
         formData
       );
       alert('Form submitted successfully');

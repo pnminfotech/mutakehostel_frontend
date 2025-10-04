@@ -15,6 +15,14 @@ import { FaSearch } from 'react-icons/fa';
 import { FaSignOutAlt, FaUndo, FaDownload } from "react-icons/fa";
 import FormDownload from '../componenet/Maintanace/FormDownload';
 import TenantChatbot from '../componenet/TenantChatbot';
+// at top
+import PaymentNotifications from "../componenet/PaymentNotifications";
+import NotificationBell from "../componenet/NotificationBell";
+import AdminNotificationBell from "../componenet/AdminNotificationBell";
+
+
+
+
 
 import RoomManager from './RoomManager'; // adjust path if needed
 // import { useNavigate } from 'react-router-dom';
@@ -110,7 +118,7 @@ const openAddModal = () => {
   setShowAddModal(true);
 };
 
-  const apiUrl = 'http://localhost:5000/api/';
+  const apiUrl = 'http://localhost:8000/api/';
 const correctPassword = "987654";
 
 
@@ -125,7 +133,7 @@ const correctPassword = "987654";
 
 
 // // ✅ add these right below apiUrl
-// const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || "http://localhost:5000";
+// const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || "http://localhost:8000";
 
 // const getDocHref = (doc) => {
 //   // absolute URL already? use it
@@ -174,7 +182,7 @@ async function handleAddTenantWithDocs() {
         fd.append("documents", d.file);   // file is inside d.file
       });
 
-      const up = await axios.post("http://localhost:5000/api/uploads/docs", fd, {
+      const up = await axios.post("http://localhost:8000/api/uploads/docs", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
@@ -195,11 +203,11 @@ async function handleAddTenantWithDocs() {
 
     console.log("🚀 Payload sending:", JSON.stringify(payload, null, 2));
 
-    await axios.post("http://localhost:5000/api/forms", payload);
+    await axios.post("http://localhost:8000/api/forms", payload);
 
     setShowAddModal(false);
 
-    const tenantsRes = await axios.get("http://localhost:5000/api/forms");
+    const tenantsRes = await axios.get("http://localhost:8000/api/forms");
     setTenants(tenantsRes.data);
   } catch (err) {
     console.error(err);
@@ -353,7 +361,7 @@ async function compressImageToTarget(file, maxBytes = 10 * 1024) {
 //         fd.append("documents", doc.file); // only raw files go to upload API
 //       });
 
-//       const up = await axios.post("http://localhost:5000/api/uploads/docs", fd, {
+//       const up = await axios.post("http://localhost:8000/api/uploads/docs", fd, {
 //         headers: { "Content-Type": "multipart/form-data" },
 //       });
 
@@ -374,13 +382,13 @@ async function compressImageToTarget(file, maxBytes = 10 * 1024) {
 
 //     console.log("🚀 Payload sending:", JSON.stringify(payload, null, 2));
 
-//     const res = await axios.post("http://localhost:5000/api/forms", payload);
+//     const res = await axios.post("http://localhost:8000/api/forms", payload);
 //     console.log("Saved:", res.data);
 
 //     setShowAddModal(false);
 
 //     // refresh list
-//     const tenantsRes = await axios.get("http://localhost:5000/api/forms");
+//     const tenantsRes = await axios.get("http://localhost:8000/api/forms");
 //     setTenants(tenantsRes.data);
 //   } catch (err) {
 //     console.error(err);
@@ -634,7 +642,7 @@ useEffect(() => {
     .catch(err => console.error("Error fetching archived tenants:", err));
 }, []);
 useEffect(() => {
-  axios.get('http://localhost:5000/api/rooms')
+  axios.get('http://localhost:8000/api/rooms')
     .then(response => setRoomsData(response.data))
     .catch(err => console.error("Failed to fetch rooms:", err));
 }, []);
@@ -1158,14 +1166,42 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
       <div className="container-fluid px-4 py-3" style={{ fontFamily: 'Poppins, sans-serif' }}>
       <h3 className="fw-bold mb-4">Rent & Deposite Tracker</h3>
           {/* Language selector (sticky and simple) */}
-     <div className="d-flex align-items-center gap-2 mb-3">
+     {/* <div className="d-flex align-items-center gap-2 mb-3">
        <span className="text-muted me-2">Language:</span>
        <div className="btn-group">
          <button className={`btn btn-sm ${lang==='en'?'btn-primary':'btn-outline-primary'}`} onClick={()=>setLang('en')}>English</button>
          <button className={`btn btn-sm ${lang==='hi'?'btn-primary':'btn-outline-primary'}`} onClick={()=>setLang('hi')}>हिन्दी</button>
          <button className={`btn btn-sm ${lang==='mr'?'btn-primary':'btn-outline-primary'}`} onClick={()=>setLang('mr')}>मराठी</button>
        </div>
-     </div>
+     </div> */}
+
+
+{/* ===== Right-corner Payment Notifications (admin) ===== */}
+
+{/* …existing header/buttons… */}
+{/* <div style={{ position: "fixed", top: 12, right: 12, zIndex: 10000 }}>
+  <NotificationBell
+    defaultStatus="pending"
+    pollMs={30000}
+    // If your server is local and mounted as suggested:
+    apiOrigin={process.env.REACT_APP_API_ORIGIN || "http://localhost:8000"}
+    pathPrefix="/api/payments"
+    onUnreadChange={(n) => console.log("unread:", n)}
+  />
+</div> */}
+
+{/* <div style={{ marginLeft: "auto" }}>
+  <NotificationBell />
+</div> */}
+ <div>
+      {/* ...your header ... */}
+      {/* <div style={{ position: "fixed", top: 12, right: 12, zIndex: 10000 }}>
+        <AdminNotificationBell />
+      </div> */}
+      {/* ...rest... */}
+    </div>
+
+
      <div className="d-flex align-items-center mb-4 flex-wrap"> 
   <select
     className="form-select me-2"
@@ -1888,7 +1924,7 @@ const filteredDeletedData = deletedData.filter(t => t.leaveDate);
                     if (priceProvided) payload.price = priceNum;
 
                     await axios.post(
-                      `http://localhost:5000/api/rooms/${encodeURIComponent(roomNo)}/bed`,
+                      `http://localhost:8000/api/rooms/${encodeURIComponent(roomNo)}/bed`,
                       payload
                     );
 

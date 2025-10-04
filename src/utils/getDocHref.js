@@ -1,4 +1,4 @@
-const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || "http://localhost:5000";
+const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || "http://localhost:8000";
 
 export const getDocHref = (doc) => {
   if (!doc) return "#";

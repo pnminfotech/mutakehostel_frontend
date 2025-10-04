@@ -15,7 +15,7 @@ const handleNavigation =(path)=>{
   useEffect(() => {
     const fetchDuplicateForms = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/duplicateforms');
+        const response = await axios.get('http://localhost:8000/api/duplicateforms');
         setDuplicateForms(response.data || []); // Fallback to an empty array if response.data is undefined
       } catch (err) {
         setError(err.message);

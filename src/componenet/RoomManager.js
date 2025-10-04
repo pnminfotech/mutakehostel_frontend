@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
-const apiUrl = "http://localhost:5000/api/rooms";
+const apiUrl = "http://localhost:8000/api/rooms";
 
 export default function RoomManager() {
   const [rooms, setRooms] = useState([]);

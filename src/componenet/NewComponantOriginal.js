@@ -61,7 +61,7 @@ const openAddModal = () => {
   setShowAddModal(true);
 };
 
-  const apiUrl = 'http://localhost:5000/api/';
+  const apiUrl = 'http://localhost:8000/api/';
 
   useEffect(() => {
     axios
