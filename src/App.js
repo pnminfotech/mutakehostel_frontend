@@ -26,7 +26,7 @@ import Maintenance from './Pages/Maintenance';
 import AdminSidebar from './Pages/AdminSidebar';
 import Record from './Pages/record';
 import MaintenanceManager from './componenet/Maintanace/MaintenanceManager';
-import AddDataDemo from './componenet/Add_Data_Demo';
+import AddDataDemo from './componenet/Add_Data_Demo'; // ✅ use this name
 
 import LightbillMaintenace from './componenet/Maintanace/LightbillMaintance';
 import NewComponant from './componenet/NewComponant';
@@ -36,7 +36,7 @@ import LightBillMatrixView from './componenet/Maintanace/LightBillMatrixView';
 import LightbillOtherExpenses from './componenet/Maintanace/LightbillOtherExpenses';
 import RoomManager from './componenet/RoomManager';
 import FormSubmitted from './componenet/FormSubmitted';
-// import FormDownload from '../src/componenet/Maintanace/FormDownload';
+
 function Layout() {
   const location = useLocation();
 
@@ -57,7 +57,7 @@ function Layout() {
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
-        {/* ✅ Public Tenant Form (no ProtectedRoute) */}
+        {/* Public Tenant Form */}
         <Route path="/form" element={<Form />} />
         <Route path="/tenant-intake" element={<TenantIntake />} />
         <Route path="/form-submitted" element={<FormSubmitted />} />
@@ -81,7 +81,7 @@ function Layout() {
 
         {/* Maintenance manager and others */}
         <Route path="/maintenance-manager" element={<MaintenanceManager />} />
-        <Route path="/Adddatademo" element={<Add_Data_Demo />} />
+        <Route path="/Adddatademo" element={<AddDataDemo />} /> {/* ✅ fixed component name */}
         <Route path="/lightbillmaintance" element={<LightbillMaintenace />} />
         <Route path="/lightbillotherexpenses" element={<LightbillOtherExpenses />} />
         <Route path="/NewComponant" element={<NewComponant />} />
@@ -89,7 +89,7 @@ function Layout() {
         <Route path="/maindashboard" element={<MainDashboard />} />
         <Route path="/LightBillMatrixView" element={<LightBillMatrixView />} />
         <Route path="/roommanager" element={<RoomManager />} />
-         <Route path="/formdownload" element={<FormDownload />} />
+        <Route path="/formdownload" element={<FormDownload />} />
       </Routes>
 
       {shouldShowSidebar && (
@@ -108,3 +108,5 @@ function App() {
     </BrowserRouter>
   );
 }
+
+export default App; // ✅ add this
