@@ -1,10 +1,3 @@
-////latest one 
-
-
-
-
-
-
 import React from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -35,6 +28,54 @@ const FormDownload = ({ formData }) => {
 
     pdf.save("Admission_Form.pdf");
   };
+
+  // ---- Helpers to resolve Relative Address 1 / 2 from various sources ----
+  const formatRelative = (r) => {
+    if (!r) return "";
+    const relation = r.relation && String(r.relation).trim();
+    const name = r.name && String(r.name).trim();
+    const phone = r.phone && String(r.phone).trim();
+
+    if (relation && name && phone) return `${relation}: ${name} (${phone})`;
+    if (relation && name) return `${relation}: ${name}`;
+    if (name && phone) return `${name} (${phone})`;
+    return [relation, name, phone].filter(Boolean).join(" ");
+  };
+
+  // Preferred new structure: relatives[]
+  const rel0FromArray = Array.isArray(formData?.relatives) ? formData.relatives[0] : null;
+  const rel1FromArray = Array.isArray(formData?.relatives) ? formData.relatives[1] : null;
+
+  // Your current payload fields (fallback if relatives[] not present)
+  const rel1FromFields = {
+    relation: formData?.relative1Relation,
+    name: formData?.relative1Name,
+    phone: formData?.relative1Phone,
+  };
+  const rel2FromFields = {
+    relation: formData?.relative2Relation,
+    name: formData?.relative2Name,
+    phone: formData?.relative2Phone,
+  };
+
+  // Build the two lines with a clear priority:
+  // 1) explicit relativeAddress1/2
+  // 2) relatives[0]/relatives[1]
+  // 3) individual fields relative1*/relative2*
+  // 4) single relativeAddress (for line 1 only)
+  // 5) underscores fallback
+  const relativeAddressLine1 =
+    formData?.relativeAddress1 ||
+    formatRelative(rel0FromArray) ||
+    formatRelative(rel1FromFields) ||
+    formData?.relativeAddress ||
+    "______________________________";
+
+  const relativeAddressLine2 =
+    formData?.relativeAddress2 ||
+    formatRelative(rel1FromArray) ||
+    formatRelative(rel2FromFields) ||
+    "_______________________________";
 
   return (
     <div>
@@ -71,17 +112,18 @@ const FormDownload = ({ formData }) => {
             <strong>Address:</strong>{" "}
             {formData?.address || "_______________________________"}
           </p>
+
+          {/* Relative Address 1 / 2 – supports old fields, new relatives[], and individual fields */}
           <p>
             <strong>
               Address Of Relative:
               <br />
               1)
             </strong>{" "}
-            {formData?.relativeAddress1 || "_______________________________"}{" "}
-            <br />
-            <strong>2)</strong>{" "}
-            {formData?.relativeAddress2 || "_______________________________"}
+            {relativeAddressLine1} <br />
+            <strong>2)</strong> {relativeAddressLine2}
           </p>
+
           <p>
             <strong>Hostel Joining Date:</strong>{" "}
             {formData?.joiningDate
@@ -100,9 +142,7 @@ const FormDownload = ({ formData }) => {
             <strong>
               Name & Address of Company/College/Institute/Other:
             </strong>
-            <br />{" "}
-            {formData?.companyAddress ||
-              "________________________________"}
+            <br /> {formData?.companyAddress || "________________________________"}
           </p>
           <p>
             <strong>Date Of Joining:</strong>{" "}

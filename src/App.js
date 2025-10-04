@@ -3,6 +3,7 @@ import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 
+import TenantIntake from './Pages/TenantIntake';
 import Form from './componenet/form';
 import AddData from './componenet/AddData';
 import UpdateData from './componenet/UpdateData';
@@ -18,7 +19,6 @@ import NewYear from './componenet/newyear';
 import Sidebar from './Pages/Sidebar';
 import Kahata from './Componen/Kahata';
 
-// khata book
 import ProjectDashboard from './Pages/ProjectDashboard';
 import Dashboard from './Pages/Dashboard';
 import Suppliers from './Pages/Suppliers';
@@ -36,23 +36,30 @@ import LightBillMatrixView from './componenet/Maintanace/LightBillMatrixView';
 import LightbillOtherExpenses from './componenet/Maintanace/LightbillOtherExpenses';
 import RoomManager from './componenet/RoomManager';
 import FormSubmitted from './componenet/FormSubmitted';
-
-import TenantApp from "./tenant/TenantApp";
-
+// import FormDownload from '../src/componenet/Maintanace/FormDownload';
 function Layout() {
   const location = useLocation();
-  const showSidebarRoutes = ['/dashboard','/suppliers','/maintenance','/record','/manual-entry'];
+
+  const showSidebarRoutes = [
+    '/dashboard',
+    '/suppliers',
+    '/maintenance',
+    '/record',
+    '/manual-entry'
+  ];
+
   const shouldShowSidebar = showSidebarRoutes.includes(location.pathname);
 
   return (
     <div className="App">
       <Routes>
-        {/* Auth */}
+        {/* Auth routes */}
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
 
-        {/* Public tenant admission form */}
+        {/* ✅ Public Tenant Form (no ProtectedRoute) */}
         <Route path="/form" element={<Form />} />
+        <Route path="/tenant-intake" element={<TenantIntake />} />
         <Route path="/form-submitted" element={<FormSubmitted />} />
 
         {/* Admin / Protected */}
@@ -72,9 +79,9 @@ function Layout() {
         <Route path="/setting" element={<ProtectedRoute><AdminSidebar /></ProtectedRoute>} />
         <Route path="/record" element={<ProtectedRoute><Record /></ProtectedRoute>} />
 
-        {/* Others */}
+        {/* Maintenance manager and others */}
         <Route path="/maintenance-manager" element={<MaintenanceManager />} />
-       <Route path="/Adddatademo" element={<AddDataDemo />} />
+        <Route path="/Adddatademo" element={<Add_Data_Demo />} />
         <Route path="/lightbillmaintance" element={<LightbillMaintenace />} />
         <Route path="/lightbillotherexpenses" element={<LightbillOtherExpenses />} />
         <Route path="/NewComponant" element={<NewComponant />} />
@@ -82,13 +89,7 @@ function Layout() {
         <Route path="/maindashboard" element={<MainDashboard />} />
         <Route path="/LightBillMatrixView" element={<LightBillMatrixView />} />
         <Route path="/roommanager" element={<RoomManager />} />
-        <Route path="/formdownload" element={<FormDownload />} />
-
-        {/* ✅ Tenant app mounted ONCE, with wildcard */}
-        <Route path="/tenant/*" element={<TenantApp />} />
-
-        {/* Fallback */}
-        {/* <Route path="*" element={<div style={{padding:16}}>Not found</div>} /> */}
+         <Route path="/formdownload" element={<FormDownload />} />
       </Routes>
 
       {shouldShowSidebar && (
@@ -100,7 +101,7 @@ function Layout() {
   );
 }
 
-export default function App() {
+function App() {
   return (
     <BrowserRouter basename="/HostelManager">
       <Layout />
