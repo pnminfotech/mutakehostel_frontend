@@ -92,3 +92,22 @@ const form = { display: "grid", gap: 12 };
 const statusBox = { padding: 10, background: "#f1f1f1", borderRadius: 6 };
 const errorStyle = { color: "red", fontSize: 13 };
 const btnPrimary = { padding: "10px 16px", background: "#4c7cff", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer" };
+
+
+
+
+
+  <form>
+
+ <label for="" >  Name</label>
+ <input type="text" /> 
+
+ <label for="lastname"> Last name :</label>
+ <input type="text" name="lastname" /> 
+
+ <label>Enter Gender</label>
+  <label>Female</label>
+ <input type="radio"/>
+  <label>male</label>
+ <input type="radio"/>
+  </form>

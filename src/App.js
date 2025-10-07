@@ -1,3 +1,4 @@
+// src/App.js
 import React from 'react';
 import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
@@ -26,8 +27,7 @@ import Maintenance from './Pages/Maintenance';
 import AdminSidebar from './Pages/AdminSidebar';
 import Record from './Pages/record';
 import MaintenanceManager from './componenet/Maintanace/MaintenanceManager';
-import AddDataDemo from './componenet/Add_Data_Demo'; // ✅ use this name
-
+import AddDataDemo from './componenet/Add_Data_Demo';
 import LightbillMaintenace from './componenet/Maintanace/LightbillMaintance';
 import NewComponant from './componenet/NewComponant';
 import MainDashboard from './componenet/MainDashboard';
@@ -37,6 +37,9 @@ import LightbillOtherExpenses from './componenet/Maintanace/LightbillOtherExpens
 import RoomManager from './componenet/RoomManager';
 import FormSubmitted from './componenet/FormSubmitted';
 
+// ✅ Import your tenant app (the module you shared at top)
+import TenantApp from './tenant/TenantApp';
+
 function Layout() {
   const location = useLocation();
 
@@ -45,7 +48,7 @@ function Layout() {
     '/suppliers',
     '/maintenance',
     '/record',
-    '/manual-entry'
+    '/manual-entry',
   ];
 
   const shouldShowSidebar = showSidebarRoutes.includes(location.pathname);
@@ -61,6 +64,9 @@ function Layout() {
         <Route path="/form" element={<Form />} />
         <Route path="/tenant-intake" element={<TenantIntake />} />
         <Route path="/form-submitted" element={<FormSubmitted />} />
+
+        {/* ✅ Mount the entire tenant module under /tenant/* */}
+        <Route path="/tenant/*" element={<TenantApp />} />
 
         {/* Admin / Protected */}
         <Route path="/add-data" element={<ProtectedRoute><AddData /></ProtectedRoute>} />
@@ -81,7 +87,7 @@ function Layout() {
 
         {/* Maintenance manager and others */}
         <Route path="/maintenance-manager" element={<MaintenanceManager />} />
-        <Route path="/Adddatademo" element={<AddDataDemo />} /> {/* ✅ fixed component name */}
+        <Route path="/Adddatademo" element={<AddDataDemo />} />
         <Route path="/lightbillmaintance" element={<LightbillMaintenace />} />
         <Route path="/lightbillotherexpenses" element={<LightbillOtherExpenses />} />
         <Route path="/NewComponant" element={<NewComponant />} />
@@ -109,4 +115,4 @@ function App() {
   );
 }
 
-export default App; // ✅ add this
+export default App;
