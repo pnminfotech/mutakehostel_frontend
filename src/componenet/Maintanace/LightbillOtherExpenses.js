@@ -852,8 +852,8 @@ const totalPendingMaintenance = otherExpenses
                     onChange={(e) => setNewEntry({ ...newEntry, type: e.target.value })}
                   >
                     <option value="meter">Meter</option>
-                    <option value="maushi">Maushi</option>
-                    <option value="custom">Custom</option>
+                    {/* <option value="maushi">Maushi</option> */}
+                    {/* <option value="custom">Custom</option> */}
                   </select>
                 </div>
 

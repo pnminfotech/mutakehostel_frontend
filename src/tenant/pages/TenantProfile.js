@@ -254,7 +254,7 @@ export default function TenantMyForm() {
         setMe(data);
         setForm({
           name: data.name || "",
-          email: data.email || "",
+          // email: data.email || "",
           dob: toDateInputValue(data.dob),
           address: data.address || "",
           companyAddress: data.companyAddress || "",
@@ -291,7 +291,7 @@ export default function TenantMyForm() {
     try {
       const payload = {
         name: form.name,
-        email: form.email,
+        // email: form.email,
         dob: form.dob || null,
         address: form.address,
         companyAddress: form.companyAddress,
@@ -368,15 +368,15 @@ export default function TenantMyForm() {
       <div style={styles.container}>
         {/* Banner: Avatar + identity + stats + actions */}
         <div style={styles.banner}>
-          <img src={avatarSrc} alt="avatar" style={styles.avatar} />
-          <div style={styles.headingWrap}>
+          {/* <img src={avatarSrc} alt="avatar" style={styles.avatar} /> */}
+          <div style={styles.headingWrap} >
             <h2 style={styles.title}>{me.name || "—"}</h2>
             <div style={styles.sub}>
               {me.roomNo ? `Room ${me.roomNo}` : "—"} {me.bedNo ? " • Bed " + me.bedNo : ""}
             </div>
-            <div style={styles.chipRow}>
+            <div style={styles.chipRow} >
               <span style={styles.chip}>📞 {me.phoneNo || "—"}</span>
-              <span style={{ ...styles.chip, ...styles.chipStrong }}>SR NO: {me.srNo ?? "—"}</span>
+              {/* <span style={{ ...styles.chip, ...styles.chipStrong }}>SR NO: {me.srNo ?? "—"}</span> */}
               {me?.ekyc?.status && (
                 <span style={{ ...styles.chip, borderColor: colors.brand2, color: colors.brand2 }}>
                   ✅ eKYC: {String(me.ekyc.status).toUpperCase()}
@@ -385,11 +385,11 @@ export default function TenantMyForm() {
             </div>
           </div>
 
-          <div style={styles.statWrap}>
+          {/* <div style={styles.statWrap}>
             <Stat label="Joining" value={fmtDate(me.joiningDate)} />
             <Stat label="Base Rent (₹)" value={me.baseRent} tone="warn" />
             <Stat label="Deposit (₹)" value={me.depositAmount} tone="success" />
-          </div>
+          </div> */}
 
           <div style={styles.toolbar}>
             {!edit ? (
@@ -419,15 +419,16 @@ export default function TenantMyForm() {
             {edit ? (
               <>
                 <EditRow label="Full Name" name="name" />
-                <EditRow label="Email" name="email" type="email" />
+                {/* <EditRow label="Email" name="email" type="email" /> */}
                 <EditRow label="Date of Birth" name="dob" type="date" />
               </>
             ) : (
               <>
                 <ReadRow label="Full Name">{me.name}</ReadRow>
-                <ReadRow label="Email">{me.email}</ReadRow>
+                {/* <ReadRow label="Email">{me.email}</ReadRow> */}
+                 <ReadRow label="Phone (read-only)">{me.phoneNo}</ReadRow>
                 <ReadRow label="Date of Birth">{fmtDate(me.dob)}</ReadRow>
-                <ReadRow label="Phone (read-only)">{me.phoneNo}</ReadRow>
+               
               </>
             )}
           </div>

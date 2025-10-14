@@ -1,355 +1,194 @@
-// src/components/NotificationBell.js
-import React, { useEffect, useRef, useState } from "react";
+// src/components/NotificationBell.jsx
+import React from "react";
 import axios from "axios";
 
-const API = process.env.REACT_APP_API_ORIGIN || "http://localhost:8000";
 const fmtINR = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
-const mmYY = (m, y) => (m && y ? `${String(m).padStart(2, "0")}/${y}` : "—");
+const mmYY = (m, y) => (m && y ? `${String(m).padStart(2,"0")}/${y}` : "—");
 
-export default function NotificationBell() {
-  const [open, setOpen] = useState(false);
-  const [items, setItems] = useState([]);
-  const [status, setStatus] = useState("pending"); // pending|approved|rejected|all
-  const boxRef = useRef(null);
+export default function NotificationBell({
+  apiUrl = "http://localhost:8000/api/",
+  onApproved,
+}) {
+  const [items, setItems] = React.useState([]);
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState("");
 
-  // Close on outside click
-  useEffect(() => {
-    const fn = (e) => {
-      if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", fn);
-    return () => document.removeEventListener("mousedown", fn);
-  }, []);
+  const fetchItems = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      setErr("");
+      // ✅ pull NOTIFICATIONS (not /payments/reports)
+      const { data } = await axios.get(`${apiUrl}payments/notifications`, {
+        params: { status: "pending", limit: 50 },
+      });
+      setItems(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Notifications fetch failed:", e);
+      setErr(e?.response?.data?.message || e.message || "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiUrl]);
 
-  const fetchList = async () => {
-    const { data } = await axios.get(`${API}/api/notifications`, {
-      params: { status, limit: 50 },
-    });
-    setItems(Array.isArray(data) ? data : []);
+  React.useEffect(() => {
+    fetchItems();
+    const id = setInterval(fetchItems, 20000);
+    return () => clearInterval(id);
+  }, [fetchItems]);
+
+  const approveNotif = async (notif) => {
+    try {
+      // ✅ send NOTIFICATION id here
+      await axios.post(`${apiUrl}payments/approve/${notif._id}`);
+      setItems((prev) => prev.filter((x) => x._id !== notif._id));
+      // onApproved?.(notif);
+       // 🔔 send a minimal, stable payload (safe to use for optimistic UI)
+   const tenant = notif.tenantId || {};
+   const pay = notif.paymentId || {};
+   onApproved?.({
+     type: "approved",
+     tenantId: tenant._id,                 // string
+     tenantName: tenant.name,
+     roomNo: tenant.roomNo,
+     bedNo: tenant.bedNo,
+     amount: Number(pay.amount) || 0,      // number
+     year: Number(pay.year),               // e.g. 2025
+     month: Number(pay.month),             // 1..12
+     utr: pay.utr || "",
+     note: pay.note || "",
+     paymentMode: pay.mode || pay.paymentMode || "Online",
+     paymentDate: pay.paymentDate || notif.createdAt || new Date().toISOString(),
+   });
+    } catch (e) {
+      console.error("Approve failed:", e);
+      alert(e?.response?.data?.message || e.message || "Approval failed");
+    }
   };
 
-  // Initial & status change
-  useEffect(() => {
-    fetchList().catch(() => {});
-  }, [status]);
-
-  // SSE stream (listen to named events the server sends)
-  useEffect(() => {
-    const ev = new EventSource(`${API}/api/notifications/stream`);
-
-    const onCreated = () => fetchList().catch(() => {});
-    const onUpdated = () => fetchList().catch(() => {});
-
-    ev.addEventListener("created", onCreated);
-    ev.addEventListener("updated", onUpdated);
-
-    ev.onerror = () => {
-      // server may close; UI still refreshes on status changes
-    };
-    return () => {
-      ev.removeEventListener("created", onCreated);
-      ev.removeEventListener("updated", onUpdated);
-      ev.close();
-    };
-  }, []);
-
-  const unreadCount = items.filter((n) => !n.read && n.status === "pending").length;
-
-  // Actions (generic approve/reject endpoints; backend decides by type)
-  const markRead = async (id) => {
-    await axios.patch(`${API}/api/notifications/${id}/read`);
-    fetchList();
+  const rejectNotif = async (notif) => {
+    try {
+      await axios.post(`${apiUrl}payments/reject/${notif._id}`);
+      setItems((prev) => prev.filter((x) => x._id !== notif._id));
+    } catch (e) {
+      console.error("Reject failed:", e);
+      alert(e?.response?.data?.message || e.message || "Reject failed");
+    }
   };
-  const approvePayment = async (id) => {
-    await axios.post(`${API}/api/notifications/${id}/approve`);
-    fetchList();
-  };
-  const rejectPayment = async (id) => {
-    await axios.post(`${API}/api/notifications/${id}/reject`);
-    fetchList();
-  };
-  const approveLeave = async (id) => {
-    await axios.post(`${API}/api/notifications/${id}/approve`);
-    fetchList();
-  };
-  const rejectLeave = async (id) => {
-    await axios.post(`${API}/api/notifications/${id}/reject`);
-    fetchList();
+
+  const markAllRead = async () => {
+    try {
+      await axios.post(`${apiUrl}payments/notifications/read-all`, {
+        status: "pending",
+      });
+      setItems([]);
+    } catch (e) {
+      console.error("markAllRead failed:", e);
+      alert("Could not mark all read");
+    }
   };
 
   return (
-    <div ref={boxRef} style={{ position: "relative" }}>
-      {/* Bell */}
+    <div className="dropdown">
       <button
-        onClick={() => setOpen((v) => !v)}
+        className="btn btn-light position-relative"
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open ? "true" : "false"}
         title="Notifications"
-        style={{
-          position: "relative",
-          width: 42,
-          height: 42,
-          borderRadius: 999,
-          border: "1px solid #e5e7eb",
-          background: "#fff",
-          display: "grid",
-          placeItems: "center",
-          boxShadow: "0 6px 18px rgba(0,0,0,.08)",
-          cursor: "pointer",
-        }}
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2c0 .53-.21 1.04-.59 1.41L4 17h5m6 0v1a3 3 0 1 1-6 0v-1h6Z"
-            stroke="#0f172a"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        {unreadCount > 0 && (
+        🔔
+        {items.length > 0 && (
           <span
-            style={{
-              position: "absolute",
-              top: -4,
-              right: -4,
-              background: "#ef4444",
-              color: "#fff",
-              borderRadius: 999,
-              fontSize: 10,
-              padding: "2px 6px",
-              fontWeight: 800,
-            }}
+            className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+            style={{ fontSize: "0.7rem" }}
           >
-            {unreadCount > 99 ? "99+" : unreadCount}
+            {items.length > 99 ? "99+" : items.length}
           </span>
         )}
       </button>
 
-      {/* Sheet */}
       {open && (
         <div
-          style={{
-            position: "absolute",
-            right: 0,
-            top: "110%",
-            width: 420,
-            maxWidth: "92vw",
-            background: "#0b1220",
-            color: "#e5e7eb",
-            borderRadius: 14,
-            overflow: "hidden",
-            boxShadow: "0 20px 70px rgba(0,0,0,.45)",
-            zIndex: 9999,
-          }}
+          className="dropdown-menu dropdown-menu-end show p-2"
+          style={{ minWidth: 360, maxWidth: 400, maxHeight: 420, overflowY: "auto" }}
         >
-          <div
-            style={{
-              padding: 12,
-              borderBottom: "1px solid rgba(255,255,255,.1)",
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-            }}
-          >
-            <div style={{ fontWeight: 800, fontSize: 14, flex: 1 }}>Notifications</div>
-            {["pending", "approved", "rejected", "all"].map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatus(s)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: "1px solid rgba(255,255,255,.15)",
-                  background: status === s ? "#111827" : "transparent",
-                  color: "#e5e7eb",
-                  cursor: "pointer",
-                  fontSize: 12,
-                }}
-              >
-                {s}
+          <div className="d-flex align-items-center justify-content-between px-2 mb-2">
+            <strong>Payment notifications</strong>
+            <div className="d-flex gap-2">
+              <button className="btn btn-sm btn-outline-secondary" onClick={fetchItems}>
+                Refresh
               </button>
-            ))}
+              <button className="btn btn-sm btn-outline-dark" onClick={markAllRead}>
+                Mark all read
+              </button>
+            </div>
           </div>
 
-          <div style={{ maxHeight: 480, overflowY: "auto" }}>
-            {items.length === 0 ? (
-              <div style={{ padding: 16, color: "#94a3b8", textAlign: "center" }}>
-                No notifications.
-              </div>
-            ) : (
-              items.map((n) => (
-                <div
-                  key={n._id}
-                  style={{ padding: 12, borderBottom: "1px solid rgba(255,255,255,.06)" }}
-                >
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>
-                      {n.tenantName || "Tenant"} • Room {n.roomNo || "—"} • Bed{" "}
-                      {n.bedNo || "—"}
+          {loading && <div className="text-muted px-2 py-1">Loading…</div>}
+          {err && <div className="text-danger px-2 py-1">{err}</div>}
+
+          {items.length === 0 && !loading ? (
+            <div className="text-muted px-2 py-2">No new notifications</div>
+          ) : (
+            items.map((n) => {
+              // n.tenantId and n.paymentId are populated in your router
+              const tenant = n.tenantId || {};
+              const pay = n.paymentId || {};
+              return (
+                <div key={n._id} className="border rounded p-2 mb-2 bg-white">
+                  <div className="d-flex justify-content-between align-items-baseline">
+                    <div className="fw-semibold">
+                      {(tenant.name || "Tenant")} • Room {(tenant.roomNo ?? "—")} • Bed {(tenant.bedNo ?? "—")}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#94a3b8",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <div className="small text-muted">
                       {n.createdAt ? new Date(n.createdAt).toLocaleString() : ""}
                     </div>
                   </div>
 
-                  {n.type === "payment_report" ? (
-                    <>
-                      <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 4 }}>
-                        Payment: {fmtINR(n.amount)} for {mmYY(n.month, n.year)} • UTR:{" "}
-                        {n.utr || "—"}
-                      </div>
-                      {n.note && (
-                        <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 2 }}>
-                          {n.note}
-                        </div>
-                      )}
-                      {n.receiptUrl && (
-                        <div style={{ marginTop: 6 }}>
-                          <a
-                            href={n.receiptUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ fontSize: 12, color: "#93c5fd" }}
-                          >
-                            View receipt
-                          </a>
-                        </div>
-                      )}
+                  <div className="small text-muted mt-1">
+                    Payment: {fmtINR(pay.amount)} for {mmYY(pay.month, pay.year)}
+                  </div>
+                  {pay.utr && <div className="small">UTR: <span className="text-dark">{pay.utr}</span></div>}
+                  {pay.note && <div className="small text-muted">Note: {pay.note}</div>}
 
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                          marginTop: 8,
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                        }}
-                      >
-                        {!n.read && (
-                          <button
-                            onClick={() => markRead(n._id)}
-                            style={btn("transparent", "1px solid rgba(255,255,255,.25)")}
-                          >
-                            Mark read
-                          </button>
-                        )}
-                        {n.status === "pending" && (
-                          <>
-                            <button
-                              onClick={() => approvePayment(n._id)}
-                              style={btn("#16a34a")}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => rejectPayment(n._id)}
-                              style={btn("#ef4444")}
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-                        {badge(n.status)}
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 4 }}>
-                        Leave request for:{" "}
-                        {n.leaveDate
-                          ? new Date(n.leaveDate).toLocaleDateString("en-GB")
-                          : "—"}
-                      </div>
-                      {n.note && (
-                        <div style={{ fontSize: 12, color: "#cbd5e1", marginTop: 2 }}>
-                          {n.note}
-                        </div>
-                      )}
+                  <div className="d-flex gap-2 mt-2">
+                    <button className="btn btn-sm btn-success" onClick={() => approveNotif(n)}>
+                      Approve
+                    </button>
+                    <button className="btn btn-sm btn-outline-danger" onClick={() => rejectNotif(n)}>
+                      Reject
+                    </button>
+                    <button
+  className="btn btn-sm btn-outline-secondary ms-auto"
+  onClick={() => {
+    const tenant = n.tenantId || {};
+    const pay = n.paymentId || {};
+    const lines = [
+      `Tenant: ${tenant.name || "—"}`,
+      `Room/Bed: ${tenant.roomNo ?? "—"} / ${tenant.bedNo ?? "—"}`,
+      `Reported at: ${n.createdAt ? new Date(n.createdAt).toLocaleString() : "—"}`,
+      "",
+      `Amount: ${fmtINR(pay.amount)}`,
+      `For month: ${mmYY(pay.month, pay.year)}`,
+      `UTR: ${pay.utr || "—"}`,
+      `Note: ${pay.note || "—"}`,
+      "",
+      // `Status: ${n.status || "pending"}`,
+    ];
+    window.alert(lines.join("\n"));
+  }}
+>
+  Details
+</button>
 
-                      <div
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                          marginTop: 8,
-                          flexWrap: "wrap",
-                          alignItems: "center",
-                        }}
-                      >
-                        {!n.read && (
-                          <button
-                            onClick={() => markRead(n._id)}
-                            style={btn("transparent", "1px solid rgba(255,255,255,.25)")}
-                          >
-                            Mark read
-                          </button>
-                        )}
-                        {n.status === "pending" && (
-                          <>
-                            <button
-                              onClick={() => approveLeave(n._id)}
-                              style={btn("#16a34a")}
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => rejectLeave(n._id)}
-                              style={btn("#ef4444")}
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-                        {badge(n.status)}
-                      </div>
-                    </>
-                  )}
+                  </div>
                 </div>
-              ))
-            )}
-          </div>
+              );
+            })
+          )}
         </div>
       )}
     </div>
-  );
-}
-
-function btn(bg, border = "none") {
-  return {
-    padding: "6px 10px",
-    border,
-    borderRadius: 10,
-    background: bg,
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 700,
-  };
-}
-
-function badge(status) {
-  const map = {
-    approved: { bg: "#16a34a", label: "approved" },
-    rejected: { bg: "#ef4444", label: "rejected" },
-    pending: { bg: "#f59e0b", label: "pending", color: "#111827" },
-  };
-  const s = map[status] || map.pending;
-  return (
-    <span
-      style={{
-        padding: "4px 8px",
-        borderRadius: 999,
-        background: s.bg,
-        color: s.color || "#0b1220",
-        fontSize: 12,
-        fontWeight: 800,
-      }}
-    >
-      {s.label}
-    </span>
   );
 }

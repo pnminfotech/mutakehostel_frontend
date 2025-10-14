@@ -19,7 +19,7 @@ import Ruf from './componenet/rufWork';
 import NewYear from './componenet/newyear';
 import Sidebar from './Pages/Sidebar';
 import Kahata from './Componen/Kahata';
-
+import Log from './componenet/Log';
 import ProjectDashboard from './Pages/ProjectDashboard';
 import Dashboard from './Pages/Dashboard';
 import Suppliers from './Pages/Suppliers';
@@ -57,7 +57,7 @@ function Layout() {
     <div className="App">
       <Routes>
         {/* Auth routes */}
-        <Route path="/" element={<Login />} />
+        <Route path="/" element={<Log />} />
         <Route path="/register" element={<Register />} />
 
         {/* Public Tenant Form */}

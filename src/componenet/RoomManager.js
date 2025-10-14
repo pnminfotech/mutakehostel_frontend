@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 
+import { useNavigate } from "react-router-dom";
+import { FaArrowLeft } from "react-icons/fa";
 const apiUrl = "http://localhost:8000/api/rooms";
 
 export default function RoomManager() {
@@ -70,7 +72,10 @@ export default function RoomManager() {
     setEditTarget({ roomNo, bedNo, price: currentPrice ?? "" });
     setShowEditModal(true);
   };
-
+ const navigate = useNavigate();
+  const handleNavigation = (path) => {
+    navigate(path);
+  };
   const updateBedPrice = async () => {
     if (editTarget.price === "" || isNaN(Number(editTarget.price))) {
       alert("Invalid price.");
@@ -103,6 +108,15 @@ export default function RoomManager() {
 
   return (
     <div className="container mt-4">
+      
+       <button
+                className="btn me-2"
+                style={{ backgroundColor: "#483f3fab", color: "white" }}
+                onClick={() => handleNavigation("/NewComponant")}
+              >
+                <FaArrowLeft className="me-1" />
+                Back
+              </button>
       <h4 className="mb-4">Room & Bed Management</h4>
 
       {/* Add Room Card */}

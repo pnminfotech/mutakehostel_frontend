@@ -4,7 +4,7 @@ import axios from 'axios';
 import '../form.css';
 import { useNavigate } from 'react-router-dom';
 
-const API = 'http://localhost:5000/api';
+const API = 'http://localhost:8000/api';
 
 function TenantIntake() {
   const [formData, setFormData] = useState({

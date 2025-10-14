@@ -15,7 +15,8 @@ import { FaSearch } from "react-icons/fa";
 import { FaSignOutAlt, FaUndo, FaDownload } from "react-icons/fa";
 import FormDownload from "../componenet/Maintanace/FormDownload";
 import TenantChatbot from "../componenet/TenantChatbot";
-
+import NotificationBell from "../componenet/NotificationBell";
+import LeaveNotificationBell from "../componenet/LeaveNotificationBell";
 import RoomManager from "./RoomManager"; // adjust path if needed
 // import { useNavigate } from 'react-router-dom';
 import { FaMoneyBillWave, FaPhoneAlt, FaCalendarAlt } from "react-icons/fa";
@@ -51,9 +52,9 @@ function NewComponant() {
   ////form
   const [showFModal, setShowFModal] = useState(false);
   const [selectedRowData, setSelectedRowData] = useState(null);
-  const [lang, setLang] = useState("en"); // 'en' | 'hi' | 'mr'
+  // const [lang, setLang] = useState("en");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newTenant, setNewTenant] = useState({
+ const [newTenant, setNewTenant] = useState({
     srNo: "",
     name: "",
     joiningDate: "",
@@ -63,11 +64,25 @@ function NewComponant() {
     phoneNo: "",
     relativeAddress1: "",
     relativeAddress2: "",
+    // inline relatives used in the modal:
+    relative1Relation: "Self",
+    relative1Name: "",
+    relative1Phone: "",
+    relative2Relation: "Self",
+    relative2Name: "",
+    relative2Phone: "",
     floorNo: "",
     bedNo: "",
     companyAddress: "",
     dateOfJoiningCollege: "",
     dob: "",
+     // rent/bed helpers you already reference:
+    baseRent: "",
+    rentAmount: "",
+    newBedNo: "",
+    newBedPrice: "",
+    __bedMsg: "",
+    __savingBed: false,
   });
   const [showPasswordPrompt, setShowPasswordPrompt] = useState(false);
   const [password, setPassword] = useState("");
@@ -83,19 +98,111 @@ function NewComponant() {
   const [selectedTenantName, setSelectedTenantName] = useState("");
 
   const [showStatusModal, setShowStatusModal] = useState(false);
-  const [statusMonths, setStatusMonths] = useState([]);
-  const [statusTenantName, setStatusTenantName] = useState("");
+  // const [statusMonths, setStatusMonths] = useState([]);
+  // const [statusTenantName, setStatusTenantName] = useState("");
 
   const [selectedYear, setSelectedYear] = useState("All Records");
+const [editMonthYM, setEditMonthYM] = useState({ y: null, m: null });
 
-  const years = [
-    "All Records",
-    ...Array.from(
-      new Set(formData.map((d) => new Date(d.joiningDate).getFullYear()))
-    ).sort((a, b) => b - a),
-  ];
+const years = useMemo(() => {
+  const ys = new Set();
+  (formData || []).forEach((d) => {
+    if (!d?.joiningDate) return;
+    const dd = new Date(d.joiningDate);
+    if (!isNaN(dd)) ys.add(dd.getFullYear());
+  });
+  return ["All Records", ...Array.from(ys).sort((a, b) => b - a)];
+}, [formData]);
+
 
   const apiUrl = "http://localhost:8000/api/";
+
+
+
+  const refreshTenants = React.useCallback(async () => {
+  try {
+    const { data } = await axios.get(apiUrl);
+    setFormData(data);
+  } catch (e) {
+    console.error("Failed to refresh tenants after approval:", e);
+  }
+}, [apiUrl]);
+const fmtMonthKey = (y, m) => {
+  const mon = new Date(y, m, 1).toLocaleString("en-US", { month: "short" }); // e.g., "Sep"
+  const yy = String(y).slice(-2); // "25"
+  return `${mon}-${yy}`; // "Sep-25"
+};
+
+const parseMonthKey = (key) => {
+  // accepts "Sep-25" => { y: 2025, m: 8 }
+  if (!key || typeof key !== "string") return null;
+  const [mon, yy] = key.split("-");
+  if (!mon || !yy) return null;
+  const m = new Date(`${mon} 1, 20${yy}`).getMonth();
+  const y = Number(`20${yy}`);
+  if (!Number.isFinite(m) || !Number.isFinite(y)) return null;
+  return { y, m };
+};
+
+// Single place to read a record's (y,m)
+// Prefers r.month (e.g. "Sep-25"). If absent, uses r.date.
+const getYMFromRecord = (r) => {
+  if (!r) return null;
+  if (r.month) {
+    const pm = parseMonthKey(r.month);
+    if (pm) return pm;
+  }
+  if (r.date) {
+    const d = new Date(r.date);
+    if (!isNaN(d)) return { y: d.getFullYear(), m: d.getMonth() };
+  }
+  return null;
+};
+// ➕ add a tiny upsert helper near other helpers:
+ const upsertRentForMonth = React.useCallback((tenant, { y, m, amount, date, mode }) => {
+   const monthKey = fmtMonthKey(y, m);
+   const rents = Array.isArray(tenant.rents) ? [...tenant.rents] : [];
+   const idx = rents.findIndex((r) => {
+     const ym = getYMFromRecord(r);
+     return ym && ym.y === y && ym.m === m;
+   });
+   const patch = {
+     month: monthKey,                    // "Sep-25"
+     rentAmount: Number(amount) || 0,
+     date: date || new Date().toISOString(),
+     paymentMode: mode || "Online",
+   };
+   if (idx >= 0) rents[idx] = { ...rents[idx], ...patch };
+   else rents.push(patch);
+   return rents;
+ }, []);
+
+const handleApprovedFromBell = React.useCallback((payload) => {
+   // payload = { tenantId, amount, year, month(1..12), paymentDate, paymentMode, ... }
+   const { tenantId, amount, year, month, paymentDate, paymentMode } = payload || {};
+   if (!tenantId || !Number.isFinite(year) || !Number.isFinite(month)) {
+     // fallback: safer re-fetch if something is missing
+     refreshTenants();
+     return;
+   }
+   // Optimistic UI: update that tenant's month right away
+   setFormData((prev) =>
+     prev.map((t) =>
+       t._id === tenantId
+         ? { ...t, rents: upsertRentForMonth(t, {
+             y: year,
+             m: month - 1,                // convert 1..12 -> 0..11
+             amount,
+             date: paymentDate,
+             mode: paymentMode
+           })
+           }
+         : t
+     )
+   );
+   // Optional safety: also re-fetch to stay perfectly in sync with server
+   refreshTenants();
+ }, [refreshTenants, upsertRentForMonth]);
 
   // Build the public tenant form URL (adjust the path if yours is different)
   // Build a shareable URL for the tenant intake page, prefilled + locked
@@ -268,60 +375,86 @@ function NewComponant() {
 
   // SAVE handler (posts form + files)
   // --- NEW: save wrapper that includes docs ---
-  async function handleAddTenantWithDocs() {
-    try {
-      let uploaded = [];
+async function handleAddTenantWithDocs() {
+  // ✅ Required-field guard (before any uploads or POSTs)
+  const missing = [];
+  if (!newTenant.name?.trim()) missing.push("Name");
+  if (!newTenant.joiningDate)   missing.push("Joining Date");
+  if (!newTenant.roomNo)        missing.push("Room No");
+  if (!newTenant.bedNo || newTenant.bedNo === "__other__") missing.push("Bed No");
 
-      if (docFiles.length) {
-        const fd = new FormData();
-        docFiles.forEach((d) => {
-          fd.append("documents", d.file); // field name MUST be "documents" on server Multer
-        });
-
-        const up = await axios.post(`${apiUrl}uploads/docs`, fd, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-
-        const uploadedFiles = up.data?.files || [];
-        uploaded = uploadedFiles.map((f, i) => ({
-          fileName: docFiles[i]?.file?.name || f.filename || `doc-${i + 1}`,
-          relation: docFiles[i]?.relation || "Self",
-          // try common props coming back from server; fall back if needed
-          url:
-            f.url ||
-            f.path ||
-            f.location ||
-            f.secure_url ||
-            (f._id ? `${apiUrl}documents/${f._id}` : "#"),
-        }));
-      }
-
-      const rawPayload = {
-        ...newTenant,
-        documents: uploaded,
-      };
-      const payload = sanitizeTenantPayload(rawPayload);
-
-      console.log("🚀 Payload sending:", payload);
-
-      await axios.post(`${apiUrl}forms`, payload);
-
-      setShowAddModal(false);
-
-      const tenantsRes = await axios.get(`${apiUrl}forms`);
-      setTenants(tenantsRes.data);
-    } catch (err) {
-      logAxiosError(err, "handleAddTenantWithDocs");
-      const msg = err?.response?.data?.message || err.message;
-      if (/E11000/i.test(msg)) {
-        alert(
-          "Sr No already exists. Close and reopen Add Tenant to get a fresh Sr No."
-        );
-      } else {
-        alert(msg || "Failed to save tenant");
-      }
+  // Optional: soft validation for phone and deposit
+  if (newTenant.phoneNo && !/^\d{10}$/.test(String(newTenant.phoneNo).trim())) {
+    alert("Phone No must be a 10-digit number.");
+    return;
+  }
+  if (newTenant.depositAmount !== "" && newTenant.depositAmount != null) {
+    const dep = Number(String(newTenant.depositAmount).replace(/[,₹\s]/g, ""));
+    if (!Number.isFinite(dep) || dep < 0) {
+      alert("Deposit Amount must be a non-negative number.");
+      return;
     }
   }
+
+  if (missing.length) {
+    alert(`Please fill: ${missing.join(", ")}`);
+    return;
+  }
+
+  try {
+    let uploaded = [];
+
+    // ⬇️ your existing upload block (unchanged)
+    if (docFiles.length) {
+      const fd = new FormData();
+      docFiles.forEach((d) => {
+        fd.append("documents", d.file); // field name MUST be "documents" on server Multer
+      });
+
+      const up = await axios.post(`${apiUrl}uploads/docs`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+
+      const uploadedFiles = up.data?.files || [];
+      uploaded = uploadedFiles.map((f, i) => ({
+        fileName: docFiles[i]?.file?.name || f.filename || `doc-${i + 1}`,
+        relation: docFiles[i]?.relation || "Self",
+        url:
+          f.url ||
+          f.path ||
+          f.location ||
+          f.secure_url ||
+          (f._id ? `${apiUrl}documents/${f._id}` : "#"),
+      }));
+    }
+
+    const rawPayload = {
+      ...newTenant,
+      documents: uploaded,
+    };
+    const payload = sanitizeTenantPayload(rawPayload);
+
+    console.log("🚀 Payload sending:", payload);
+
+    await axios.post(`${apiUrl}forms`, payload);
+
+    setShowAddModal(false);
+
+    // const tenantsRes = await axios.get(`${apiUrl}forms`);
+    // setTenants(tenantsRes.data);
+       // 🔄 refresh main table data
+   await refreshTenants();
+  } catch (err) {
+    logAxiosError(err, "handleAddTenantWithDocs");
+    const msg = err?.response?.data?.message || err.message;
+    if (/E11000/i.test(msg)) {
+      alert("Sr No already exists. Close and reopen Add Tenant to get a fresh Sr No.");
+    } else {
+      alert(msg || "Failed to save tenant");
+    }
+  }
+}
+
 
   //  for file less than 10 kb
 
@@ -470,49 +603,42 @@ function NewComponant() {
 
   const PAGE = 3; // number of month sub-columns under Rent
 
-  const buildMonthsTimeline = (formData) => {
-    const allDates = [];
-    formData.forEach((t) => {
-      (t.rents || []).forEach(
-        (r) => r?.date && allDates.push(new Date(r.date))
-      );
-      if (t.joiningDate) allDates.push(new Date(t.joiningDate));
+ const buildMonthsTimeline = (forms) => {
+  const today = new Date();
+  const end = new Date(today.getFullYear(), today.getMonth() + 1, 1); // include next month
+
+  // baseline = earliest joining month among active tenants; fallback to 12 months back
+  const joinMonths = (Array.isArray(forms) ? forms : [])
+    .map((t) => t?.joiningDate ? new Date(t.joiningDate) : null)
+    .filter(Boolean)
+    .map((d) => new Date(d.getFullYear(), d.getMonth(), 1));
+
+  const minDate = joinMonths.length
+    ? new Date(Math.min(...joinMonths.map((d) => d.getTime())))
+    : new Date(today.getFullYear(), today.getMonth() - 11, 1);
+
+  const months = [];
+  const cursor = new Date(minDate);
+  while (cursor <= end) {
+    months.push({
+      y: cursor.getFullYear(),
+      m: cursor.getMonth(),
+      label: cursor.toLocaleString("default", { month: "short", year: "numeric" }),
     });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months;
+};
 
-    const today = new Date();
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 1); // include next month
-    const minDate = allDates.length
-      ? new Date(
-          Math.min(
-            ...allDates.map((d) => new Date(d.getFullYear(), d.getMonth(), 1))
-          )
-        )
-      : new Date(today.getFullYear(), today.getMonth() - 11, 1); // fallback last 12 months
 
-    const months = [];
-    let cursor = new Date(minDate);
-    while (cursor <= end) {
-      months.push({
-        y: cursor.getFullYear(),
-        m: cursor.getMonth(),
-        label: cursor.toLocaleString("default", {
-          month: "short",
-          year: "numeric",
-        }),
-      });
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-    return months;
-  };
-
-  const getRentForMonth = (rents = [], y, m) => {
-    const hit = rents.find((r) => {
-      if (!r?.date) return false;
-      const d = new Date(r.date);
-      return d.getFullYear() === y && d.getMonth() === m;
-    });
-    return hit ? Number(hit.rentAmount) || 0 : 0;
-  };
+  // const getRentForMonth = (rents = [], y, m) => {
+  //   const hit = rents.find((r) => {
+  //     if (!r?.date) return false;
+  //     const d = new Date(r.date);
+  //     return d.getFullYear() === y && d.getMonth() === m;
+  //   });
+  //   return hit ? Number(hit.rentAmount) || 0 : 0;
+  // };
 
   // --- Memoize months + visible window so header & rows stay in sync ---
   const months = useMemo(() => buildMonthsTimeline(formData), [formData]);
@@ -609,12 +735,16 @@ function NewComponant() {
 
   // Single source of truth for a month cell
   const getMonthCell = (tenant, y, m) => {
-    const rec = (tenant.rents || []).find((r) => {
-      if (!r?.date) return false;
-      const d = new Date(r.date);
-      return d.getFullYear() === y && d.getMonth() === m;
-    });
+    // const rec = (tenant.rents || []).find((r) => {
+    //   if (!r?.date) return false;
+    //   const d = new Date(r.date);
+    //   return d.getFullYear() === y && d.getMonth() === m;
+    // });
 
+    const rec = (tenant.rents || []).find((r) => {
+    const ym = getYMFromRecord(r);
+    return ym && ym.y === y && ym.m === m;
+  });
     // extras (add other keys if you use them)
     const extra =
       toNum(rec?.extraAmount) +
@@ -766,8 +896,9 @@ function NewComponant() {
         rentAmount: "",
       });
 
-      const response = await axios.get(`${apiUrl}`);
-      setFormData(response.data);
+      // const response = await axios.get(`${apiUrl}`);
+      // setFormData(response.data);
+      await refreshTenants();
     } catch (err) {
       logAxiosError(err, "handleAddTenant");
       const msg = err?.response?.data?.message || err.message;
@@ -786,42 +917,82 @@ function NewComponant() {
       .filter((t) => !t.leaveDate) // exclude tenants who left
       .map((t) => `${t.roomNo}-${t.bedNo}`)
   );
+// Always use month-aware lookup (prefers r.month like "Sep-25", else r.date)
+const getRentForMonth = (rents = [], y, m) => {
+  const rec = (Array.isArray(rents) ? rents : []).find((r) => {
+    const ym = getYMFromRecord(r);
+    return ym && ym.y === y && ym.m === m;
+  });
+  return rec ? Number(rec.rentAmount) || 0 : 0;
+};
 
-  const getPendingMonthsForStatus = (rents = [], joiningDateStr) => {
-    if (!joiningDateStr) return [];
+// Current-year pending months since JOIN+1, month-aware
+const getPendingMonthsForStatus = (rents = [], joiningDateStr) => {
+  if (!joiningDateStr) return [];
+  const today = new Date();
+  const currentYear = today.getFullYear();
 
-    const now = new Date();
-    const currentYear = now.getFullYear();
+  const join = new Date(joiningDateStr);
+  const rentStart = new Date(join.getFullYear(), join.getMonth() + 1, 1);
+  const jan1 = new Date(currentYear, 0, 1);
+  const start = rentStart > jan1 ? rentStart : jan1;
 
-    // Map paid months
-    const paidMonths = new Set(
-      rents
-        .filter((r) => r.date && Number(r.rentAmount) > 0)
-        .map((r) => {
-          const d = new Date(r.date);
-          return `${d.getMonth()}-${d.getFullYear()}`;
-        })
-    );
+  // Set of "m-y" paid months
+  const paid = new Set(
+    (Array.isArray(rents) ? rents : [])
+      .filter((r) => Number(r?.rentAmount) > 0)
+      .map(getYMFromRecord)
+      .filter(Boolean)
+      .map(({ m, y }) => `${m}-${y}`)
+  );
 
-    const months = [];
-    const startMonth = new Date(currentYear, 0); // Jan of current year
-
-    const joinDate = new Date(joiningDateStr);
-    const startDate = joinDate > startMonth ? joinDate : startMonth;
-    const tempDate = new Date(startDate);
-
-    while (tempDate <= now) {
-      const key = `${tempDate.getMonth()}-${tempDate.getFullYear()}`;
-      if (!paidMonths.has(key)) {
-        months.push(
-          tempDate.toLocaleString("default", { month: "long", year: "numeric" })
-        );
-      }
-      tempDate.setMonth(tempDate.getMonth() + 1);
+  const out = [];
+  const cur = new Date(start);
+  while (cur <= today && cur.getFullYear() === currentYear) {
+    const key = `${cur.getMonth()}-${cur.getFullYear()}`;
+    if (!paid.has(key)) {
+      out.push(cur.toLocaleString("default", { month: "long", year: "numeric" }));
     }
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return out;
+};
 
-    return months;
-  };
+  // const getPendingMonthsForStatus = (rents = [], joiningDateStr) => {
+  //   if (!joiningDateStr) return [];
+
+  //   const now = new Date();
+  //   const currentYear = now.getFullYear();
+
+  //   // Map paid months
+  //   const paidMonths = new Set(
+  //     rents
+  //       .filter((r) => r.date && Number(r.rentAmount) > 0)
+  //       .map((r) => {
+  //         const d = new Date(r.date);
+  //         return `${d.getMonth()}-${d.getFullYear()}`;
+  //       })
+  //   );
+
+  //   const months = [];
+  //   const startMonth = new Date(currentYear, 0); // Jan of current year
+
+  //   const joinDate = new Date(joiningDateStr);
+  //   const startDate = joinDate > startMonth ? joinDate : startMonth;
+  //   const tempDate = new Date(startDate);
+
+  //   while (tempDate <= now) {
+  //     const key = `${tempDate.getMonth()}-${tempDate.getFullYear()}`;
+  //     if (!paidMonths.has(key)) {
+  //       months.push(
+  //         tempDate.toLocaleString("default", { month: "long", year: "numeric" })
+  //       );
+  //     }
+  //     tempDate.setMonth(tempDate.getMonth() + 1);
+  //   }
+
+  //   return months;
+  // };
 
   // All room-bed slots from roomsData
   const slots = useMemo(() => {
@@ -893,11 +1064,14 @@ function NewComponant() {
     if (!tenant) return;
 
     // Prefill the modal to the 1st of the requested month/year
-    const date = new Date(year, monthIdx, 1).toISOString().split("T")[0];
+    // const date = new Date(year, monthIdx, 1).toISOString().split("T")[0];
 
-    setEditingTenant(tenant);
-    setEditRentDate(date);
-
+    // setEditingTenant(tenant);
+    // setEditRentDate(date);
+setEditingTenant(tenant);
+setEditMonthYM({ y: year, m: monthIdx });
+// date field now will be "today", set once on open:
+setEditRentDate(new Date().toISOString().split("T")[0]);
     // Optional: clear or auto-suggest amount
     // setEditRentAmount(expectFromTenant(tenant, roomsData));
   };
@@ -966,11 +1140,14 @@ function NewComponant() {
     let previous = null;
     let next = null;
 
+    // rents.forEach((rent) => {
+    //   const date = new Date(rent.date);
+    //   const m = date.getMonth();
+    //   const y = date.getFullYear();
     rents.forEach((rent) => {
-      const date = new Date(rent.date);
-      const m = date.getMonth();
-      const y = date.getFullYear();
-
+    const ym = getYMFromRecord(rent);
+    if (!ym) return;
+    const { m, y } = ym;
       if (m === currentMonth && y === currentYear) {
         current = rent;
       } else if (m === prevMonth && y === prevYear) {
@@ -1027,15 +1204,21 @@ function NewComponant() {
     const startDate = rentStart > startOfYear ? rentStart : startOfYear;
 
     const tempDate = new Date(startDate);
-    const paidMonths = new Set(
+    // const paidMonths = new Set(
+    //   rents
+    //     .filter((r) => r.date && Number(r.rentAmount) > 0)
+    //     .map((r) => {
+    //       const d = new Date(r.date);
+    //       return `${d.getMonth()}-${d.getFullYear()}`;
+    //     })
+    // );
+const paidMonths = new Set(
       rents
-        .filter((r) => r.date && Number(r.rentAmount) > 0)
-        .map((r) => {
-          const d = new Date(r.date);
-          return `${d.getMonth()}-${d.getFullYear()}`;
-        })
-    );
-
+     .filter((r) => Number(r.rentAmount) > 0)
+     .map(getYMFromRecord)
+     .filter(Boolean)
+     .map(({ m, y }) => `${m}-${y}`)
+ );
     const lastPaid = rents
       .filter((r) => r.date && Number(r.rentAmount) > 0)
       .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
@@ -1088,44 +1271,78 @@ function NewComponant() {
     }
   };
 
-  const getDueMonths = (rents = [], joiningDateStr) => {
-    if (!joiningDateStr) return [];
+  // const getDueMonths = (rents = [], joiningDateStr) => {
+  //   if (!joiningDateStr) return [];
 
-    const joiningDate = new Date(joiningDateStr);
-    const startDate = new Date(
-      joiningDate.getFullYear(),
-      joiningDate.getMonth() + 1,
-      1
-    );
-    const now = new Date();
-    const currentYear = now.getFullYear();
+  //   const joiningDate = new Date(joiningDateStr);
+  //   const startDate = new Date(
+  //     joiningDate.getFullYear(),
+  //     joiningDate.getMonth() + 1,
+  //     1
+  //   );
+  //   const now = new Date();
+  //   const currentYear = now.getFullYear();
 
-    const rentMap = new Map();
-    rents.forEach((rent) => {
-      const d = new Date(rent.date);
-      const key = `${d.getMonth()}-${d.getFullYear()}`;
-      rentMap.set(key, true);
-    });
+  //   const rentMap = new Map();
+  //   rents.forEach((rent) => {
+  //     const d = new Date(rent.date);
+  //     const key = `${d.getMonth()}-${d.getFullYear()}`;
+  //     rentMap.set(key, true);
+  //   });
 
-    const months = [];
-    const tempDate = new Date(startDate);
+  //   const months = [];
+  //   const tempDate = new Date(startDate);
 
-    while (tempDate <= now) {
-      const year = tempDate.getFullYear();
-      const month = tempDate.getMonth();
-      const key = `${month}-${year}`;
+  //   while (tempDate <= now) {
+  //     const year = tempDate.getFullYear();
+  //     const month = tempDate.getMonth();
+  //     const key = `${month}-${year}`;
 
-      if (year === currentYear && !rentMap.has(key)) {
-        months.push(
-          tempDate.toLocaleString("default", { month: "long", year: "numeric" })
-        );
-      }
+  //     if (year === currentYear && !rentMap.has(key)) {
+  //       months.push(
+  //         tempDate.toLocaleString("default", { month: "long", year: "numeric" })
+  //       );
+  //     }
 
-      tempDate.setMonth(tempDate.getMonth() + 1);
+  //     tempDate.setMonth(tempDate.getMonth() + 1);
+  //   }
+
+  //   return months;
+  // };
+// Shows ALL pending months from the month AFTER joining up to the current month (across years)
+// Uses getYMFromRecord so it works with { month: "Sep-25" } OR { date: "..." }
+const getAllPendingMonths = (rents = [], joiningDateStr) => {
+  if (!joiningDateStr) return [];
+
+  const join = new Date(joiningDateStr);
+  // start billing from the month AFTER joining
+  const start = new Date(join.getFullYear(), join.getMonth() + 1, 1);
+
+  const today = new Date();
+  const end = new Date(today.getFullYear(), today.getMonth(), 1); // current month start
+
+  // Build a set of paid month keys "m-y" (m is 0..11)
+  const paidSet = new Set(
+    (Array.isArray(rents) ? rents : [])
+      .filter(r => Number(r?.rentAmount) > 0)
+      .map(getYMFromRecord)
+      .filter(Boolean)
+      .map(({ m, y }) => `${m}-${y}`)
+  );
+
+  const out = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const m = cursor.getMonth();
+    const y = cursor.getFullYear();
+    const key = `${m}-${y}`;
+    if (!paidSet.has(key)) {
+      out.push(cursor.toLocaleString("default", { month: "long", year: "numeric" }));
     }
-
-    return months;
-  };
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return out;
+};
 
   const handleEdit = (tenant) => {
     const { rentAmount, date } = getDisplayedRent(tenant.rents);
@@ -1300,31 +1517,48 @@ function NewComponant() {
   //   }
   // };
 
-  const handleSave = async () => {
-    if (!editingTenant) return;
+ const handleSave = async () => {
+  if (!editingTenant) return;
 
-    try {
-      const payload = {
-        rentAmount: editRentAmount,
-        date: editRentDate,
-        month: new Date(editRentDate).toLocaleString("default", {
-          month: "short",
-          year: "2-digit",
-        }),
-        paymentMode: editPaymentMode || "Cash", // 👈 include payment mode (default to Cash)
-      };
+  // must have month/year
+  if (!(editMonthYM?.y >= 1900) || !(editMonthYM?.m >= 0)) {
+    alert("Please pick a rent month before saving.");
+    return;
+  }
 
-      await axios.put(`${apiUrl}form/${editingTenant._id}`, payload);
+  try {
+    const monthKey = fmtMonthKey(editMonthYM.y, editMonthYM.m); // "Sep-25"
+    const todayISO = new Date().toISOString().split("T")[0];
 
-      setEditingTenant(null);
+    const payload = {
+      rentAmount: editRentAmount,
+      date: todayISO,          // store payment date as today
+      month: monthKey,         // store rent month, format "Sep-25"
+      paymentMode: editPaymentMode || "Cash",
+    };
 
-      // refresh UI
-      // window.location.reload(); // or better: refetch tenants
-    } catch (error) {
-      console.error(error);
-      alert("Failed to update rent");
-    }
-  };
+    await axios.put(`${apiUrl}form/${editingTenant._id}`, payload);
+
+    // Optimistic local update (optional, you already refetch elsewhere)
+    setFormData((prev) =>
+      prev.map((t) =>
+        t._id === editingTenant._id
+          ? { ...t, rents: upsertRentForMonth(t, {
+              y: editMonthYM.y, m: editMonthYM.m,
+              amount: Number(editRentAmount) || 0,
+              date: todayISO,
+              mode: editPaymentMode || "Cash"
+            })}
+          : t
+      )
+    );
+
+    setEditingTenant(null);
+  } catch (error) {
+    console.error(error);
+    alert("Failed to update rent");
+  }
+};
 
   const navigate = useNavigate();
   const handleNavigation = (path) => {
@@ -1357,6 +1591,50 @@ function NewComponant() {
 
   // Filter only tenants who left in the last month or this month
   const filteredDeletedData = deletedData.filter((t) => t.leaveDate);
+// --- Month helpers (use month column if available, else fall back to date) ---
+
+// const dateStr = rec?.date
+//   ? new Date(rec?.paymentDate || rec.date).toLocaleDateString("en-GB", {
+//       day: "2-digit",
+//       month: "short",
+//     })
+//   : "";
+// Cancel a scheduled leave (keeps tenant active)
+const handleCancelLeave = async (id) => {
+  const ok = window.confirm("Cancel this tenant's scheduled leave?");
+  if (!ok) return;
+
+  try {
+    const res = await axios.post(`${apiUrl}cancel-leave`, { id });
+    if (res.data?.success) {
+      // remove the scheduled leave date locally
+      setLeaveDates((prev) => {
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
+      // optional: hard-refresh the list if backend updates more fields
+      await refreshTenants?.();
+      alert("Leave canceled successfully.");
+    } else {
+      alert(res.data?.message || "Failed to cancel leave.");
+    }
+  } catch (err) {
+    console.error("Cancel leave error:", err);
+    alert(err?.response?.data?.message || "Something went wrong.");
+  }
+};
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0,0,0,0);
+  return d;
+};
+const isTodayOrFuture = (iso) => {
+  if (!iso) return false;
+  const d = new Date(iso);
+  d.setHours(0,0,0,0);
+  return d >= startOfToday();
+};
 
   return (
     // <div className="container-fluid py-4" style={{ fontFamily: 'Inter, sans-serif' }}>
@@ -1366,7 +1644,7 @@ function NewComponant() {
     >
       <h3 className="fw-bold mb-4">Rent & Deposite Tracker</h3>
       {/* Language selector (sticky and simple) */}
-      <div className="d-flex align-items-center gap-2 mb-3">
+      {/* <div className="d-flex align-items-center gap-2 mb-3">
         <span className="text-muted me-2">Language:</span>
         <div className="btn-group">
           <button
@@ -1394,7 +1672,7 @@ function NewComponant() {
             मराठी
           </button>
         </div>
-      </div>
+      </div> */}
       <div className="d-flex align-items-center mb-4 flex-wrap">
         <select
           className="form-select me-2"
@@ -1503,10 +1781,14 @@ function NewComponant() {
           <FaArrowLeft className="me-1" />
           Back
         </button>
+<NotificationBell apiUrl={apiUrl} onApproved={handleApprovedFromBell} />
+
+
 
         {/* <button className="btn btn-outline-dark">
     Logout
   </button> */}
+
       </div>
 
       <div className="row g-3 mb-4">
@@ -1823,26 +2105,24 @@ function NewComponant() {
                       })}
 
                       {/* Due total */}
-                      <td
-                        style={{
-                          cursor: "pointer",
-                          color: dueAmount > 0 ? "red" : "inherit",
-                        }}
-                        onClick={() => {
-                          const dueList = getDueMonths(
-                            tenant.rents,
-                            tenant.joiningDate
-                          );
-                          setDueMonths(dueList);
-                          setSelectedTenantName(tenant.name);
-                          setShowDueModal(true);
-                        }}
-                      >
-                        ₹{dueAmount.toLocaleString("en-IN")}
-                      </td>
+                     <td
+  style={{
+    cursor: "pointer",
+    color: dueAmount > 0 ? "red" : "inherit",
+  }}
+  onClick={() => {
+    const dueList = getAllPendingMonths(tenant.rents, tenant.joiningDate);
+    setDueMonths(dueList);
+    setSelectedTenantName(tenant.name);
+    setShowDueModal(true);
+  }}
+>
+  ₹{dueAmount.toLocaleString("en-IN")}
+</td>
+
 
                       {/* Overall status */}
-                      <td>
+                      {/* <td>
                         <span
                           className={`badge rounded-pill px-3 py-2 ${
                             dueAmount === 0
@@ -1866,7 +2146,25 @@ function NewComponant() {
                         >
                           {dueAmount === 0 ? "Paid" : "Pending"}
                         </span>
-                      </td>
+                      </td> */}
+<td>
+  <span
+    className={`badge rounded-pill px-3 py-2 ${
+      dueAmount === 0 ? "bg-success" : "bg-warning text-dark"
+    }`}
+   // always pointer is fine
+   onClick={() => {
+  if (dueAmount === 0) return;
+  const dueList = getAllPendingMonths(tenant.rents, tenant.joiningDate);
+  setDueMonths(dueList);
+  setSelectedTenantName(tenant.name);
+  setShowDueModal(true);
+}}
+style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
+   >
+    {dueAmount === 0 ? "Paid" : "Pending"}
+  </span>
+</td>
 
                       {/* Actions */}
                       <td>
@@ -1891,13 +2189,33 @@ function NewComponant() {
                           <FaEye />
                         </button>
 
-                        <button
+                        {/* <button
                           className="btn btn-sm me-2"
                           onClick={() => handleLeave(tenant)}
                           style={{ backgroundColor: "#f49f36", color: "white" }}
                         >
                           <FaSignOutAlt />
-                        </button>
+                        </button> */}
+{/* Leave (schedule) */}
+<button
+  className="btn btn-sm me-2"
+  onClick={() => handleLeave(tenant)}
+  style={{ backgroundColor: "#f49f36", color: "white" }}
+  title="Schedule leave"
+>
+  <FaSignOutAlt />
+</button>
+
+{/* Cancel Leave (only show if a leave is scheduled for today or a future date) */}
+{leaveDates[tenant._id] && isTodayOrFuture(leaveDates[tenant._id]) && (
+  <button
+    className="btn btn-sm btn-warning me-2"
+    onClick={() => handleCancelLeave(tenant._id)}
+    title={`Cancel scheduled leave (${new Date(leaveDates[tenant._id]).toLocaleDateString("en-GB")})`}
+  >
+    <FaUndo />
+  </button>
+)}
 
                         <button
                           className="btn btn-sm btn-danger"
@@ -1949,7 +2267,7 @@ function NewComponant() {
                         </div>
                       </td>
 
-                      {visibleMonths.map((m, idx) => (
+                      {/* {visibleMonths.map((m, idx) => (
                         <td
                           key={`${key}-${m.y}-${m.m}-${idx}`}
                           className="text-center"
@@ -1966,7 +2284,15 @@ function NewComponant() {
                             </div>
                           )}
                         </td>
-                      ))}
+                      ))} */}
+{visibleMonths.map((m, idx) => (
+  <td
+    key={`${key}-${m.y}-${m.m}-${idx}`}
+    className="text-center text-muted"
+  >
+    —{/* vacant beds show no monthly status */}
+  </td>
+))}
 
                       <td>—</td>
                       <td>
@@ -2017,7 +2343,8 @@ function NewComponant() {
                         leaveDate.getFullYear() === now.getFullYear();
 
                       return (
-                        <tr key={index}>
+                        // <tr key={index}>
+                        <tr key={tenant._id || `${tenant.roomNo}-${tenant.bedNo}-${index}`}>
                           <td>
                             {tenant.roomNo}{" "}
                             <div className="text-muted small">
@@ -2366,11 +2693,12 @@ function NewComponant() {
                         }}
                       >
                         <option value="">Select Room</option>
-                        {roomsData.map((room) => (
-                          <option key={room.roomNo} value={room.roomNo}>
-                            {room.roomNo} (Floor {room.floorNo})
-                          </option>
-                        ))}
+                       {roomsData.map((room) => (
+  <option key={`room-${room._id || room.roomNo}`} value={room.roomNo}>
+    {room.roomNo} (Floor {room.floorNo})
+  </option>
+))}
+
                       </select>
                     </div>
 
@@ -2419,21 +2747,19 @@ function NewComponant() {
                             : "Select a Room first"}
                         </option>
                         {roomsData
-                          .find(
-                            (r) => String(r.roomNo) === String(newTenant.roomNo)
-                          )
-                          ?.beds.filter(
-                            (bed) =>
-                              !occupiedBeds.has(
-                                `${newTenant.roomNo}-${bed.bedNo}`
-                              )
-                          )
-                          .map((bed) => (
-                            <option key={bed.bedNo} value={bed.bedNo}>
-                              {bed.bedNo} - {bed.category || "—"} - ₹
-                              {bed.price ?? "—"}
-                            </option>
-                          ))}
+  .find((r) => String(r.roomNo) === String(newTenant.roomNo))
+  ?.beds
+  ?.filter((bed) => !occupiedBeds.has(`${newTenant.roomNo}-${bed.bedNo}`)) // show only vacant beds
+  .map((bed) => (
+    <option
+      key={`bed-${newTenant.roomNo}-${bed._id || bed.bedNo}`}
+      value={bed.bedNo}
+    >
+      {bed.bedNo} - {bed.category || "—"} - ₹{bed.price ?? "—"}
+    </option>
+))}
+
+
                         {!!newTenant.roomNo && (
                           <option value="__other__">
                             Other (add new bed…)
@@ -2710,21 +3036,75 @@ function NewComponant() {
                     </div>
 
                     {/* Upload Docs */}
-                    <div className="col-12 col-md-6">
-                      <label className="form-label">Upload Documents</label>
-                      <input
-                        type="file"
-                        className="form-control form-control-sm"
-                        multiple
-                        accept="image/*"
-                        onChange={handleDocsChange}
-                      />
-                      {docMsg && (
-                        <small className="d-block mt-2 text-danger">
-                          {docMsg}
-                        </small>
-                      )}
-                    </div>
+                   <div className="col-12 col-md-12">
+  <label className="form-label">Upload Documents</label>
+  <input
+    type="file"
+    className="form-control form-control-sm"
+    multiple
+    accept="image/*"
+    onChange={handleDocsChange}
+  />
+
+  {/* ⬇️ Show chosen files with a Relation dropdown + Remove */}
+  {docFiles.length > 0 && (
+    <div className="mt-2">
+      <ul className="list-group">
+        {docFiles.map((d, i) => (
+          // <li
+          //   key={`${d.file?.name || "doc"}-${i}`}
+          //   className="list-group-item d-flex justify-content-between align-items-center"
+          // >
+          <li
+  key={`${d.file?.name || "doc"}-${d.file?.lastModified || "x"}-${i}`}
+  className="list-group-item d-flex justify-content-between align-items-center"
+>
+
+            <div className="d-flex align-items-center gap-2">
+              <span className="small text-muted me-2">
+                {d.file?.name || `Document ${i + 1}`}
+              </span>
+
+              <select
+                className="form-select form-select-sm"
+                value={d.relation || "Self"}
+                onChange={(e) => {
+                  const copy = [...docFiles];
+                  copy[i] = { ...copy[i], relation: e.target.value };
+                  setDocFiles(copy);
+                }}
+                style={{ width: 140 }}
+              >
+                <option value="Self">Self</option>
+                <option value="Father">Father</option>
+                <option value="Mother">Mother</option>
+                <option value="Husband">Husband</option>
+                <option value="Sister">Sister</option>
+                <option value="Brother">Brother</option>
+              </select>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-outline-danger btn-sm"
+              onClick={() => removeDoc(i)}
+              title="Remove"
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+
+  {docMsg && (
+    <small className="d-block mt-2 text-danger">
+      {docMsg}
+    </small>
+  )}
+</div>
+
                   </div>
                 </div>
               </div>
@@ -2912,11 +3292,12 @@ function NewComponant() {
                       }}
                     >
                       <option value="">Select Room</option>
-                      {roomsData.map((room) => (
-                        <option key={room.roomNo} value={room.roomNo}>
-                          {room.roomNo} (Floor {room.floorNo})
-                        </option>
-                      ))}
+                     {roomsData.map((room) => (
+  <option key={`room-${room._id || room.roomNo}`} value={room.roomNo}>
+    {room.roomNo} (Floor {room.floorNo})
+  </option>
+))}
+
                     </select>
                   </div>
 
@@ -3174,7 +3555,8 @@ function NewComponant() {
                 </button>
                 <button
                   className="btn"
-                  onClick={handleAddTenant}
+                  // onClick={handleAddTenant}
+                  onClick={handleAddTenantWithDocs}
                   style={{
                     backgroundColor: "rgb(94, 182, 92)",
                     color: "white",
@@ -3209,11 +3591,17 @@ function NewComponant() {
               <div className="modal-body">
                 {dueMonths.length > 0 ? (
                   <ul className="list-group">
-                    {dueMonths.map((month, idx) => (
+                    {/* {dueMonths.map((month, idx) => (
                       <li key={idx} className="list-group-item">
                         {month}
                       </li>
-                    ))}
+                    ))} */}
+                    {dueMonths.map((month, idx) => (
+  <li key={`${month}-${idx}`} className="list-group-item">
+    {month}
+  </li>
+))}
+
                   </ul>
                 ) : (
                   <p className="text-success">No dues!</p>
@@ -3577,86 +3965,74 @@ function NewComponant() {
                           </tr>
                         </thead>
                         <tbody>
-                          {Array.from({ length: 12 }, (_, i) => {
-                            const monthDate = new Date(
-                              new Date().getFullYear(),
-                              i,
-                              1
-                            );
-                            const rent = selectedTenant.rents?.find(
-                              (r) =>
-                                new Date(r.date).getMonth() === i &&
-                                new Date(r.date).getFullYear() ===
-                                  monthDate.getFullYear()
-                            );
+  {Array.from({ length: 12 }, (_, i) => {
+    const monthDate = new Date(new Date().getFullYear(), i, 1);
 
-                            const joiningDate = new Date(
-                              selectedTenant.joiningDate
-                            );
-                            const rentStartMonth = new Date(
-                              joiningDate.getFullYear(),
-                              joiningDate.getMonth() + 1,
-                              1
-                            );
-                            const isFutureMonth = monthDate > new Date();
-                            const isBeforeRentStart =
-                              monthDate < rentStartMonth;
+    // 🔄 Find the rent record for this month using getYMFromRecord
+    const rent = selectedTenant.rents?.find((r) => {
+      const ym = getYMFromRecord(r); // already defined above in your component
+      return ym && ym.m === i && ym.y === monthDate.getFullYear();
+    });
 
-                            return (
-                              <tr key={i}>
-                                {/* Month */}
-                                <td>
-                                  {monthDate.toLocaleString("default", {
-                                    month: "long",
-                                    year: "numeric",
-                                  })}
-                                </td>
+    // 📆 Billing now starts from the *joining month* (not +1)
+    const joiningDate = new Date(selectedTenant.joiningDate);
+    const joinMonthStart = new Date(
+      joiningDate.getFullYear(),
+      joiningDate.getMonth(),
+      1
+    );
 
-                                {/* Date */}
-                                <td>
-                                  {rent
-                                    ? new Date(rent.date).toLocaleDateString()
-                                    : "—"}
-                                </td>
+    const today = new Date();
+    const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const isFutureMonth = monthDate > thisMonthStart;
+    const isBeforeJoinMonth = monthDate < joinMonthStart;
 
-                                {/* Payment Mode */}
-                                <td>
-                                  {rent ? rent.paymentMode || "Cash" : "—"}
-                                </td>
+    return (
+      // <tr key={i}>
+      <tr key={`${monthDate.getFullYear()}-${monthDate.getMonth()}`}>
+        {/* Month */}
+        <td>
+          {monthDate.toLocaleString("default", {
+            month: "long",
+            year: "numeric",
+          })}
+        </td>
 
-                                {/* Amount */}
-                                <td>
-                                  {rent
-                                    ? `₹${Number(
-                                        rent.rentAmount
-                                      ).toLocaleString("en-IN")}`
-                                    : "—"}
-                                </td>
+        {/* Date */}
+        <td>
+          {rent
+            ? new Date(rent.date || new Date(rent.y || 2000, rent.m || 0, 1))
+                .toLocaleDateString()
+            : "—"}
+        </td>
 
-                                {/* Status */}
-                                <td>
-                                  {isBeforeRentStart ? (
-                                    <span className="badge bg-secondary">
-                                      Not Applicable
-                                    </span>
-                                  ) : rent ? (
-                                    <span className="badge bg-success">
-                                      Paid
-                                    </span>
-                                  ) : isFutureMonth ? (
-                                    <span className="badge bg-warning text-dark">
-                                      Upcoming
-                                    </span>
-                                  ) : (
-                                    <span className="badge bg-danger">
-                                      Pending
-                                    </span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
+        {/* Payment Mode */}
+        <td>{rent ? rent.paymentMode || "Cash" : "—"}</td>
+
+        {/* Amount */}
+        <td>
+          {rent
+            ? `₹${Number(rent.rentAmount || 0).toLocaleString("en-IN")}`
+            : "—"}
+        </td>
+
+        {/* Status */}
+        <td>
+          {isBeforeJoinMonth ? (
+            <span className="badge bg-secondary">Not Applicable</span>
+          ) : rent ? (
+            <span className="badge bg-success">Paid</span>
+          ) : isFutureMonth ? (
+            <span className="badge bg-warning text-dark">Upcoming</span>
+          ) : (
+            <span className="badge bg-danger">Pending</span>
+          )}
+        </td>
+      </tr>
+    );
+  })}
+</tbody>
+
                       </table>
                     </div>
                   </div>
@@ -3706,7 +4082,7 @@ function NewComponant() {
                   />
                 </div>
 
-                <div className="mb-3">
+                {/* <div className="mb-3">
                   <label className="form-label">Date</label>
                   <input
                     type="date"
@@ -3714,8 +4090,28 @@ function NewComponant() {
                     value={editRentDate}
                     onChange={(e) => setEditRentDate(e.target.value)}
                   />
-                </div>
-
+                </div> */}
+<div className="mb-3">
+  <label className="form-label">Month</label>
+  <input
+    type="month"
+    className="form-control"
+    value={
+      editMonthYM.y != null && editMonthYM.m != null
+        ? `${editMonthYM.y}-${String(editMonthYM.m + 1).padStart(2, "0")}`
+        : ""
+    }
+    onChange={(e) => {
+      const [yy, mm] = e.target.value.split("-").map(Number);
+      if (Number.isFinite(yy) && Number.isFinite(mm)) {
+        setEditMonthYM({ y: yy, m: mm - 1 });
+      }
+    }}
+  />
+  <small className="text-muted">
+    This picks the **rent month**. The payment date stored will be today.
+  </small>
+</div>
                 {/* ✅ New Payment Mode field */}
                 <div className="mb-3">
                   <label className="form-label">Payment Mode</label>
@@ -3815,12 +4211,21 @@ function NewComponant() {
               <div className="modal-body">
                 {selectedRentDetails.length > 0 ? (
                   <ul className="list-group">
-                    {selectedRentDetails.map((rent, index) => (
+                    {/* {selectedRentDetails.map((rent, index) => (
                       <li className="list-group-item" key={index}>
                         ₹{Number(rent.rentAmount).toLocaleString("en-IN")} –{" "}
                         {new Date(rent.date).toLocaleDateString()}
                       </li>
-                    ))}
+                    ))} */}
+                    {selectedRentDetails.map((rent, index) => (
+  <li
+    className="list-group-item"
+    key={`${Number(rent.rentAmount) || 0}-${rent.date || index}`}
+  >
+    ₹{Number(rent.rentAmount).toLocaleString("en-IN")} – {new Date(rent.date).toLocaleDateString()}
+  </li>
+))}
+
                   </ul>
                 ) : (
                   <p>No rent data available.</p>
@@ -3920,7 +4325,7 @@ function NewComponant() {
           formData={formData}
           roomsData={roomsData}
           leaveDates={leaveDates}
-          lang={lang}
+          // lang={lang}
           helpers={{
             calculateDue,
             expectFromTenant: (tenant, roomsData) =>

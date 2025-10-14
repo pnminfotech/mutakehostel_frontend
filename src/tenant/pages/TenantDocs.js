@@ -19,12 +19,12 @@ export default function TenantDocs({ me, onChanged }) {
 
   const dropArea = {
     border: "2px dashed #4c7cff",
-    padding: "20px",
-    borderRadius: "10px",
+    padding: 20,
+    borderRadius: 10,
     textAlign: "center",
     cursor: "pointer",
     background: "#f9fafb",
-    marginBottom: "20px",
+    marginBottom: 20,
   };
 
   const handleFiles = (selectedFiles) => {
@@ -58,7 +58,6 @@ export default function TenantDocs({ me, onChanged }) {
   const handleDownload = async (doc) => {
     try {
       setDownloading(true);
-
       const url = getFileUrl(doc);
 
       const response = await axios.get(url, {
@@ -85,7 +84,7 @@ export default function TenantDocs({ me, onChanged }) {
   const getFileIcon = (fileName) => {
     if (!fileName) return <FaFilePdf color="#888" />;
     const ext = fileName.split(".").pop().toLowerCase();
-    if (["jpg", "jpeg", "png", "gif"].includes(ext)) {
+    if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
       return <FaFileImage color="#f97316" />;
     }
     if (["pdf"].includes(ext)) {
@@ -95,11 +94,84 @@ export default function TenantDocs({ me, onChanged }) {
   };
 
   const filteredDocs = me?.documents?.filter((doc) =>
-    doc.fileName.toLowerCase().includes(search.toLowerCase())
+    (doc.fileName || "").toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div style={card}>
+    <div style={card} className="tdocs-container">
+      {/* Responsive styles */}
+      <style>{`
+        .tdocs-container .row {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .tdocs-container .files-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 8px;
+        }
+        .tdocs-container .doc-item {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 14px;
+          border-radius: 10px;
+          background: #f9fafb;
+          margin-bottom: 8px;
+          gap: 10px;
+        }
+        .tdocs-container .doc-left {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+        .tdocs-container .doc-left span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          display: inline-block;
+          max-width: 52vw;
+        }
+        .tdocs-container .doc-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: flex-end;
+        }
+
+        /* Tablet: tighten text, allow wrapping */
+        @media (max-width: 1024px) {
+          .tdocs-container .doc-left span {
+            max-width: 42vw;
+          }
+        }
+
+        /* Phone: stack rows and make actions full width when needed */
+        @media (max-width: 640px) {
+          .tdocs-container .doc-item {
+            flex-direction: column;
+            align-items: stretch;
+          }
+          .tdocs-container .doc-left span {
+            max-width: 100%;
+          }
+          .tdocs-container .doc-actions {
+            justify-content: stretch;
+          }
+          .tdocs-container .doc-actions > * {
+            flex: 1 1 auto;
+            justify-content: center;
+            text-align: center;
+          }
+          .tdocs-container .drop-area {
+            padding: 16px;
+          }
+        }
+      `}</style>
+
       <h5 style={{ marginBottom: 12 }}>📂 Tenant Documents</h5>
 
       {/* Search */}
@@ -113,10 +185,11 @@ export default function TenantDocs({ me, onChanged }) {
 
       {/* Drag & Drop */}
       <div
+        className="drop-area"
         style={dropArea}
         onDrop={onDrop}
         onDragOver={(e) => e.preventDefault()}
-        onClick={() => fileInputRef.current.click()}
+        onClick={() => fileInputRef.current?.click()}
       >
         Drag & drop files here or click to select
       </div>
@@ -133,17 +206,21 @@ export default function TenantDocs({ me, onChanged }) {
       {files.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <h6>Files to upload:</h6>
-          <ul style={{ listStyle: "none", padding: 0 }}>
+          <ul style={{ listStyle: "none", padding: 0 }} className="files-grid">
             {files.map((f, idx) => (
               <li key={idx} style={filePreview}>
                 {getFileIcon(f.name)}
-                <span>{f.name}</span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {f.name}
+                </span>
               </li>
             ))}
           </ul>
-          <button onClick={upload} style={btnPri} disabled={!files.length}>
-            Upload
-          </button>
+          <div className="row">
+            <button onClick={upload} style={btnPri} disabled={!files.length}>
+              Upload
+            </button>
+          </div>
         </div>
       )}
 
@@ -152,12 +229,12 @@ export default function TenantDocs({ me, onChanged }) {
         {filteredDocs?.length ? (
           <ul style={{ paddingLeft: 0, listStyle: "none" }}>
             {filteredDocs.map((d, i) => (
-              <li key={i} style={docItem}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <li key={i} className="doc-item">
+                <div className="doc-left">
                   {getFileIcon(d.fileName)}
-                  <span>{d.fileName}</span>
+                  <span title={d.fileName}>{d.fileName}</span>
                 </div>
-                <div style={{ display: "flex", gap: 10 }}>
+                <div className="doc-actions">
                   <a
                     href={getFileUrl(d)}
                     target="_blank"
@@ -182,18 +259,19 @@ export default function TenantDocs({ me, onChanged }) {
 }
 
 const btnPri = {
-  padding: "8px 14px",
+  padding: "10px 14px",
   border: 0,
   borderRadius: 10,
   background: "#4c7cff",
   color: "#fff",
   cursor: "pointer",
+  fontWeight: 700,
 };
 
 const inputBox = {
-  padding: "8px",
-  marginBottom: "10px",
-  borderRadius: "8px",
+  padding: "10px",
+  marginBottom: 10,
+  borderRadius: 8,
   border: "1px solid #d1d5db",
   width: "100%",
 };
@@ -201,33 +279,24 @@ const inputBox = {
 const filePreview = {
   display: "flex",
   alignItems: "center",
-  gap: "10px",
-  padding: "6px 10px",
-  borderRadius: "8px",
+  gap: 10,
+  padding: "10px 12px",
+  borderRadius: 8,
   background: "#f1f5f9",
-  marginBottom: "6px",
-};
-
-const docItem = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "10px 14px",
-  borderRadius: 10,
-  background: "#f9fafb",
-  marginBottom: 8,
+  border: "1px solid #e5e7eb",
 };
 
 const iconBtn = {
-  display: "flex",
+  display: "inline-flex",
   alignItems: "center",
   gap: 6,
   border: "none",
   background: "#eef2ff",
-  padding: "6px 10px",
+  padding: "8px 12px",
   borderRadius: 8,
   cursor: "pointer",
-  fontSize: "14px",
+  fontSize: 14,
   textDecoration: "none",
   color: "#1d4ed8",
+  fontWeight: 600,
 };

@@ -1,5 +1,5 @@
 // src/tenant/pages/TenantHome.js
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FaRupeeSign,
   FaCheckCircle,
@@ -11,10 +11,18 @@ import {
   FaFileAlt,
 } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
+import axios from "axios";
+import { API, authHeader } from "../tenantApi";
 
 /* ----------------------------- Utils ---------------------------------- */
 const toNumber = (v) => {
   const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const toNum = (v) => {
+  if (v === null || v === undefined) return 0;
+  const n = Number(String(v).replace(/[,₹\s]/g, ""));
   return Number.isFinite(n) ? n : 0;
 };
 
@@ -32,7 +40,10 @@ const fmtDate = (d) => {
     if (!d) return "";
     const t = new Date(d);
     if (isNaN(t.getTime())) return "";
-    return t.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+    return t.toLocaleString("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   } catch {
     return "";
   }
@@ -41,8 +52,83 @@ const fmtDate = (d) => {
 const monthName = (m) =>
   new Date(2000, m, 1).toLocaleString("en-IN", { month: "short" });
 
+/* ---------- Month helpers (mirror admin/NewComponant) ------------------ */
+// "Sep-25"  -> { y: 2025, m: 8 }
+const parseMonthKey = (key) => {
+  if (!key || typeof key !== "string") return null;
+  const [mon, yy] = key.split("-");
+  if (!mon || !yy) return null;
+  const m = new Date(`${mon} 1, 20${yy}`).getMonth();
+  const y = Number(`20${yy}`);
+  if (!Number.isFinite(m) || !Number.isFinite(y)) return null;
+  return { y, m };
+};
+
+// Prefer record.month; fallback to record.date
+const getYMFromRecord = (r) => {
+  if (!r) return null;
+  if (r.month) {
+    const pm = parseMonthKey(r.month);
+    if (pm) return pm;
+  }
+  if (r.date) {
+    const d = new Date(r.date);
+    if (!isNaN(d)) return { y: d.getFullYear(), m: d.getMonth() };
+  }
+  return null;
+};
+
+/* ---------- Due calc EXACTLY like admin/NewComponant ------------------- */
+const calcDueAdminAligned = ({ joiningDate, rents }) => {
+  if (!joiningDate) return 0;
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const startOfYear = new Date(currentYear, 0, 1);
+
+  const joinDate = new Date(joiningDate);
+  // start billing from the month AFTER joining
+  const rentStart = new Date(joinDate.getFullYear(), joinDate.getMonth() + 1, 1);
+
+  // pick whichever is later: Jan 1 of current year OR rentStart
+  const startDate = rentStart > startOfYear ? rentStart : startOfYear;
+
+  // Map of "m-y" for months that have any positive payment
+  const paidMonths = new Set(
+    (Array.isArray(rents) ? rents : [])
+      .filter((r) => toNumber(r?.rentAmount) > 0)
+      .map(getYMFromRecord)
+      .filter(Boolean)
+      .map(({ m, y }) => `${m}-${y}`)
+  );
+
+  // Last paid record (to get the amount multiplier)
+  const lastPaid = (Array.isArray(rents) ? rents : [])
+    .filter((r) => r?.date && toNumber(r?.rentAmount) > 0)
+    .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+  const rentAmount = lastPaid ? toNumber(lastPaid.rentAmount) : 0;
+  if (rentAmount <= 0) return 0;
+
+  let dueCount = 0;
+  const cursor = new Date(startDate);
+
+  while (cursor <= now && cursor.getFullYear() === currentYear) {
+    const key = `${cursor.getMonth()}-${cursor.getFullYear()}`;
+    if (!paidMonths.has(key)) dueCount++;
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  return rentAmount * dueCount;
+};
+
 /* --------------------------- Component -------------------------------- */
-export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = () => {} }) {
+export default function TenantHome({
+  me = {},
+  rents = {},
+  ann = [],
+  refresh = () => {},
+}) {
   const navigate = useNavigate();
 
   const colors = {
@@ -101,9 +187,7 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
       color: "#1e293b",
       transition: "all 0.2s ease-in-out",
     },
-    ctaHover: {
-      background: "#e2e8f0",
-    },
+    ctaHover: { background: "#e2e8f0" },
   };
 
   // ---- Safe reads -------------------------------------------------------
@@ -111,29 +195,76 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
   const roomNo = me?.roomNo ?? hostel?.roomNo ?? "—";
   const bedNo = me?.bedNo ?? hostel?.bedNo ?? "—";
   const deposit = me?.deposit ?? me?.depositAmount ?? 0;
-  const baseRent = toNumber(me?.baseRent ?? hostel?.baseRent ?? 0);
 
-  const computedDue =
-    Number.isFinite(+rents?.totalDue) ? +rents.totalDue :
-    Number.isFinite(+rents?.due)      ? +rents.due      :
-    Number.isFinite(+me?.due)         ? +me.due         : 0;
-
+  // Normalize rents list from props
   const rentList = Array.isArray(rents?.rents) ? rents.rents : [];
 
-  const lastPaid = useMemo(() => {
-    return rentList
-      .filter((r) => r && r.date && toNumber(r.rentAmount) > 0)
-      .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+  // Fetch rooms so we can read the bed price as "base rent" (same source as TenantPayments)
+  const [rooms, setRooms] = useState(null);
+  useEffect(() => {
+    const h = { headers: authHeader() };
+    axios
+      .get(`${API}/rooms`, h)
+      .then((res) => setRooms(res.data || []))
+      .catch(() => setRooms(null));
+  }, []);
+
+  // Last paid record (used as a final fallback + UI)
+  const lastPaidRec = useMemo(() => {
+    return [...rentList]
+      .filter((r) => r && (r.date || r.month) && toNumber(r.rentAmount) > 0)
+      .sort((a, b) => {
+        const ad = getYMFromRecord(a);
+        const bd = getYMFromRecord(b);
+        const aKey = ad ? ad.y * 12 + ad.m : 0;
+        const bKey = bd ? bd.y * 12 + bd.m : 0;
+        return bKey - aKey;
+      })[0];
   }, [rentList]);
 
+  // ===== Base rent priority (match TenantPayments)
+  const baseRent = useMemo(() => {
+    if (rooms && me?.roomNo != null && me?.bedNo != null) {
+      const room = (rooms || []).find((r) => String(r.roomNo) === String(me.roomNo));
+      const bed = room?.beds?.find((b) => String(b.bedNo) === String(me.bedNo));
+      const fromRooms =
+        toNum(bed?.price) || toNum(bed?.baseRent) || toNum(bed?.monthlyRent);
+      if (fromRooms) return fromRooms;
+    }
+    if (toNum(me?.baseRent)) return toNum(me.baseRent);
+    if (toNum(me?.hostel?.baseRent)) return toNum(me.hostel.baseRent);
+    if (toNum(lastPaidRec?.rentAmount)) return toNum(lastPaidRec.rentAmount);
+    const fromRents =
+      rentList
+        .map(
+          (r) =>
+            toNum(r?.expectedRent) ||
+            toNum(r?.baseRent) ||
+            toNum(r?.price)
+        )
+        .find((x) => x > 0) || 0;
+    return fromRents;
+  }, [rooms, me?.roomNo, me?.bedNo, me?.baseRent, me?.hostel?.baseRent, lastPaidRec, rentList]);
+
+  // ===== IMPORTANT: Use the EXACT same due calc as admin =====
+  const computedDue = useMemo(
+    () =>
+      calcDueAdminAligned({
+        joiningDate: me?.joiningDate,
+        rents: rentList,
+      }),
+    [me?.joiningDate, rentList]
+  );
+
   const now = new Date();
+
   const currentMonthPaid = useMemo(() => {
     if (!rentList.length) return false;
     const m = now.getMonth();
     const y = now.getFullYear();
     return rentList.some((r) => {
-      const d = r?.date ? new Date(r.date) : null;
-      return d && d.getMonth() === m && d.getFullYear() === y && toNumber(r.rentAmount) > 0;
+      const ym = getYMFromRecord(r);
+      return ym && ym.m === m && ym.y === y && toNumber(r.rentAmount) > 0;
     });
   }, [rentList]);
 
@@ -141,12 +272,10 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
     const y = now.getFullYear();
     const set = new Set(
       rentList
-        .filter((r) => r?.date && toNumber(r.rentAmount) > 0)
-        .map((r) => {
-          const d = new Date(r.date);
-          return d.getFullYear() === y ? d.getMonth() : null;
-        })
-        .filter((v) => v !== null)
+        .filter((r) => toNumber(r?.rentAmount) > 0)
+        .map(getYMFromRecord)
+        .filter((v) => v && v.y === y)
+        .map(({ m }) => m)
     );
     return set.size;
   }, [rentList]);
@@ -160,10 +289,27 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
   }, [currentMonthPaid]);
 
   const lastFive = useMemo(() => {
-    return [...rentList]
-      .sort((a, b) => new Date(b?.date || 0) - new Date(a?.date || 0))
-      .slice(0, 5);
+    const withSortKey = rentList.map((r) => {
+      if (r?.date) return { r, key: new Date(r.date).getTime() || 0 };
+      const ym = getYMFromRecord(r);
+      if (ym) return { r, key: new Date(ym.y, ym.m, 1).getTime() };
+      return { r, key: 0 };
+    });
+    return withSortKey
+      .sort((a, b) => b.key - a.key)
+      .slice(0, 5)
+      .map(({ r }) => r);
   }, [rentList]);
+
+  // Hard refresh handler (works even if `refresh` prop is a no-op)
+  const handleRefresh = () => {
+    if (typeof refresh === "function") {
+      try { refresh(); } catch {}
+    }
+    // Force a real page reload using React Router v6
+    navigate(0);
+    // (Alternatively: window.location.reload();)
+  };
 
   /* ----------------------------- UI ----------------------------------- */
   return (
@@ -176,12 +322,24 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
           border: "1px solid #e5e7eb",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+          }}
+        >
           <div>
-            <h5 style={{ margin: 0, color: "#1e293b" }}>Welcome, {me?.name || "Tenant"}</h5>
+            <h5 style={{ margin: 0, color: "#1e293b" }}>
+              Welcome, {me?.name || "Tenant"}
+            </h5>
             <div style={styles.subtle}>
               Room {roomNo} / Bed {bedNo}
-              {me?.status && <span style={styles.pill}>{String(me.status).toUpperCase()}</span>}
+              {me?.status && (
+                <span style={styles.pill}>
+                  {String(me.status).toUpperCase()}
+                </span>
+              )}
             </div>
           </div>
           <div style={{ fontSize: 12, color: colors.textMuted }}>
@@ -191,7 +349,7 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
                 borderColor: colors.primary,
                 color: colors.primary,
               }}
-              onClick={refresh}
+              onClick={handleRefresh}
             >
               Refresh
             </button>
@@ -211,7 +369,7 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
             { icon: <FaReceipt />, label: "View Payments", path: "/tenant/payments" },
             { icon: <FaRupeeSign />, label: "Rent Details", path: "/tenant/rent" },
             { icon: <FaFileUpload />, label: "Upload Docs", path: "/tenant/documents" },
-            { icon: <FaUserCheck />, label: "eKYC", path: "/tenant/ekyc" },
+            // { icon: <FaUserCheck />, label: "eKYC", path: "/tenant/ekyc" },
             { icon: <FaFileAlt />, label: "Leave Request", path: "/tenant/leave" },
           ].map((a, i) => (
             <div
@@ -234,7 +392,9 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
         <div
           style={{
             ...styles.card,
-            borderLeft: `6px solid ${computedDue > 0 ? colors.danger : colors.success}`,
+            borderLeft: `6px solid ${
+              computedDue > 0 ? colors.danger : colors.success
+            }`,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -255,7 +415,11 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
           </div>
           <div style={styles.kpiLabel}>Next due: {nextDueLabel}</div>
           <div className="mt-2">
-            <Link to="/tenant/payments" className="btn btn-sm btn-primary">
+            <Link
+              to="/tenant/payments"
+              state={{ totalDue: computedDue, baseRent }}
+              className="btn btn-sm btn-primary"
+            >
               Pay / Report Payment
             </Link>
           </div>
@@ -264,14 +428,18 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
         {/* Deposit */}
         <div style={styles.card}>
           <div style={{ fontWeight: 600 }}>Security Deposit</div>
-          <div style={styles.kpiNumber}><Money v={deposit} /></div>
+          <div style={styles.kpiNumber}>
+            <Money v={deposit} />
+          </div>
           <div style={styles.kpiLabel}>As per records</div>
         </div>
 
         {/* Base Rent */}
         <div style={styles.card}>
           <div style={{ fontWeight: 600 }}>Base Rent</div>
-          <div style={styles.kpiNumber}><Money v={baseRent} /></div>
+          <div style={styles.kpiNumber}>
+            <Money v={baseRent} />
+          </div>
           <div style={styles.kpiLabel}>Monthly</div>
         </div>
 
@@ -297,14 +465,16 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
         <div style={styles.card}>
           <div style={{ fontWeight: 600 }}>Last Payment</div>
           <div style={styles.kpiNumber}>
-            {lastPaid ? <Money v={toNumber(lastPaid.rentAmount)} /> : "—"}
+            {lastPaidRec ? <Money v={toNumber(lastPaidRec.rentAmount)} /> : "—"}
           </div>
           <div style={styles.kpiLabel}>
-            {lastPaid?.date ? `on ${fmtDate(lastPaid.date)}` : "No payments recorded"}
+            {lastPaidRec?.date
+              ? `on ${fmtDate(lastPaidRec.date)}`
+              : "No payments recorded"}
           </div>
         </div>
 
-        {/* Year Progress */}
+        {/* Year Progress (commented out by you)
         <div style={styles.card}>
           <div style={{ fontWeight: 600 }}>
             {new Date().getFullYear()} Rent Progress
@@ -320,17 +490,24 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
               style={{
                 width: `${Math.min(
                   100,
-                  ((monthsPaidThisYear / (now.getMonth() + 1 || 1)) * 100)
+                  (monthsPaidThisYear / (now.getMonth() + 1 || 1)) * 100
                 ).toFixed(0)}%`,
               }}
             />
           </div>
         </div>
+        */}
       </div>
 
       {/* Recent Payments */}
       <div style={styles.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+          }}
+        >
           <h5 style={{ margin: 0 }}>Recent Payments</h5>
           <Link to="/tenant/payments" className="btn btn-sm btn-outline-secondary">
             View all
@@ -351,7 +528,9 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
                 {lastFive.map((r, i) => (
                   <tr key={r?._id || r?.id || i}>
                     <td>{fmtDate(r?.date)}</td>
-                    <td><Money v={toNumber(r?.rentAmount)} /></td>
+                    <td>
+                      <Money v={toNumber(r?.rentAmount)} />
+                    </td>
                     <td className="text-muted small">{r?.note || "-"}</td>
                   </tr>
                 ))}
@@ -359,36 +538,15 @@ export default function TenantHome({ me = {}, rents = {}, ann = [], refresh = ()
             </table>
           </div>
         ) : (
-          <div style={{ ...styles.subtle, marginTop: 6 }}>No payments found yet.</div>
-        )}
-      </div>
-
-      {/* Announcements */}
-      <div style={styles.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <h5 style={{ margin: 0 }}>Announcements</h5>
-          <Link to="/tenant/announcements" className="btn btn-sm btn-outline-secondary">
-            View all
-          </Link>
-        </div>
-
-        {Array.isArray(ann) && ann.length ? (
-          <div className="mt-2">
-            {ann.slice(0, 3).map((a, idx) => (
-              <div key={a?._id || idx} style={{ padding: "8px 0" }}>
-                <div style={{ fontWeight: 600, color: "#1e293b" }}>{a?.title || "Untitled"}</div>
-                <div style={{ ...styles.subtle, fontSize: 12 }}>
-                  {a?.createdAt ? fmtDate(a.createdAt) : ""}
-                </div>
-                <div className="mt-1">{a?.body || ""}</div>
-                {idx < Math.min(ann.length, 3) - 1 && <hr className="my-2" />}
-              </div>
-            ))}
+          <div style={{ ...styles.subtle, marginTop: 6 }}>
+            No payments found yet.
           </div>
-        ) : (
-          <div style={{ ...styles.subtle, marginTop: 6 }}>Nothing new right now.</div>
         )}
       </div>
+
+      {/* Announcements (left commented out as in your version)
+      <div style={styles.card}>...</div>
+      */}
     </>
   );
 }

@@ -134,7 +134,12 @@ export default function TenantShell({ me, onLogout }) {
           <NavLink to="/tenant/documents"  style={({ isActive }) => linkStyle(isActive)}>Documents</NavLink>
           {/* ✅ Added Bills & Payments */}
           <NavLink to="/tenant/payments"   style={({ isActive }) => linkStyle(isActive)}>Bills & Payments</NavLink>
-          <NavLink to="/tenant/ekyc"       style={({ isActive }) => linkStyle(isActive)}>eKYC</NavLink>
+          {/* <NavLink to="/tenant/ekyc"       style={({ isActive }) => linkStyle(isActive)}>eKYC</NavLink> */}
+          {/* ✅ NEW: Police Verification link */}
+      <NavLink to="/tenant/police-verification" style={({ isActive }) => linkStyle(isActive)}>
+  Police Verification
+</NavLink>
+
           <NavLink to="/tenant/leave"      style={({ isActive }) => linkStyle(isActive)}>Leave Request</NavLink>
           <NavLink to="/tenant/support"    style={({ isActive }) => linkStyle(isActive)}>Support</NavLink>
         </nav>
@@ -143,7 +148,7 @@ export default function TenantShell({ me, onLogout }) {
           onClick={() => {
             clearToken();
             onLogout?.(); // in case it’s passed
-            nav("/tenant", { replace: true });
+            nav("/", { replace: true });
           }}
           style={{
             marginTop: 16,
@@ -267,3 +272,4 @@ export default function TenantShell({ me, onLogout }) {
     </div>
   );
 }
+
