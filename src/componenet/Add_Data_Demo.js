@@ -58,7 +58,7 @@ function Add_Data_Demo() {
     companyAddress: '',
   });
 
-  const apiUrl = 'http://localhost:8000/api/'; // Replace with your actual API endpoint
+  const apiUrl = 'https://mutakehostel-backend.onrender.com/api/'; // Replace with your actual API endpoint
   const correctPassword = "987654";
  
   

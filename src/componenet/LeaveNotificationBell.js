@@ -5,7 +5,7 @@ import axios from "axios";
 const fmtDate = (iso) => (iso ? new Date(iso).toLocaleString() : "—");
 
 export default function LeaveNotificationBell({
-  apiUrl = "http://localhost:8000/api/",
+  apiUrl = "https://mutakehostel-backend.onrender.com/api/",
   onDecision, // optional callback ({type: 'approved'|'rejected', tenantName, roomNo, bedNo, leaveDate, requestId})
 }) {
   const [items, setItems] = React.useState([]);

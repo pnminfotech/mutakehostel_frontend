@@ -109,7 +109,7 @@ function Layout() {
 
 function App() {
   return (
-    <BrowserRouter basename="/HostelManager">
+    <BrowserRouter basename="/rentmanagementwebapp">
       <Layout />
     </BrowserRouter>
   );

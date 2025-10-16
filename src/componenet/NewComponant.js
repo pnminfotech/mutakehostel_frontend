@@ -115,7 +115,7 @@ const years = useMemo(() => {
 }, [formData]);
 
 
-  const apiUrl = "http://localhost:8000/api/";
+  const apiUrl = "https://mutakehostel-backend.onrender.com/api/";
 
 
 
@@ -306,7 +306,7 @@ const handleApprovedFromBell = React.useCallback((payload) => {
   // existing line in your file
 
   // // ✅ add these right below apiUrl
-  // const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || "http://localhost:8000";
+  // const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || "https://mutakehostel-backend.onrender.com";
 
   // const getDocHref = (doc) => {
   //   // absolute URL already? use it
@@ -564,7 +564,7 @@ async function handleAddTenantWithDocs() {
   //         fd.append("documents", doc.file); // only raw files go to upload API
   //       });
 
-  //       const up = await axios.post("http://localhost:8000/api/uploads/docs", fd, {
+  //       const up = await axios.post("https://mutakehostel-backend.onrender.com/api/uploads/docs", fd, {
   //         headers: { "Content-Type": "multipart/form-data" },
   //       });
 
@@ -585,13 +585,13 @@ async function handleAddTenantWithDocs() {
 
   //     console.log("🚀 Payload sending:", JSON.stringify(payload, null, 2));
 
-  //     const res = await axios.post("http://localhost:8000/api/forms", payload);
+  //     const res = await axios.post("https://mutakehostel-backend.onrender.com/api/forms", payload);
   //     console.log("Saved:", res.data);
 
   //     setShowAddModal(false);
 
   //     // refresh list
-  //     const tenantsRes = await axios.get("http://localhost:8000/api/forms");
+  //     const tenantsRes = await axios.get("https://mutakehostel-backend.onrender.com/api/forms");
   //     setTenants(tenantsRes.data);
   //   } catch (err) {
   //     console.error(err);
@@ -846,7 +846,7 @@ async function handleAddTenantWithDocs() {
   }, []);
   // useEffect(() => {
   //   axios
-  //     .get("http://localhost:8000/api/rooms")
+  //     .get("https://mutakehostel-backend.onrender.com/api/rooms")
   //     .then((response) => setRoomsData(response.data))
   //     .catch((err) => console.error("Failed to fetch rooms:", err));
   // }, []);

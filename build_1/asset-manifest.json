@@ -1,0 +1,23 @@
+{
+  "files": {
+    "main.css": "/rentmanagementwebapp/static/css/main.1e0a0918.css",
+    "main.js": "/rentmanagementwebapp/static/js/main.b21fc19b.js",
+    "static/js/213.dbe0eb66.chunk.js": "/rentmanagementwebapp/static/js/213.dbe0eb66.chunk.js",
+    "static/js/455.a2ef8b95.chunk.js": "/rentmanagementwebapp/static/js/455.a2ef8b95.chunk.js",
+    "static/js/488.a14a6384.chunk.js": "/rentmanagementwebapp/static/js/488.a14a6384.chunk.js",
+    "static/media/hostelbg.png": "/rentmanagementwebapp/static/media/hostelbg.205d91d6780227f78208.png",
+    "static/media/rulebook.jpg": "/rentmanagementwebapp/static/media/rulebook.90dd6e5cf402e92a16b2.jpg",
+    "static/media/hostel-vector-26477303.jpg": "/rentmanagementwebapp/static/media/hostel-vector-26477303.381e64146f5c62df6f43.jpg",
+    "static/media/mutkehostel.png": "/rentmanagementwebapp/static/media/mutkehostel.ea525e6c24212d0e8c4c.png",
+    "index.html": "/rentmanagementwebapp/index.html",
+    "main.1e0a0918.css.map": "/rentmanagementwebapp/static/css/main.1e0a0918.css.map",
+    "main.b21fc19b.js.map": "/rentmanagementwebapp/static/js/main.b21fc19b.js.map",
+    "213.dbe0eb66.chunk.js.map": "/rentmanagementwebapp/static/js/213.dbe0eb66.chunk.js.map",
+    "455.a2ef8b95.chunk.js.map": "/rentmanagementwebapp/static/js/455.a2ef8b95.chunk.js.map",
+    "488.a14a6384.chunk.js.map": "/rentmanagementwebapp/static/js/488.a14a6384.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.1e0a0918.css",
+    "static/js/main.b21fc19b.js"
+  ]
+}

@@ -59,7 +59,7 @@ function AddData() {
   });
 
   // const apiUrl = 'http://localhost:8/api/';
-  const apiUrl = 'http://localhost:8000/api/';  
+  const apiUrl = 'https://mutakehostel-backend.onrender.com/api/';  
   const correctPassword = "987654";
  const getUndoKey = (tenantId, month) => `undo_history_${tenantId}_${month}`;
 
@@ -213,7 +213,7 @@ const handleCancelLeave = async (id) => {
 
   try {
     const response = await axios.post(
-      `http://localhost:8/api/cancel-leave`,
+      `https://mutakehostel-backend.onrender.com/api/cancel-leave`,
       { id }
     );
 

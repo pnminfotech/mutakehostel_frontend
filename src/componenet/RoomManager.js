@@ -3,7 +3,7 @@ import axios from "axios";
 
 import { useNavigate } from "react-router-dom";
 import { FaArrowLeft } from "react-icons/fa";
-const apiUrl = "http://localhost:8000/api/rooms";
+const apiUrl = "https://mutakehostel-backend.onrender.com/api/rooms";
 
 export default function RoomManager() {
   const [rooms, setRooms] = useState([]);

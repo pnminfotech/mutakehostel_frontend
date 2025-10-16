@@ -6,6 +6,27 @@ import {
 import Fuse from "fuse.js";
 import rawIntents from "../componenet/json/chatbotIntents.json";
 
+
+// ===== Month-aware rent record parser (make it top-level & reusable) =====
+// Accepts records of shape:
+//   { month: "Sep-25", rentAmount, ... }  OR  { date: "2025-09-10", ... }
+const getYMFromRecord = (r) => {
+  if (!r) return null;
+  if (r.month) {
+    const [mon, yy] = String(r.month).split("-");
+    if (mon && yy) {
+      const m = new Date(`${mon} 1, 20${yy}`).getMonth(); // 0..11
+      const y = Number(`20${yy}`);
+      if (Number.isFinite(m) && Number.isFinite(y)) return { y, m };
+    }
+  }
+  if (r.date) {
+    const d = new Date(r.date);
+    if (!isNaN(d)) return { y: d.getFullYear(), m: d.getMonth() };
+  }
+  return null;
+};
+
 // ========== helpers ==========
 const toNum = (v) => { if (v==null) return 0; const n = Number(String(v).replace(/[,₹\s]/g,"")); return Number.isFinite(n)?n:0; };
 const prettyCurrency = (n) => `₹${(toNum(n)||0).toLocaleString("en-IN")}`;
@@ -19,30 +40,56 @@ function defaultExpectFromTenant(tenant, roomsData){
   }
   return 0;
 }
-function calculateDueThisYear(rents=[], joiningDateStr){
-  if(!joiningDateStr) return 0;
-  const now=new Date(); const y=now.getFullYear();
-  const startOfYear=new Date(y,0,1); const join=new Date(joiningDateStr);
-  const rentStart=new Date(join.getFullYear(), join.getMonth()+1, 1);
-  const start=rentStart>startOfYear?rentStart:startOfYear;
-  const paid=new Set((rents||[])
-    .filter(r=>r?.date && toNum(r.rentAmount)>0)
-    .map(r=>{const d=new Date(r.date); return `${d.getMonth()}-${d.getFullYear()}`;}));
-  const lastPaid=(rents||[]).filter(r=>r?.date && toNum(r.rentAmount)>0)
-    .sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
-  const rentAmount=lastPaid?toNum(lastPaid.rentAmount):0;
-  let dueCount=0; const cur=new Date(start);
-  while(cur<=now && cur.getFullYear()===y){ const key=`${cur.getMonth()}-${cur.getFullYear()}`; if(!paid.has(key)) dueCount++; cur.setMonth(cur.getMonth()+1); }
-  return rentAmount*dueCount;
+function calculateDueThisYear(rents = [], joiningDateStr) {
+  if (!joiningDateStr) return 0;
+
+  const now = new Date();
+  const y = now.getFullYear();
+
+  // Jan 1 of current year vs 1 month after joining — same rule your table uses
+  const startOfYear = new Date(y, 0, 1);
+  const join = new Date(joiningDateStr);
+  const rentStart = new Date(join.getFullYear(), join.getMonth() + 1, 1);
+  const start = rentStart > startOfYear ? rentStart : startOfYear;
+
+  const paid = new Set(
+    (rents || [])
+      .filter(r => toNum(r?.rentAmount) > 0)
+      .map(getYMFromRecord)
+      .filter(Boolean)
+      .map(({ m, y }) => `${m}-${y}`)
+  );
+
+
+  // Use the last paid amount as the expected base (keeps your existing behavior)
+  const lastPaid = (rents || [])
+    .filter(r => toNum(r?.rentAmount) > 0 && getYMFromRecord(r))
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
+
+  const rentAmount = lastPaid ? toNum(lastPaid.rentAmount) : 0;
+
+  let dueCount = 0;
+  const cur = new Date(start);
+  while (cur <= now && cur.getFullYear() === y) {
+    const key = `${cur.getMonth()}-${cur.getFullYear()}`;
+    if (!paid.has(key)) dueCount++;
+    cur.setMonth(cur.getMonth() + 1);
+  }
+  return rentAmount * dueCount;
 }
+
 function pendingMonthsFrom(joiningDateStr, rents=[]){
   if(!joiningDateStr) return [];
   const now=new Date(); const y=now.getFullYear();
   const join=new Date(joiningDateStr);
-  const start=new Date(join.getFullYear(), join.getMonth()+1, 1);
-  const paid=new Set((rents||[])
-    .filter(r=>r?.date && toNum(r.rentAmount)>0)
-    .map(r=>{const d=new Date(r.date); return `${d.getMonth()}-${d.getFullYear()}`;}));
+  const start = new Date(join.getFullYear(), join.getMonth() + 1, 1);
+  const paid = new Set(
+    (rents || [])
+      .filter(r => toNum(r?.rentAmount) > 0)
+      .map(getYMFromRecord)
+      .filter(Boolean)
+      .map(({ m, y }) => `${m}-${y}`)
+  );
   const out=[]; const cur=new Date(start);
   while(cur<=now){ const key=`${cur.getMonth()}-${cur.getFullYear()}`;
     if(cur.getFullYear()===y && !paid.has(key)){ out.push(cur.toLocaleString("default",{month:"long",year:"numeric"})); }
@@ -50,9 +97,39 @@ function pendingMonthsFrom(joiningDateStr, rents=[]){
   }
   return out;
 }
-function isPaidForMonth(rents=[], monthIdx, year){
-  return (rents||[]).some(r=>{ if(!r?.date || toNum(r.rentAmount)<=0) return false; const d=new Date(r.date); return d.getMonth()===monthIdx && d.getFullYear()===year; });
+function isPaidForMonth(rents = [], monthIdx, year) {
+  return (rents || []).some(r => {
+    const ym = getYMFromRecord(r);
+    return ym && ym.m === monthIdx && ym.y === year && toNum(r.rentAmount) > 0;
+  });
 }
+function getAllPendingMonths(rents = [], joiningDateStr) {
+  if (!joiningDateStr) return [];
+  const join = new Date(joiningDateStr);
+  const start = new Date(join.getFullYear(), join.getMonth() + 1, 1);
+  const today = new Date();
+  const end = new Date(today.getFullYear(), today.getMonth(), 1);
+
+  const paidSet = new Set(
+    (Array.isArray(rents) ? rents : [])
+      .filter(r => toNum(r?.rentAmount) > 0)
+      .map(getYMFromRecord)
+      .filter(Boolean)
+      .map(({ m, y }) => `${m}-${y}`)
+  );
+
+  const out = [];
+  const cursor = new Date(start);
+  while (cursor <= end) {
+    const key = `${cursor.getMonth()}-${cursor.getFullYear()}`;
+    if (!paidSet.has(key)) {
+      out.push(cursor.toLocaleString("default", { month: "long", year: "numeric" }));
+    }
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return out;
+}
+
 const isLeft=(tenant, leaveDates)=>{ const iso=leaveDates?.[tenant._id]; return iso && new Date(iso)<new Date(); };
 const norm=(s)=> (s||"").toLowerCase().trim();
 const unique=(arr)=> Array.from(new Set(arr));
@@ -84,7 +161,8 @@ function STR(lang){
     phoneLine:(n,p)=>`${n} चा फोन: ${p||"—"}`, depositLine:(n,amt)=>`${n} ने ${amt} डिपॉझिट दिले आहे.`,
     pendingForMonthTitle:(mh)=>`${mh} साठी पेंडिंग:`, pendingNone:"काहीही नाही ✅",
     paidForMonth:(n,mh)=>`${n} ने ${mh} चे पैसे भरले आहेत.`,
-    pendingForTenantMonth:(n,amt,mh)=>`${n} चे ${mh} साठी ${amt} पेंडिंग आहे.`,
+pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए ${amt} पेंडिंग है।`,
+
     helpTitle:"उदाहरणे:", helpBullets:[
       "Priya चा rent status","Akash चे किती due आहे","Rohan चे pending months",
       "room 101 मधे रिकामे beds","कोणाचे rent pending आहे","Nikhil चे deposit किती",
@@ -98,6 +176,8 @@ function STR(lang){
       pendingAllFor:(m)=>`${m} महिन्याचे सर्व pending`,
       pendingNameThis:(n)=>`${n} चे या महिन्याचे pending`,
       pendingNameFor:(n,m)=>`${n} चे ${m} महिन्याचे pending`,
+      pendingForTenantMonth: (name, amt, mh) => `${name} चे ${mh} साठी ${amt} पेंडिंग आहे.`,
+
     }
   }; }
   if(lang==="hi"){ return {
@@ -125,8 +205,8 @@ function STR(lang){
     phoneLine:(n,p)=>`${n} का फ़ोन: ${p||"—"}`, depositLine:(n,amt)=>`${n} ने ${amt} डिपॉज़िट दिया है.`,
     pendingForMonthTitle:(mh)=>`${mh} के पेंडिंग:`, pendingNone:"कुछ नहीं ✅",
     paidForMonth:(n,mh)=>`${n} ने ${mh} का भुगतान कर दिया है।`,
-    pendingForTenantMonth:(n,amt,mh)=>`${n} का ${mh} के लिए ${amt} पेंडिंग है।`,
-    helpTitle:"उदाहरण:", helpBullets:[
+    pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए ${amt} पेंडिंग है।`,
+ helpTitle:"उदाहरण:", helpBullets:[
       "Priya का rent status","Akash का कितना due है","Rohan के pending months",
       "room 101 में खाली beds","किसका rent pending है","Nikhil का deposit कितना",
       "Pooja का phone","पिछले महीने कौन गया","इस महीने के सभी pending",
@@ -219,16 +299,24 @@ function parseTargetMonth(q){
 }
 
 // entities & routing
-function buildEntities(formData, roomsData){ const names=unique(formData.map(t=>(t.name||"").trim()).filter(Boolean)).sort((a,b)=>a.localeCompare(b)); const rooms=unique((roomsData||[]).map(r=>String(r.roomNo))); return {names,rooms}; }
+function buildEntities(formData, roomsData){
+  const names=unique(formData.map(t=>(t.name||"").trim()).filter(Boolean)).sort((a,b)=>a.localeCompare(b));
+  const rooms=unique((roomsData||[]).map(r=>String(r.roomNo)));
+  return {names,rooms};
+}
+
 function findTenantByName(formData, leaveDates, name){
   const active=formData.filter(t=>!isLeft(t,leaveDates));
   const q=norm(name);
+  // exact or includes
   let t=active.find(x=>norm(x.name)===q)||active.find(x=>norm(x.name).includes(q));
   if(t) return t;
-  const fuse=new Fuse(active,{keys:["name"],includeScore:true,threshold:0.4,minMatchCharLength:2});
+  // fuzzy fallback
+  const fuse=new Fuse(active,{keys:["name"],includeScore:true,threshold:0.33,minMatchCharLength:2});
   const hit=fuse.search(name)[0];
   return hit?.item||null;
 }
+
 function expandPatterns(intentsJson, entities){
   const rows=[]; (Array.isArray(intentsJson)?intentsJson:[]).forEach(entry=>{
     const pats=entry.patterns||entry.examples||[];
@@ -249,32 +337,48 @@ function expandPatterns(intentsJson, entities){
   );
   return rows;
 }
+
 function makeRouter(patternRows){
   const fuse=new Fuse(patternRows,{includeScore:true,minMatchCharLength:2,threshold:0.45,keys:["text"]});
   return (q)=>{ const hits=fuse.search(q).slice(0,5); if(!hits.length) return null;
     hits.sort((a,b)=> (a.item.placeholders===b.item.placeholders) ? (a.score-b.score) : (a.item.placeholders?1:-1));
     return hits[0].item.intent; };
 }
+
 function extractEntities(q, entities, currentTenantName){
-  const room=(q.match(/room\s+(\w+)/i)?.[1])||entities.rooms.find(r=>q.includes(String(r)))||null;
-  const lower=q.toLowerCase(); let name=null, best=0;
-  for(const n of entities.names){ const ln=n.toLowerCase(); if(lower.includes(ln)&&ln.length>best){ name=n; best=ln.length; } }
+  // better room detection: word boundary around digits/letters
+  const room=(q.match(/\broom\s+([A-Za-z0-9\-]+)\b/i)?.[1])||entities.rooms.find(r=>q.includes(String(r)))||null;
+
+  // robust name detection: prefer longest token match
+  const lower=q.toLowerCase();
+  let name=null, best=0;
+  for(const n of entities.names){
+    const ln=n.toLowerCase();
+    if(lower.includes(ln) && ln.length>best){ name=n; best=ln.length; }
+  }
   if(!name && currentTenantName) name=currentTenantName;
   return {name,room};
 }
+
 function listAllPendingForMonth(formData, roomsData, leaveDates, monthIdx, year, lang="en"){
   const S=STR(lang); const active=formData.filter(t=>!isLeft(t,leaveDates)); const rows=[]; let total=0;
-  for(const t of active){ const paid=isPaidForMonth(t.rents,monthIdx,year); if(!paid){ const expect=defaultExpectFromTenant(t,roomsData); total+=expect; rows.push(S.whoHasPendingLine(t.name,prettyCurrency(expect),t.roomNo,t.bedNo)); } }
+  for(const t of active){
+    const paid=isPaidForMonth(t.rents,monthIdx,year);
+    if(!paid){ const expect=defaultExpectFromTenant(t,roomsData); total+=expect; rows.push(S.whoHasPendingLine(t.name,prettyCurrency(expect),t.roomNo,t.bedNo)); }
+  }
   const title=S.pendingForMonthTitle(humanMonth(monthIdx,year,lang));
   return rows.length?`${title}\n${rows.join("\n")}\n${S.totalDue(prettyCurrency(total))}\n${S.count(rows.length)}`:`${title}\n${S.pendingNone}`;
 }
+
 function oneTenantPendingForMonth(name, formData, roomsData, leaveDates, monthIdx, year, lang="en"){
   const S=STR(lang); if(!name) return S.who;
   const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name);
   const mh=humanMonth(monthIdx,year,lang); const paid=isPaidForMonth(t.rents,monthIdx,year);
-  if(paid) return S.paidForMonth(t.name,mh); const expect=defaultExpectFromTenant(t,roomsData);
+  if(paid) return S.paidForMonth(t.name,mh);
+  const expect=defaultExpectFromTenant(t,roomsData);
   return S.pendingForTenantMonth(t.name, prettyCurrency(expect), mh);
 }
+
 function handleIntent({ intent, q, formData, roomsData, leaveDates, entities, lang, currentTenantName }){
   const S=STR(lang);
   const H={
@@ -290,12 +394,25 @@ function handleIntent({ intent, q, formData, roomsData, leaveDates, entities, la
       const due=calculateDueThisYear(t.rents,t.joiningDate); return S.dueForYearLine(t.name, prettyCurrency(due), new Date().getFullYear()); },
     pending_months: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who; const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name);
       const months=pendingMonthsFrom(t.joiningDate,t.rents); return months.length?`${t.name} — ${S.pendingMonths}\n${months.map(m=>`• ${m}`).join("\n")}`:S.noPendingMonths; },
-    vacant_beds_in_room: ()=>{ const {room}=extractEntities(q,entities,currentTenantName); if(!room) return S.whichRoom;
-      const active=new Set(formData.filter(t=>!isLeft(t,leaveDates)).map(t=>`${t.roomNo}-${t.bedNo}`));
-      const roomObj=roomsData.find(r=>String(r.roomNo)===String(room)); if(!roomObj) return S.roomNotFound(room);
-      const vacant=(roomObj.beds||[]).filter(b=>!active.has(`${room}-${b.bedNo}`)); if(!vacant.length) return S.noVacant(room);
-      return `${S.vacantTitle(room)}\n${vacant.map(b=>S.vacantLine(b.bedNo,b.category,b.price?prettyCurrency(b.price):"")).join("\n")}`;
-    },
+   vacant_beds_in_room: () => {
+  const { room } = extractEntities(q, entities, currentTenantName);
+  if (!room) return S.whichRoom;
+
+  const active = new Set(
+    formData.filter(t => !isLeft(t, leaveDates)).map(t => `${t.roomNo}-${t.bedNo}`)
+  );
+
+  const roomObj = roomsData.find(r => String(r.roomNo) === String(room));
+  if (!roomObj) return S.roomNotFound(room);
+
+  const vacant = (roomObj?.beds || []).filter(b => !active.has(`${room}-${b.bedNo}`));
+  if (!vacant.length) return S.noVacant(room);
+
+  return `${S.vacantTitle(room)}\n${vacant
+    .map(b => S.vacantLine(b.bedNo, b.category, b.price ? prettyCurrency(b.price) : ""))
+    .join("\n")}`;
+},
+
     who_has_pending: ()=>{ const y=new Date().getFullYear();
       const pending=formData.filter(t=>!isLeft(t,leaveDates)).map(t=>({t, due:calculateDueThisYear(t.rents,t.joiningDate)})).filter(x=>x.due>0).sort((a,b)=>b.due-a.due).slice(0,100);
       if(!pending.length) return `${S.whoHasPendingTitle(y)}\n${S.pendingNone}`;
@@ -318,6 +435,7 @@ function handleIntent({ intent, q, formData, roomsData, leaveDates, entities, la
   };
   return H[intent] ? H[intent]() : S.didntGet;
 }
+
 function ruleIntent(q, entities){
   const hasPendingWord=/\b(pending|due|baki|baaki|बकाया|बाकी|थकबाकी|उधार|उधारी|पेंडिंग|पेन्डिंग)\b/.test(q);
   const month=parseTargetMonth(q);
@@ -330,6 +448,7 @@ function ruleIntent(q, entities){
   if(/\bwho left\b/.test(q) && /\blast month\b/.test(q)) return "left_last_month";
   return null;
 }
+
 function buildPendingSuggestions({lang, currentTenantName}){
   const S=STR(lang).sug; const now=new Date(); const items=[];
   items.push(S.pendingAllThis, S.pendingAllLast, S.pendingAllNext);
@@ -348,18 +467,27 @@ export default function TenantChatbot({
   onOpenEdit,            // (tenantId, monthIdx, year) => void
 }) {
   // language lives only inside chatbot
-  const [lang, setLang] = useState(() => localStorage.getItem("tenantChat.lang") || "");
+  const [lang, setLang] = useState(() => (typeof window!=="undefined" && localStorage.getItem("tenantChat.lang")) || "");
   const [showLangPicker, setShowLangPicker] = useState(() => !lang);
 
   const strings = STR(lang || "en");
 
   // responsive: full-width on small screens
-  const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 575.98px)").matches);
+  const isNarrow = () => (typeof window!=="undefined" ? window.matchMedia("(max-width: 991.98px)").matches : false);
+  const isPhone  = () => (typeof window!=="undefined" ? window.matchMedia("(max-width: 575.98px)").matches : false);
+
+  const [mobileLike, setMobileLike] = useState(isNarrow());
+  const [phone, setPhone] = useState(isPhone());
+  const [vhHeight, setVhHeight] = useState(() => (typeof window!=="undefined" ? window.innerHeight : 800));
+
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 575.98px)");
-    const handler = (e)=> setIsMobile(e.matches);
-    mq.addEventListener?.("change", handler);
-    return () => mq.removeEventListener?.("change", handler);
+    const onResize = () => {
+      setMobileLike(isNarrow());
+      setPhone(isPhone());
+      setVhHeight(typeof window!=="undefined" ? window.innerHeight : 800);
+    };
+    window.addEventListener?.("resize", onResize);
+    return () => window.removeEventListener?.("resize", onResize);
   }, []);
 
   const [open, setOpen] = useState(true);
@@ -381,7 +509,7 @@ export default function TenantChatbot({
   }, [lang]);
 
   const entities = useMemo(() => buildEntities(formData, roomsData), [formData, roomsData]);
-  const route = useMemo(() => makeRouter(expandPatterns(rawIntents, entities)), [entities]);
+  const router = useMemo(() => makeRouter(expandPatterns(rawIntents, entities)), [entities]);
 
   // suggestions on typing
   useEffect(() => {
@@ -403,12 +531,19 @@ export default function TenantChatbot({
   const send=(forcedText)=>{
     const raw=(forcedText??input).trim(); if(!raw) return;
     const q=normalizeByLanguage(raw, lang || "en");
-    let intent=route(q); if(!intent) intent=ruleIntent(q, entities);
+
+    // 1) precise rule-based routing first
+    let intent=ruleIntent(q, entities);
+    // 2) then fuzzy fallback
+    if(!intent) intent=router(q);
+
     const answer= intent
       ? handleIntent({ intent, q, formData, roomsData, leaveDates, entities, lang: lang || "en", currentTenantName })
       : STR(lang||"en").didntGet;
+
     const { name } = extractEntities(q, entities, currentTenantName);
     if(name) setCurrentTenantName(name);
+
     setLog(prev=>[...prev, {role:"user", message:raw}, {role:"assistant", message:answer}]);
     setInput(""); setShowSug(false); setActiveSug(0);
     setTimeout(()=>{ boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight, behavior:"smooth" }); }, 0);
@@ -424,13 +559,27 @@ export default function TenantChatbot({
     }
     if(e.key==="Enter"){ send(); }
   };
+// Accepts r.month like "Sep-25" or falls back to r.date
+
 
   // styles (responsive)
-  const containerStyle = isMobile
+  // On mobile/tablet use ~60vh but clamp to avoid super tall panels; desktop stays 360px
+   // Smaller heights: phones ≈ 50vh (clamp 220–380), tablets ≈ 56vh (clamp 240–420)
+  const mobileBodyHeight = (() => {
+    const vh = vhHeight || 800;
+    if (phone) {
+      return Math.max(220, Math.min(0.50 * vh, 380));
+    }
+    // tablet and small laptops
+    return Math.max(240, Math.min(0.56 * vh, 420));
+  })();
+
+
+  const containerStyle = mobileLike
     ? { position:"fixed", left:0, right:0, bottom:0, zIndex:2000, padding:"8px", maxWidth:"100%" }
     : { position:"fixed", right:16, bottom:16, zIndex:2000, width:"100%", maxWidth: open? 480 : 203, transition:"max-width .25s ease, width .25s ease" };
 
-  const chatBodyStyle = { height: isMobile ? 420 : 360, overflowY:"auto", background:"#f7f9fb" };
+  const chatBodyStyle = { height: mobileLike ? mobileBodyHeight : 360, overflowY:"auto", background:"#f7f9fb" };
   const bubbleBase = { maxWidth:"78%", padding:"10px 12px", borderRadius:14, fontSize:14, lineHeight:1.35, whiteSpace:"pre-wrap" };
   const assistantBubble = { ...bubbleBase, background:"#eef2f7", color:"#111", borderTopLeftRadius:6 };
   const userBubble = { ...bubbleBase, background:"#0d6efd", color:"#fff", borderTopRightRadius:6 };
@@ -454,7 +603,7 @@ export default function TenantChatbot({
   return (
     <div style={containerStyle}>
       {/* Mobile closed state: tiny FAB */}
-      {isMobile && !open && (
+      {phone && !open && (
         <button
           className="btn btn-primary shadow"
           onClick={()=>setOpen(true)}
@@ -466,11 +615,11 @@ export default function TenantChatbot({
       )}
 
       {/* Chat card */}
-      <div className="card shadow" style={{ overflow:"hidden", borderRadius:16, display: isMobile && !open ? "none" : "block" }}>
+      <div className="card shadow" style={{ overflow:"hidden", borderRadius:16, display: mobileLike && !open ? "none" : "block" }}>
         <div
           className="card-header d-flex align-items-center justify-content-between"
-          style={{ cursor:"pointer", background:"#ffffff" }}
-          onClick={()=> setOpen(o=> !isMobile ? !o : o)}  // on mobile, don't collapse on header click
+          style={{ cursor: mobileLike ? "default" : "pointer", background:"#ffffff" }}
+          onClick={()=> setOpen(o=> mobileLike ? o : !o)}  // on desktop header toggles; on mobile it doesn't
         >
           <div className="d-flex align-items-center gap-2">
             <FaRobot /> <strong>Hostel Assistant</strong>
@@ -484,8 +633,8 @@ export default function TenantChatbot({
             >
               <FaCog />
             </button>
-            {!isMobile && (open ? <FaChevronDown /> : <FaChevronUp />)}
-            {isMobile && (
+            {!mobileLike && (open ? <FaChevronDown /> : <FaChevronUp />)}
+            {mobileLike && (
               <button className="btn btn-sm btn-outline-secondary" onClick={()=>setOpen(false)} aria-label="Close">
                 <FaTimes />
               </button>
@@ -496,7 +645,7 @@ export default function TenantChatbot({
         {/* Language picker only when open */}
         {open && showLangPicker && <LanguagePicker />}
 
-        {/* Chat UI gated by `open` so minimize truly hides contents on desktop */}
+        {/* Chat UI */}
         {open && (
           <>
             <div className="card-body" ref={boxRef} style={chatBodyStyle}>

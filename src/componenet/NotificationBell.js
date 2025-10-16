@@ -3,22 +3,32 @@ import React from "react";
 import axios from "axios";
 
 const fmtINR = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
-const mmYY = (m, y) => (m && y ? `${String(m).padStart(2,"0")}/${y}` : "—");
+const mmYY = (m, y) => (m && y ? `${String(m).padStart(2, "0")}/${y}` : "—");
 
 export default function NotificationBell({
-  apiUrl = "http://localhost:8000/api/",
+  apiUrl = "https://mutakehostel-backend.onrender.com/api/",
   onApproved,
 }) {
   const [items, setItems] = React.useState([]);
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
+  const [isMobile, setIsMobile] = React.useState(() =>
+    window.matchMedia("(max-width: 576px)").matches
+  );
+
+  React.useEffect(() => {
+    const mq = window.matchMedia("(max-width: 576px)");
+    const fn = () => setIsMobile(mq.matches);
+    mq.addEventListener?.("change", fn);
+    fn();
+    return () => mq.removeEventListener?.("change", fn);
+  }, []);
 
   const fetchItems = React.useCallback(async () => {
     try {
       setLoading(true);
       setErr("");
-      // ✅ pull NOTIFICATIONS (not /payments/reports)
       const { data } = await axios.get(`${apiUrl}payments/notifications`, {
         params: { status: "pending", limit: 50 },
       });
@@ -39,27 +49,24 @@ export default function NotificationBell({
 
   const approveNotif = async (notif) => {
     try {
-      // ✅ send NOTIFICATION id here
       await axios.post(`${apiUrl}payments/approve/${notif._id}`);
       setItems((prev) => prev.filter((x) => x._id !== notif._id));
-      // onApproved?.(notif);
-       // 🔔 send a minimal, stable payload (safe to use for optimistic UI)
-   const tenant = notif.tenantId || {};
-   const pay = notif.paymentId || {};
-   onApproved?.({
-     type: "approved",
-     tenantId: tenant._id,                 // string
-     tenantName: tenant.name,
-     roomNo: tenant.roomNo,
-     bedNo: tenant.bedNo,
-     amount: Number(pay.amount) || 0,      // number
-     year: Number(pay.year),               // e.g. 2025
-     month: Number(pay.month),             // 1..12
-     utr: pay.utr || "",
-     note: pay.note || "",
-     paymentMode: pay.mode || pay.paymentMode || "Online",
-     paymentDate: pay.paymentDate || notif.createdAt || new Date().toISOString(),
-   });
+      const tenant = notif.tenantId || {};
+      const pay = notif.paymentId || {};
+      onApproved?.({
+        type: "approved",
+        tenantId: tenant._id,
+        tenantName: tenant.name,
+        roomNo: tenant.roomNo,
+        bedNo: tenant.bedNo,
+        amount: Number(pay.amount) || 0,
+        year: Number(pay.year),
+        month: Number(pay.month),
+        utr: pay.utr || "",
+        note: pay.note || "",
+        paymentMode: pay.mode || pay.paymentMode || "Online",
+        paymentDate: pay.paymentDate || notif.createdAt || new Date().toISOString(),
+      });
     } catch (e) {
       console.error("Approve failed:", e);
       alert(e?.response?.data?.message || e.message || "Approval failed");
@@ -76,20 +83,54 @@ export default function NotificationBell({
     }
   };
 
-  const markAllRead = async () => {
-    try {
-      await axios.post(`${apiUrl}payments/notifications/read-all`, {
-        status: "pending",
-      });
-      setItems([]);
-    } catch (e) {
-      console.error("markAllRead failed:", e);
-      alert("Could not mark all read");
-    }
-  };
+  // Styles
+  const panelStyle = isMobile
+    ? {
+        position: "fixed",
+        left: 8,
+        right: 8,
+        top: 64,
+        zIndex: 1055,
+        background: "#fff",
+        borderRadius: 12,
+        boxShadow: "0 20px 60px rgba(2,6,23,.25)",
+        padding: 8,
+        maxHeight: "65vh",
+        overflowY: "auto",
+      }
+    : {
+        minWidth: 360,
+        maxWidth: 400,
+        maxHeight: 420,
+        overflowY: "auto",
+      };
+
+  const overlayStyle = isMobile
+    ? {
+        position: "fixed",
+        inset: 0,
+        zIndex: 1050,
+        background: "rgba(2,6,23,.45)",
+        backdropFilter: "blur(1px)",
+      }
+    : null;
+
+  const wrapText = { wordBreak: "break-word", overflowWrap: "anywhere" };
+
+  const IconBtn = ({ onClick, label, title, children }) => (
+    <button
+      className="btn btn-sm btn-outline-secondary"
+      onClick={onClick}
+      aria-label={label}
+      title={title || label}
+      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, padding: 0 }}
+    >
+      {children}
+    </button>
+  );
 
   return (
-    <div className="dropdown">
+    <div className="dropdown" style={{ position: "relative" }}>
       <button
         className="btn btn-light position-relative"
         type="button"
@@ -108,36 +149,46 @@ export default function NotificationBell({
         )}
       </button>
 
+      {open && isMobile && <div style={overlayStyle} onClick={() => setOpen(false)} />}
+
       {open && (
         <div
-          className="dropdown-menu dropdown-menu-end show p-2"
-          style={{ minWidth: 360, maxWidth: 400, maxHeight: 420, overflowY: "auto" }}
+          className={isMobile ? "p-2" : "dropdown-menu dropdown-menu-end show p-2"}
+          style={panelStyle}
         >
-          <div className="d-flex align-items-center justify-content-between px-2 mb-2">
+          <div className="d-flex align-items-center justify-content-between px-2 mb-2" style={wrapText}>
             <strong>Payment notifications</strong>
             <div className="d-flex gap-2">
-              <button className="btn btn-sm btn-outline-secondary" onClick={fetchItems}>
-                Refresh
-              </button>
-              <button className="btn btn-sm btn-outline-dark" onClick={markAllRead}>
-                Mark all read
-              </button>
+              {/* Refresh (icon) */}
+              <IconBtn label="Refresh" onClick={fetchItems}>
+                {/* circular arrow */}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M20 12a8 8 0 1 1-2.343-5.657L20 8M20 8V4m0 4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </IconBtn>
+
+              {/* Close (icon) */}
+              <IconBtn label="Close" onClick={() => setOpen(false)}>
+                {/* X icon */}
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </IconBtn>
             </div>
           </div>
 
           {loading && <div className="text-muted px-2 py-1">Loading…</div>}
-          {err && <div className="text-danger px-2 py-1">{err}</div>}
+          {err && <div className="text-danger px-2 py-1" style={wrapText}>{err}</div>}
 
           {items.length === 0 && !loading ? (
             <div className="text-muted px-2 py-2">No new notifications</div>
           ) : (
             items.map((n) => {
-              // n.tenantId and n.paymentId are populated in your router
               const tenant = n.tenantId || {};
               const pay = n.paymentId || {};
               return (
-                <div key={n._id} className="border rounded p-2 mb-2 bg-white">
-                  <div className="d-flex justify-content-between align-items-baseline">
+                <div key={n._id} className="border rounded p-2 mb-2 bg-white" style={wrapText}>
+                  <div className="d-flex justify-content-between align-items-baseline" style={wrapText}>
                     <div className="fw-semibold">
                       {(tenant.name || "Tenant")} • Room {(tenant.roomNo ?? "—")} • Bed {(tenant.bedNo ?? "—")}
                     </div>
@@ -149,7 +200,9 @@ export default function NotificationBell({
                   <div className="small text-muted mt-1">
                     Payment: {fmtINR(pay.amount)} for {mmYY(pay.month, pay.year)}
                   </div>
-                  {pay.utr && <div className="small">UTR: <span className="text-dark">{pay.utr}</span></div>}
+                  {pay.utr && (
+                    <div className="small">UTR: <span className="text-dark">{pay.utr}</span></div>
+                  )}
                   {pay.note && <div className="small text-muted">Note: {pay.note}</div>}
 
                   <div className="d-flex gap-2 mt-2">
@@ -160,28 +213,23 @@ export default function NotificationBell({
                       Reject
                     </button>
                     <button
-  className="btn btn-sm btn-outline-secondary ms-auto"
-  onClick={() => {
-    const tenant = n.tenantId || {};
-    const pay = n.paymentId || {};
-    const lines = [
-      `Tenant: ${tenant.name || "—"}`,
-      `Room/Bed: ${tenant.roomNo ?? "—"} / ${tenant.bedNo ?? "—"}`,
-      `Reported at: ${n.createdAt ? new Date(n.createdAt).toLocaleString() : "—"}`,
-      "",
-      `Amount: ${fmtINR(pay.amount)}`,
-      `For month: ${mmYY(pay.month, pay.year)}`,
-      `UTR: ${pay.utr || "—"}`,
-      `Note: ${pay.note || "—"}`,
-      "",
-      // `Status: ${n.status || "pending"}`,
-    ];
-    window.alert(lines.join("\n"));
-  }}
->
-  Details
-</button>
-
+                      className="btn btn-sm btn-outline-secondary ms-auto"
+                      onClick={() => {
+                        const lines = [
+                          `Tenant: ${tenant.name || "—"}`,
+                          `Room/Bed: ${tenant.roomNo ?? "—"} / ${tenant.bedNo ?? "—"}`,
+                          `Reported at: ${n.createdAt ? new Date(n.createdAt).toLocaleString() : "—"}`,
+                          "",
+                          `Amount: ${fmtINR(pay.amount)}`,
+                          `For month: ${mmYY(pay.month, pay.year)}`,
+                          `UTR: ${pay.utr || "—"}`,
+                          `Note: ${pay.note || "—"}`,
+                        ];
+                        window.alert(lines.join("\n"));
+                      }}
+                    >
+                      Details
+                    </button>
                   </div>
                 </div>
               );

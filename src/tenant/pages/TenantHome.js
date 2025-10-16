@@ -11,9 +11,9 @@ import {
   FaFileAlt,
 } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
-import axios from "axios";
-import { API, authHeader } from "../tenantApi";
-
+// import axios from "axios";
+// import { API, authHeader } from "../tenantApi";
+import { tenantHttp } from "../tenantApi";
 /* ----------------------------- Utils ---------------------------------- */
 const toNumber = (v) => {
   const n = Number(v);
@@ -202,9 +202,8 @@ export default function TenantHome({
   // Fetch rooms so we can read the bed price as "base rent" (same source as TenantPayments)
   const [rooms, setRooms] = useState(null);
   useEffect(() => {
-    const h = { headers: authHeader() };
-    axios
-      .get(`${API}/rooms`, h)
+   tenantHttp
+    .get(`/rooms`)
       .then((res) => setRooms(res.data || []))
       .catch(() => setRooms(null));
   }, []);

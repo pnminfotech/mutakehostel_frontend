@@ -14,7 +14,7 @@ const Sidebar = () => {
         const token = localStorage.getItem("authToken");
         if (!token) return;
 
-        const response = await axios.get("http://localhost:8000/api/user", {
+        const response = await axios.get("https://mutakehostel-backend.onrender.com/api/user", {
           headers: { Authorization: `Bearer ${token}` },
         });
 

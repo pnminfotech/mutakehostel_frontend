@@ -59,7 +59,7 @@ function AddData() {
   });
 
   // const apiUrl = 'http://localhost:8/api/';
-  const apiUrl = 'http://localhost:8000/api/';  
+  const apiUrl = 'https://mutakehostel-backend.onrender.com/api/';  
   const correctPassword = "987654";
  const getUndoKey = (tenantId, month) => `undo_history_${tenantId}_${month}`;
 
@@ -111,7 +111,7 @@ const clearUndoHistory = (tenantId, month) => {
       const fetchData = async () => {
         try {
           // const response = await fetch(`http://localhost:8/api/form/${id}`);
-          const response = await fetch(`http://localhost:8000/api/form/${id}`);
+          const response = await fetch(`https://mutakehostel-backend.onrender.com/api/form/${id}`);
           if (!response.ok) throw new Error("Failed to fetch data");
   
           const data = await response.json();
@@ -152,7 +152,7 @@ const clearUndoHistory = (tenantId, month) => {
 
     const handleDownloadForm = async (data) => {
       try {
-        const response = await axios.get(`http://localhost:8000/api/form/${data._id}`);
+        const response = await axios.get(`https://mutakehostel-backend.onrender.com/api/form/${data._id}`);
         if (response.status !== 200) throw new Error("Failed to fetch data");
   
         const singleForm = response.data;
@@ -213,7 +213,7 @@ const handleCancelLeave = async (id) => {
 
   try {
     const response = await axios.post(
-      `http://localhost:8000/api/cancel-leave`,
+      `https://mutakehostel-backend.onrender.com/api/cancel-leave`,
       { id }
     );
 
@@ -251,7 +251,7 @@ const handleCancelLeave = async (id) => {
   const fetchLightBills = async () => {
     try {
       const response = await fetch(
-        "http://localhost:8000/api/light-bill/all"
+        "https://mutakehostel-backend.onrender.com/api/light-bill/all"
       );
       const data = await response.json();
       setLightBills(data); // Assuming data is an array
@@ -268,7 +268,7 @@ const handleCancelLeave = async (id) => {
       if (recordToArchive) {
         // Archive the record
         axios
-          .post(`http://localhost:8000/api/forms/archive`, { id })
+          .post(`https://mutakehostel-backend.onrender.com/api/forms/archive`, { id })
           .then((response) => {
             console.log('Data archived:', response.data);
             // Remove from formData
@@ -299,7 +299,7 @@ const handleCancelLeave = async (id) => {
 
   useEffect(() => {
     axios
-      .get('http://localhost:8000/api/forms/archived')
+      .get('https://mutakehostel-backend.onrender.com/api/forms/archived')
       .then((response) => {
         console.log('Archived data fetched:', response.data);
         setDeletedData(response.data); // Populate the archived data state
@@ -312,7 +312,7 @@ const handleCancelLeave = async (id) => {
   
   useEffect(() => {
     axios
-      .get("http://localhost:8000/api/forms")
+      .get("https://mutakehostel-backend.onrender.com/api/forms")
       .then((response) => {
         const leaveData = {};
         response.data.forEach((item) => {
@@ -329,8 +329,8 @@ const handleCancelLeave = async (id) => {
   //download sheet for light bill
   const downloadLightBillExcel = async () => {
     const apiUrl = isLightBill
-      ? "http://localhost:8000/api/light-bill/all"
-      : "http://localhost:8000/api/other-expense/all";
+      ? "https://mutakehostel-backend.onrender.com/api/light-bill/all"
+      : "https://mutakehostel-backend.onrender.com/api/other-expense/all";
   
     try {
       // Fetch data from the backend
@@ -473,7 +473,7 @@ const handleCancelLeave = async (id) => {
     const currentDate = new Date().toISOString().split("T")[0];
   
     try {
-      const response = await fetch("http://localhost:8000/api/leave", {
+      const response = await fetch("https://mutakehostel-backend.onrender.com/api/leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -512,7 +512,7 @@ const handleCancelLeave = async (id) => {
     if (newRentAmount === 0) {
       // 📌 If Rent Amount is 0, Call DELETE API http://localhost:8
       axios
-        .delete(`http://localhost:8000/api/form/${currentFormId}/rent/${monthYear}`)
+        .delete(`https://mutakehostel-backend.onrender.com/api/form/${currentFormId}/rent/${monthYear}`)
         .then(() => {
           alert("Rent removed successfully!"); 
   
@@ -556,7 +556,7 @@ saveUndoHistory(currentFormId, newRent.month, existingRent ? {
   
     // 📌 Send PUT request to update rent
    axios
-  .put(`http://localhost:8000/api/form/${currentFormId}`, updatedRent)
+  .put(`https://mutakehostel-backend.onrender.com/api/form/${currentFormId}`, updatedRent)
   .then((response) => {
     const patched = {
       ...response.data,
@@ -600,7 +600,7 @@ saveUndoHistory(currentFormId, newRent.month, existingRent ? {
 
   const handleDeleteConfirm = async () => {
     try {
-      await axios.delete(`http://localhost:8000/api/form/${currentDeleteId}`);
+      await axios.delete(`https://mutakehostel-backend.onrender.com/api/form/${currentDeleteId}`);
       setFormData((prevFormData) => prevFormData.filter((data) => data._id !== currentDeleteId));
       alert('Form deleted successfully');
       setShowDeleteConfirmation(false);  // Close confirmation modal
@@ -653,7 +653,7 @@ const handleUndoRent = (tenantId, month) => {
 
   const undoArchive = (data) => {
   axios
-    .post(`http://localhost:8000/api/forms/restore`, { id: data._id })
+    .post(`https://mutakehostel-backend.onrender.com/api/forms/restore`, { id: data._id })
     .then(() => {
       // Re-fetch entire updated tenant list after restore
       axios.get(apiUrl).then((response) => {
@@ -683,7 +683,7 @@ const handleUndoRent = (tenantId, month) => {
     // }
 
     axios
-      .put(`http://localhost:8000/api/update/${currentFormId}`, updatedFormData)
+      .put(`https://mutakehostel-backend.onrender.com/api/update/${currentFormId}`, updatedFormData)
       .then((response) => {
         const updatedData = formData.map((data) =>
           data._id === response.data._id ? response.data : data

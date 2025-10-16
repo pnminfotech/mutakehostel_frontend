@@ -1,4 +1,4 @@
-const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || "http://localhost:8000";
+const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || "https://mutakehostel-backend.onrender.com";
 
 export const getDocHref = (doc) => {
   if (!doc) return "#";
