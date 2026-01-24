@@ -4,12 +4,10 @@ import {
   FaGlobe, FaCog
 } from "react-icons/fa";
 import Fuse from "fuse.js";
-import rawIntents from "../componenet/json/chatbotIntents.json";
-
-
-// ===== Month-aware rent record parser (make it top-level & reusable) =====
-// Accepts records of shape:
-//   { month: "Sep-25", rentAmount, ... }  OR  { date: "2025-09-10", ... }
+import rawIntents from "./json/chatbotIntents.json"; // path ok
+import chatbot from "../assets/chatbot.png";
+import "../Pages/NewComponent.css";
+// ===== Month-aware rent record parser =====
 const getYMFromRecord = (r) => {
   if (!r) return null;
   if (r.month) {
@@ -27,6 +25,9 @@ const getYMFromRecord = (r) => {
   return null;
 };
 
+
+
+
 // ========== helpers ==========
 const toNum = (v) => { if (v==null) return 0; const n = Number(String(v).replace(/[,₹\s]/g,"")); return Number.isFinite(n)?n:0; };
 const prettyCurrency = (n) => `₹${(toNum(n)||0).toLocaleString("en-IN")}`;
@@ -42,11 +43,8 @@ function defaultExpectFromTenant(tenant, roomsData){
 }
 function calculateDueThisYear(rents = [], joiningDateStr) {
   if (!joiningDateStr) return 0;
-
   const now = new Date();
   const y = now.getFullYear();
-
-  // Jan 1 of current year vs 1 month after joining — same rule your table uses
   const startOfYear = new Date(y, 0, 1);
   const join = new Date(joiningDateStr);
   const rentStart = new Date(join.getFullYear(), join.getMonth() + 1, 1);
@@ -60,8 +58,6 @@ function calculateDueThisYear(rents = [], joiningDateStr) {
       .map(({ m, y }) => `${m}-${y}`)
   );
 
-
-  // Use the last paid amount as the expected base (keeps your existing behavior)
   const lastPaid = (rents || [])
     .filter(r => toNum(r?.rentAmount) > 0 && getYMFromRecord(r))
     .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
@@ -146,7 +142,13 @@ function STR(lang){
     rentStatusTitle:(t)=>`${t} चा रेंट स्टेटस`,
     labelRoomBed:(r,b)=>`रूम ${r} • बेड ${b}`,
     expectedMonthly:(amt)=>`— अपेक्षित मासिक: ${amt}`,
+    // ✅ FIXED: use the real mcount variable
     thisYearDue:(amt,mcount)=>`— या वर्षीचे देय: ${amt} (${mcount} महिने)`,
+    monthlyRentLine:(n,amt)=>`${n} चे मासिक भाडे: ${amt}`,
+    joiningDateLine:(n,d)=>`${n} ची जॉइनिंग तारीख: ${d}`,
+    roomLine:(n,r)=>`${n} चा रूम: ${r||"—"}`,
+    bedLine:(n,b)=>`${n} चा बेड: ${b||"—"}`,
+    detailsTitle:(n)=>`${n} चे तपशील`,
     pendingMonths:"— पेंडिंग महिने:", noPendingMonths:"— पेंडिंग महिने नाहीत ✅",
     vacantTitle:(room)=>`रूम ${room} मधले रिकामे बेड:`,
     vacantLine:(b,cat,price)=>`• बेड ${b}${cat?` (${cat})`:""}${price?` • ${price}`:""}`,
@@ -161,13 +163,13 @@ function STR(lang){
     phoneLine:(n,p)=>`${n} चा फोन: ${p||"—"}`, depositLine:(n,amt)=>`${n} ने ${amt} डिपॉझिट दिले आहे.`,
     pendingForMonthTitle:(mh)=>`${mh} साठी पेंडिंग:`, pendingNone:"काहीही नाही ✅",
     paidForMonth:(n,mh)=>`${n} ने ${mh} चे पैसे भरले आहेत.`,
-pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए ${amt} पेंडिंग है।`,
-
+    pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए ${amt} पेंडिंग है।`,
     helpTitle:"उदाहरणे:", helpBullets:[
       "Priya चा rent status","Akash चे किती due आहे","Rohan चे pending months",
       "room 101 मधे रिकामे beds","कोणाचे rent pending आहे","Nikhil चे deposit किती",
       "Pooja चा phone","गेल्या महिन्यात कोण गेले","या महिन्याचे सर्व pending",
-      "March महिन्याचे सर्व pending","Priya चे या महिन्याचे pending"
+      "March महिन्याचे सर्व pending","Priya चे या महिन्याचे pending",
+      "Shreya चे rent amount","Shreya ची joining date","Shreya चे सर्व तपशील"
     ],
     sug:{
       pendingAllThis:"या महिन्याचे सर्व pending",
@@ -177,7 +179,6 @@ pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए
       pendingNameThis:(n)=>`${n} चे या महिन्याचे pending`,
       pendingNameFor:(n,m)=>`${n} चे ${m} महिन्याचे pending`,
       pendingForTenantMonth: (name, amt, mh) => `${name} चे ${mh} साठी ${amt} पेंडिंग आहे.`,
-
     }
   }; }
   if(lang==="hi"){ return {
@@ -186,11 +187,15 @@ pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए
     didntGet:"समझ नहीं आया। ‘help’ टाइप करें या अलग तरह से पूछें.",
     whichMonth:"कौन-सा महीना?", who:"कौन?", whichRoom:"कौन-सा रूम? “room 101 में खाली beds”.",
     noActiveTenant:(n)=>`“${n}” नाम का सक्रिय किरायेदार नहीं मिला.`,
-    roomNotFound:(r)=>`रूम ${r} नहीं मिला.`,
     rentStatusTitle:(t)=>`${t} का रेंट स्टेटस`,
     labelRoomBed:(r,b)=>`रूम ${r} • बेड ${b}`,
     expectedMonthly:(amt)=>`— अपेक्षित मासिक: ${amt}`,
     thisYearDue:(amt,mcount)=>`— इस वर्ष का बकाया: ${amt} (${mcount} महीने)`,
+    monthlyRentLine:(n,amt)=>`${n} का मासिक किराया: ${amt}`,
+    joiningDateLine:(n,d)=>`${n} की जॉइनिंग डेट: ${d}`,
+    roomLine:(n,r)=>`${n} का रूम: ${r||"—"}`,
+    bedLine:(n,b)=>`${n} का बेड: ${b||"—"}`,
+    detailsTitle:(n)=>`${n} का विवरण`,
     pendingMonths:"— पेंडिंग महीने:", noPendingMonths:"— कोई पेंडिंग महीना नहीं ✅",
     vacantTitle:(room)=>`रूम ${room} में खाली बेड:`,
     vacantLine:(b,cat,price)=>`• बेड ${b}${cat?` (${cat})`:""}${price?` • ${price}`:""}`,
@@ -206,11 +211,12 @@ pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए
     pendingForMonthTitle:(mh)=>`${mh} के पेंडिंग:`, pendingNone:"कुछ नहीं ✅",
     paidForMonth:(n,mh)=>`${n} ने ${mh} का भुगतान कर दिया है।`,
     pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए ${amt} पेंडिंग है।`,
- helpTitle:"उदाहरण:", helpBullets:[
+    helpTitle:"उदाहरण:", helpBullets:[
       "Priya का rent status","Akash का कितना due है","Rohan के pending months",
       "room 101 में खाली beds","किसका rent pending है","Nikhil का deposit कितना",
       "Pooja का phone","पिछले महीने कौन गया","इस महीने के सभी pending",
-      "March के सभी pending","Priya का इस महीने का pending"
+      "March के सभी pending","Priya का इस महीने का pending",
+      "Shreya का rent amount","Shreya की joining date","Shreya के सभी विवरण"
     ],
     sug:{
       pendingAllThis:"इस महीने के सभी pending",
@@ -232,6 +238,11 @@ pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए
     labelRoomBed:(r,b)=>`Room ${r} • Bed ${b}`,
     expectedMonthly:(amt)=>`— Expected monthly: ${amt}`,
     thisYearDue:(amt,mcount)=>`— This year due: ${amt} (${mcount} months)`,
+    monthlyRentLine:(n,amt)=>`${n}'s expected monthly rent: ${amt}`,
+    joiningDateLine:(n,d)=>`${n}'s joining date: ${d}`,
+    roomLine:(n,r)=>`${n}'s room: ${r||"—"}`,
+    bedLine:(n,b)=>`${n}'s bed: ${b||"—"}`,
+    detailsTitle:(n)=>`Details for ${n}`,
     pendingMonths:"— Pending months:", noPendingMonths:"— No pending months ✅",
     vacantTitle:(room)=>`Vacant beds in room ${room}:`,
     vacantLine:(b,cat,price)=>`• Bed ${b}${cat?` (${cat})`:""}${price?` • ${price}`:""}`,
@@ -251,7 +262,8 @@ pendingForTenantMonth: (name, amt, mh) => `${name} का ${mh} के लिए
       "rent status of Priya","how much due for Akash","pending months for Rohan",
       "vacant beds in room 101","who has pending","deposit of Nikhil",
       "phone of Pooja","who left last month","all pending this month",
-      "all pending for March","Priya pending this month"
+      "all pending for March","Priya pending this month",
+      "Shreya rent amount","Shreya joining date","Shreya all details"
     ],
     sug:{
       pendingAllThis:"all pending this month",
@@ -281,6 +293,7 @@ function normalizeByLanguage(q, lang){
     repl(/\b(pichle|gela|last)\s+month\b/g,"last month");
     repl(/\b(agle|next|pudhil|pudhcha)\s+month\b/g,"next month");
   }
+  s = s.replace(/\b([a-z]{3,})s\b(?=\s+(room|bed)\b)/g, "$1");
   return s;
 }
 
@@ -289,14 +302,31 @@ const MONTHS=[["january","jan"],["february","feb"],["march","mar"],["april","apr
 function monthName(idx,lang="en"){ const d=new Date(new Date().getFullYear(), idx, 1); const loc=lang==="mr"?"mr-IN":lang==="hi"?"hi-IN":"en-IN"; return d.toLocaleString(loc,{month:"long"}); }
 function humanMonth(m,y,lang="en"){ const loc=lang==="mr"?"mr-IN":lang==="hi"?"hi-IN":"en-IN"; return new Date(y,m,1).toLocaleString(loc,{month:"long",year:"numeric"}); }
 function matchMonthToken(q){ for(let i=0;i<MONTHS.length;i++){ for(const t of MONTHS[i]){ const re=new RegExp(`\\b${t}\\b`,"i"); if(re.test(q)) return i; } } return null; }
-function parseTargetMonth(q){
-  const now=new Date(); const lc=q.toLowerCase();
-  if(/\bthis month\b/.test(lc)) return {month:now.getMonth(),year:now.getFullYear(),label:"this month"};
-  if(/\blast month\b/.test(lc)){ const d=new Date(now.getFullYear(),now.getMonth()-1,1); return {month:d.getMonth(),year:d.getFullYear(),label:"last month"}; }
-  if(/\bnext month\b/.test(lc)){ const d=new Date(now.getFullYear(),now.getMonth()+1,1); return {month:d.getMonth(),year:d.getFullYear(),label:"next month"}; }
-  const mIdx=matchMonthToken(lc); if(mIdx!==null) return {month:mIdx,year:now.getFullYear(),label:MONTHS[mIdx][0]};
-  return null;
+function parseTargetMonth(q, prevMonth = null) {
+  const now = new Date();
+  const lc = q.toLowerCase();
+
+  if (/\bthis month\b/.test(lc))
+    return { month: now.getMonth(), year: now.getFullYear() };
+
+  if (/\blast month\b/.test(lc)) {
+    const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    return { month: d.getMonth(), year: d.getFullYear() };
+  }
+
+  if (/\bnext month\b/.test(lc)) {
+    const d = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    return { month: d.getMonth(), year: d.getFullYear() };
+  }
+
+  const mIdx = matchMonthToken(lc);
+  if (mIdx !== null)
+    return { month: mIdx, year: now.getFullYear() };
+
+  // ✅ FOLLOW-UP SUPPORT
+  return prevMonth;
 }
+
 
 // entities & routing
 function buildEntities(formData, roomsData){
@@ -305,20 +335,37 @@ function buildEntities(formData, roomsData){
   return {names,rooms};
 }
 
-function findTenantByName(formData, leaveDates, name){
-  const active=formData.filter(t=>!isLeft(t,leaveDates));
-  const q=norm(name);
-  // exact or includes
-  let t=active.find(x=>norm(x.name)===q)||active.find(x=>norm(x.name).includes(q));
-  if(t) return t;
-  // fuzzy fallback
-  const fuse=new Fuse(active,{keys:["name"],includeScore:true,threshold:0.33,minMatchCharLength:2});
-  const hit=fuse.search(name)[0];
-  return hit?.item||null;
+function findTenantByName(formData, leaveDates, name, extraInfo) {
+  const active = formData.filter(t => !isLeft(t, leaveDates));
+  const q = norm(name);
+
+  // First, try exact full name
+  let t = active.find(x => norm(x.name) === q);
+  if (t) return t;
+
+  // Try partial name match (first name)
+  const matches = active.filter(x => norm(x.name).startsWith(q));
+  if (matches.length === 1) return matches[0];
+
+  // If multiple matches, ask for extra info (surname / phone)
+  if (matches.length > 1) {
+    if (!extraInfo) return { askFor: "extra", options: matches.map(x => ({ name: x.name, phone: x.phoneNo })) };
+    
+    // Try to match using extra info
+    t = matches.find(x => x.phoneNo === extraInfo || x.name.toLowerCase().includes(extraInfo.toLowerCase()));
+    if (t) return t;
+    return { askFor: "extra", options: matches.map(x => ({ name: x.name, phone: x.phoneNo })) };
+  }
+
+  // fallback: use Fuse fuzzy search
+  const fuse = new Fuse(active, { keys: ["name"], includeScore: true, threshold: 0.33, minMatchCharLength: 2 });
+  const hit = fuse.search(name)[0];
+  return hit?.item || null;
 }
 
 function expandPatterns(intentsJson, entities){
-  const rows=[]; (Array.isArray(intentsJson)?intentsJson:[]).forEach(entry=>{
+  const rows=[];
+  (Array.isArray(intentsJson)?intentsJson:[]).forEach(entry=>{
     const pats=entry.patterns||entry.examples||[];
     pats.forEach(p=>{
       rows.push({intent:entry.intent,text:p,placeholders:true});
@@ -326,6 +373,7 @@ function expandPatterns(intentsJson, entities){
       if(p.includes("{room}")) entities.rooms.forEach(rm=>rows.push({intent:entry.intent,text:p.replace("{room}",rm),placeholders:false}));
     });
   });
+ 
   rows.push(
     {intent:"pending_this_month_all",text:"all pending this month",placeholders:false},
     {intent:"pending_specific_month_all",text:"all pending for {month}",placeholders:true},
@@ -334,6 +382,31 @@ function expandPatterns(intentsJson, entities){
     {intent:"open_update_rent",text:"update rent for {name} for {month}",placeholders:true},
     {intent:"open_update_rent",text:"update rent for {name} in {month}",placeholders:true},
     {intent:"open_update_rent",text:"update rent {name} {month}",placeholders:true},
+    // rent amount & joining date
+    {intent:"rent_amount",text:"rent amount for {name}",placeholders:true},
+    {intent:"rent_amount",text:"monthly rent of {name}",placeholders:true},
+    {intent:"rent_amount",text:"expected rent of {name}",placeholders:true},
+    {intent:"joining_date",text:"joining date of {name}",placeholders:true},
+    {intent:"joining_date",text:"join date for {name}",placeholders:true},
+    {intent:"joining_date",text:"start date of {name}",placeholders:true},
+    {intent:"joining_date",text:"when did {name} join",placeholders:true},
+    // room/bed/deposit/details
+    {intent:"room_no_of",text:"room number of {name}",placeholders:true},
+    {intent:"room_no_of",text:"room no of {name}",placeholders:true},
+    {intent:"bed_no_of",text:"bed number of {name}",placeholders:true},
+    {intent:"bed_no_of",text:"bed no of {name}",placeholders:true},
+    {intent:"deposit_of",text:"deposit of {name}",placeholders:true},
+    {intent:"details_of",text:"all details of {name}",placeholders:true},
+    {intent:"details_of",text:"full details for {name}",placeholders:true},
+    {intent:"details_of",text:"profile of {name}",placeholders:true},
+    // name-first queries like "Shreya room no" / "Shreya bed no"
+
+  {intent:"room_no_of", text:"{name} room no", placeholders:true},
+  {intent:"room_no_of", text:"{name} room number", placeholders:true},
+  {intent:"bed_no_of",  text:"{name} bed no", placeholders:true},
+  {intent:"bed_no_of",  text:"{name} bed number", placeholders:true}
+
+
   );
   return rows;
 }
@@ -344,20 +417,28 @@ function makeRouter(patternRows){
     hits.sort((a,b)=> (a.item.placeholders===b.item.placeholders) ? (a.score-b.score) : (a.item.placeholders?1:-1));
     return hits[0].item.intent; };
 }
+function extractEntities(q, entities, currentTenantName, contextTenant) {
+  const room =
+    q.match(/\broom\s+([A-Za-z0-9\-]+)\b/i)?.[1] ||
+    entities.rooms.find(r => q.includes(String(r))) ||
+    null;
 
-function extractEntities(q, entities, currentTenantName){
-  // better room detection: word boundary around digits/letters
-  const room=(q.match(/\broom\s+([A-Za-z0-9\-]+)\b/i)?.[1])||entities.rooms.find(r=>q.includes(String(r)))||null;
+  const lower = q.toLowerCase();
+  let name = null;
+  let best = 0;
 
-  // robust name detection: prefer longest token match
-  const lower=q.toLowerCase();
-  let name=null, best=0;
-  for(const n of entities.names){
-    const ln=n.toLowerCase();
-    if(lower.includes(ln) && ln.length>best){ name=n; best=ln.length; }
+  for (const n of entities.names) {
+    const ln = n.toLowerCase();
+    if (lower.includes(ln) && ln.length > best) {
+      name = n;
+      best = ln.length;
+    }
   }
-  if(!name && currentTenantName) name=currentTenantName;
-  return {name,room};
+
+  // ✅ FOLLOW-UP NAME
+  if (!name) name = currentTenantName || contextTenant;
+
+  return { name, room };
 }
 
 function listAllPendingForMonth(formData, roomsData, leaveDates, monthIdx, year, lang="en"){
@@ -379,7 +460,27 @@ function oneTenantPendingForMonth(name, formData, roomsData, leaveDates, monthId
   return S.pendingForTenantMonth(t.name, prettyCurrency(expect), mh);
 }
 
-function handleIntent({ intent, q, formData, roomsData, leaveDates, entities, lang, currentTenantName }){
+function formatDetails(t, roomsData, lang){
+  const S=STR(lang);
+  const expect=prettyCurrency(defaultExpectFromTenant(t,roomsData));
+  const due=prettyCurrency(calculateDueThisYear(t.rents,t.joiningDate));
+  const months=pendingMonthsFrom(t.joiningDate,t.rents);
+  const join = t.joiningDate ? new Date(t.joiningDate).toLocaleDateString() : "—";
+  const lines = [
+    `${S.detailsTitle(t.name)}`,
+    S.labelRoomBed(t.roomNo, t.bedNo),
+    S.phoneLine(t.name, t.phoneNo),
+    S.depositLine(t.name, prettyCurrency(t.depositAmount)),
+    S.monthlyRentLine(t.name, expect),
+    S.joiningDateLine(t.name, join),
+    S.thisYearDue(due, months.length),
+    months.length ? `${S.pendingMonths}\n${months.map((m, i) => `${i + 1}. ${m}`).join("\n")
+}` : S.noPendingMonths
+  ];
+  return lines.join("\n");
+}
+
+function handleIntent({ intent, q, formData, roomsData, leaveDates, entities, lang, currentTenantName,context }){
   const S=STR(lang);
   const H={
     open_update_rent: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who; const tm=parseTargetMonth(q); if(!tm) return S.whichMonth;
@@ -388,31 +489,44 @@ function handleIntent({ intent, q, formData, roomsData, leaveDates, entities, la
     },
     rent_status: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who; const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name);
       const expect=defaultExpectFromTenant(t,roomsData); const due=calculateDueThisYear(t.rents,t.joiningDate); const months=pendingMonthsFrom(t.joiningDate,t.rents);
-      return [`${S.rentStatusTitle(t.name)} (${S.labelRoomBed(t.roomNo,t.bedNo)})`, S.expectedMonthly(prettyCurrency(expect)), S.thisYearDue(prettyCurrency(due), months.length), months.length?`${S.pendingMonths}\n${months.map(m=>`• ${m}`).join("\n")}`:S.noPendingMonths].join("\n");
+      return [`${S.rentStatusTitle(t.name)} (${S.labelRoomBed(t.roomNo,t.bedNo)})`, S.expectedMonthly(prettyCurrency(expect)), S.thisYearDue(prettyCurrency(due), months.length), months.length?`${S.pendingMonths}\n${months.map((m, i) => `${i + 1}. ${m}`).join("\n")
+}`:S.noPendingMonths].join("\n");
+    },
+    rent_amount: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who;
+      const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name);
+      const amt=prettyCurrency(defaultExpectFromTenant(t,roomsData)); return S.monthlyRentLine(t.name, amt);
+    },
+    joining_date: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who;
+      const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name);
+      const d = t.joiningDate ? new Date(t.joiningDate).toLocaleDateString() : "—"; return S.joiningDateLine(t.name, d);
+    },
+    room_no_of: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who;
+      const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name); return S.roomLine(t.name, t.roomNo);
+    },
+    bed_no_of: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who;
+      const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name); return S.bedLine(t.name, t.bedNo);
+    },
+    details_of: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who;
+      const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name); return formatDetails(t, roomsData, lang);
     },
     due_amount: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who; const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name);
       const due=calculateDueThisYear(t.rents,t.joiningDate); return S.dueForYearLine(t.name, prettyCurrency(due), new Date().getFullYear()); },
     pending_months: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); if(!name) return S.who; const t=findTenantByName(formData,leaveDates,name); if(!t) return S.noActiveTenant(name);
-      const months=pendingMonthsFrom(t.joiningDate,t.rents); return months.length?`${t.name} — ${S.pendingMonths}\n${months.map(m=>`• ${m}`).join("\n")}`:S.noPendingMonths; },
-   vacant_beds_in_room: () => {
-  const { room } = extractEntities(q, entities, currentTenantName);
-  if (!room) return S.whichRoom;
+      const months = pendingMonthsFrom(t.joiningDate, t.rents);
+return months.length
+  ? `${t.name} — ${S.pendingMonths}\n${months.map((m, i) => `${i + 1}. ${m}`).join("\n")}`
+  : S.noPendingMonths;},
 
-  const active = new Set(
-    formData.filter(t => !isLeft(t, leaveDates)).map(t => `${t.roomNo}-${t.bedNo}`)
-  );
-
-  const roomObj = roomsData.find(r => String(r.roomNo) === String(room));
-  if (!roomObj) return S.roomNotFound(room);
-
-  const vacant = (roomObj?.beds || []).filter(b => !active.has(`${room}-${b.bedNo}`));
-  if (!vacant.length) return S.noVacant(room);
-
-  return `${S.vacantTitle(room)}\n${vacant
-    .map(b => S.vacantLine(b.bedNo, b.category, b.price ? prettyCurrency(b.price) : ""))
-    .join("\n")}`;
-},
-
+    vacant_beds_in_room: () => {
+      const { room } = extractEntities(q, entities, currentTenantName);
+      if (!room) return S.whichRoom;
+      const active = new Set(formData.filter(t => !isLeft(t, leaveDates)).map(t => `${t.roomNo}-${t.bedNo}`));
+      const roomObj = roomsData.find(r => String(r.roomNo) === String(room));
+      if (!roomObj) return S.roomNotFound(room);
+      const vacant = (roomObj?.beds || []).filter(b => !active.has(`${room}-${b.bedNo}`));
+      if (!vacant.length) return S.noVacant(room);
+      return `${S.vacantTitle(room)}\n${vacant.map(b => S.vacantLine(b.bedNo, b.category, b.price ? prettyCurrency(b.price) : "")).join("\n")}`;
+    },
     who_has_pending: ()=>{ const y=new Date().getFullYear();
       const pending=formData.filter(t=>!isLeft(t,leaveDates)).map(t=>({t, due:calculateDueThisYear(t.rents,t.joiningDate)})).filter(x=>x.due>0).sort((a,b)=>b.due-a.due).slice(0,100);
       if(!pending.length) return `${S.whoHasPendingTitle(y)}\n${S.pendingNone}`;
@@ -430,20 +544,67 @@ function handleIntent({ intent, q, formData, roomsData, leaveDates, entities, la
     pending_this_month_all: ()=>{ const tm=parseTargetMonth("this month"); return listAllPendingForMonth(formData,roomsData,leaveDates,tm.month,tm.year,lang); },
     pending_specific_month_all: ()=>{ const tm=parseTargetMonth(q); if(!tm) return S.whichMonth; return listAllPendingForMonth(formData,roomsData,leaveDates,tm.month,tm.year,lang); },
     pending_this_month_name: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); const tm=parseTargetMonth("this month"); return oneTenantPendingForMonth(name,formData,roomsData,leaveDates,tm.month,tm.year,lang); },
-    pending_specific_month_name: ()=>{ const {name}=extractEntities(q,entities,currentTenantName); const tm=parseTargetMonth(q); if(!tm) return S.whichMonth; return oneTenantPendingForMonth(name,formData,roomsData,leaveDates,tm.month,tm.year,lang); },
-    help: ()=> `${S.helpTitle}\n${S.helpBullets.map(b=>`• ${b}`).join("\n")}`,
+    pending_specific_month_name: () => {
+  const { name } = extractEntities(
+    q,
+    entities,
+    currentTenantName,
+    context.lastTenant
+  );
+
+  const tm = parseTargetMonth(q, context.lastMonth);
+  if (!tm) return S.whichMonth;
+
+  return oneTenantPendingForMonth(
+    name,
+    formData,
+    roomsData,
+    leaveDates,
+    tm.month,
+    tm.year,
+    lang
+  );
+},
+
+  help: () =>
+  `${S.helpTitle}\n\n${S.helpBullets
+    .map((b, i) => `${i + 1}. ${b}`)
+    .join("\n\n")}`,
+
   };
   return H[intent] ? H[intent]() : S.didntGet;
 }
 
+// Stronger rule-based routing first
 function ruleIntent(q, entities){
   const hasPendingWord=/\b(pending|due|baki|baaki|बकाया|बाकी|थकबाकी|उधार|उधारी|पेंडिंग|पेन्डिंग)\b/.test(q);
   const month=parseTargetMonth(q);
+  const lower=q.toLowerCase();
+
+  // joining / rent amount
+  if (/\b(join(ing)? date|start date|move[ -]?in|joining)\b/.test(lower)) return "joining_date";
+  if (/\b(rent amount|monthly\s*rent|expected rent)\b/.test(lower)
+) return "rent_amount";
+
+  // --- NEW: robust room/bed detection (works for "shreya's room no." & "shreya room number")
+  const mentionsRoom = /\broom\b/.test(lower) && /\b(no\.?|number)\b/.test(lower);
+  const mentionsBed  = /\bbed\b/.test(lower)  && /\b(no\.?|number)\b/.test(lower);
+  const anyNameInQ   = entities.names.some(n => lower.includes(n.toLowerCase()));
+  if (mentionsRoom && anyNameInQ) return "room_no_of";
+  if (mentionsBed && anyNameInQ)  return "bed_no_of";
+
+  // details & deposit
+  if (/\b(all details|full details|profile)\b/.test(lower)) return "details_of";
+  if (/\bdeposit\b/.test(lower)) return "deposit_of";
+
+  // pending/all/name+month
   if(month && hasPendingWord){
-    const lower=q.toLowerCase(); const anyName=entities.names.find(n=>lower.includes(n.toLowerCase()));
+    const anyName=entities.names.find(n=>lower.includes(n.toLowerCase()));
     if(/\bthis month\b/.test(lower)){ return anyName ? "pending_this_month_name" : "pending_this_month_all"; }
     return anyName ? "pending_specific_month_name" : "pending_specific_month_all";
   }
+
+  // update & left last month
   if(/\bupdate\s+rent\b/i.test(q) && matchMonthToken(q)) return "open_update_rent";
   if(/\bwho left\b/.test(q) && /\blast month\b/.test(q)) return "left_last_month";
   return null;
@@ -458,21 +619,22 @@ function buildPendingSuggestions({lang, currentTenantName}){
   return items;
 }
 
-// ========== RESPONSIVE CHATBOT (with internal language picker) ==========
+// ========== RESPONSIVE CHATBOT ==========
 export default function TenantChatbot({
   formData = [],
   roomsData = [],
   leaveDates = {},
-  helpers,                // not used now; we use internal helpers
-  onOpenEdit,            // (tenantId, monthIdx, year) => void
+  helpers,
+  onOpenEdit,
 }) {
-  // language lives only inside chatbot
   const [lang, setLang] = useState(() => (typeof window!=="undefined" && localStorage.getItem("tenantChat.lang")) || "");
   const [showLangPicker, setShowLangPicker] = useState(() => !lang);
-
   const strings = STR(lang || "en");
-
-  // responsive: full-width on small screens
+  const [context, setContext] = useState({
+    lastTenant: null,
+    lastMonth: null,
+    lastIntent: null,
+  });
   const isNarrow = () => (typeof window!=="undefined" ? window.matchMedia("(max-width: 991.98px)").matches : false);
   const isPhone  = () => (typeof window!=="undefined" ? window.matchMedia("(max-width: 575.98px)").matches : false);
 
@@ -490,7 +652,7 @@ export default function TenantChatbot({
     return () => window.removeEventListener?.("resize", onResize);
   }, []);
 
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
   const [log, setLog] = useState([{ role: "assistant", message: strings.greeting }]);
   const [input, setInput] = useState("");
   const [currentTenantName, setCurrentTenantName] = useState(null);
@@ -502,16 +664,11 @@ export default function TenantChatbot({
   const boxRef = useRef(null);
   const inputRef = useRef(null);
 
-  // recompute greeting on first language pick
-  useEffect(() => {
-    if (!lang) return;
-    setLog([{ role: "assistant", message: STR(lang).greeting }]);
-  }, [lang]);
+  useEffect(() => { if (!lang) return; setLog([{ role: "assistant", message: STR(lang).greeting }]); }, [lang]);
 
   const entities = useMemo(() => buildEntities(formData, roomsData), [formData, roomsData]);
   const router = useMemo(() => makeRouter(expandPatterns(rawIntents, entities)), [entities]);
 
-  // suggestions on typing
   useEffect(() => {
     const raw=input;
     const q=normalizeByLanguage(raw, lang || "en");
@@ -528,26 +685,70 @@ export default function TenantChatbot({
 
   const insertSuggestion=(text)=>{ setInput(text); setShowSug(false); };
 
-  const send=(forcedText)=>{
-    const raw=(forcedText??input).trim(); if(!raw) return;
-    const q=normalizeByLanguage(raw, lang || "en");
+const send = (forcedText) => {
+  const raw = (forcedText ?? input).trim();
+  if (!raw) return;
 
-    // 1) precise rule-based routing first
-    let intent=ruleIntent(q, entities);
-    // 2) then fuzzy fallback
-    if(!intent) intent=router(q);
+  const q = normalizeByLanguage(raw, lang || "en");
 
-    const answer= intent
-      ? handleIntent({ intent, q, formData, roomsData, leaveDates, entities, lang: lang || "en", currentTenantName })
-      : STR(lang||"en").didntGet;
+  let intent = ruleIntent(q, entities);
+  if (!intent) intent = router(q);
 
-    const { name } = extractEntities(q, entities, currentTenantName);
-    if(name) setCurrentTenantName(name);
+  const tm = parseTargetMonth(q, context.lastMonth);
+  const { name } = extractEntities(
+    q,
+    entities,
+    currentTenantName,
+    context.lastTenant
+  );
 
-    setLog(prev=>[...prev, {role:"user", message:raw}, {role:"assistant", message:answer}]);
-    setInput(""); setShowSug(false); setActiveSug(0);
-    setTimeout(()=>{ boxRef.current?.scrollTo({ top: boxRef.current.scrollHeight, behavior:"smooth" }); }, 0);
-  };
+  // Try to find tenant
+  const tenantLookup = findTenantByName(formData, leaveDates, name || raw, context.lastTenant);
+  
+  let answer;
+
+  if (tenantLookup?.askFor === "extra") {
+    // Multiple tenants with same first name
+    answer = `Multiple tenants found. Please provide surname or phone number:\n` +
+             tenantLookup.options.map(o => `• ${o.name} (Phone: ${o.phone})`).join("\n");
+  } else {
+    const t = tenantLookup;
+    answer = intent
+      ? handleIntent({
+          intent,
+          q,
+          formData,
+          roomsData,
+          leaveDates,
+          entities,
+          lang: lang || "en",
+          currentTenantName: t?.name || name,
+          contextMonth: tm,
+        })
+      : STR(lang || "en").didntGet;
+
+    if (t?.name) setCurrentTenantName(t.name);
+  }
+
+  // ✅ Update memory
+  setContext({
+    lastTenant: tenantLookup?.name || context.lastTenant,
+    lastMonth: tm || context.lastMonth,
+    lastIntent: intent || context.lastIntent,
+  });
+
+  setLog(prev => [
+    ...prev,
+    { role: "user", message: raw },
+    { role: "assistant", message: answer },
+  ]);
+
+  setInput("");
+};
+
+
+  const CLOSED_W = 76;
+  const CLOSED_H = 60;
 
   const onKeyDown=(e)=>{
     if(showSug && suggestions.length){
@@ -559,25 +760,16 @@ export default function TenantChatbot({
     }
     if(e.key==="Enter"){ send(); }
   };
-// Accepts r.month like "Sep-25" or falls back to r.date
 
-
-  // styles (responsive)
-  // On mobile/tablet use ~60vh but clamp to avoid super tall panels; desktop stays 360px
-   // Smaller heights: phones ≈ 50vh (clamp 220–380), tablets ≈ 56vh (clamp 240–420)
   const mobileBodyHeight = (() => {
     const vh = vhHeight || 800;
-    if (phone) {
-      return Math.max(220, Math.min(0.50 * vh, 380));
-    }
-    // tablet and small laptops
+    if (phone) return Math.max(220, Math.min(0.50 * vh, 250));
     return Math.max(240, Math.min(0.56 * vh, 420));
   })();
 
-
   const containerStyle = mobileLike
-    ? { position:"fixed", left:0, right:0, bottom:0, zIndex:2000, padding:"8px", maxWidth:"100%" }
-    : { position:"fixed", right:16, bottom:16, zIndex:2000, width:"100%", maxWidth: open? 480 : 203, transition:"max-width .25s ease, width .25s ease" };
+    ? { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 2000, padding: "8px", maxWidth: "100%" }
+    : { position: "fixed", right: 16, bottom: 16, zIndex: 2000, width: "100%", maxWidth: open ? 480 : CLOSED_W, transition: "max-width .25s ease, width .25s ease" };
 
   const chatBodyStyle = { height: mobileLike ? mobileBodyHeight : 360, overflowY:"auto", background:"#f7f9fb" };
   const bubbleBase = { maxWidth:"78%", padding:"10px 12px", borderRadius:14, fontSize:14, lineHeight:1.35, whiteSpace:"pre-wrap" };
@@ -602,77 +794,90 @@ export default function TenantChatbot({
 
   return (
     <div style={containerStyle}>
-      {/* Mobile closed state: tiny FAB */}
       {phone && !open && (
         <button
-          className="btn btn-primary shadow"
+          className="btn  shadow"
           onClick={()=>setOpen(true)}
-          style={{ position:"fixed", right:16, bottom:16, borderRadius:"999px", width:56, height:56, display:"grid", placeItems:"center", zIndex:2001 }}
+          style={{ position:"fixed", right:0, bottom:1, borderRadius:"999px", width:56, height:56, display:"grid", placeItems:"center", zIndex:2001 , alignItems: "start", justifyItems: "stretch", justifyContent: "center", backgroundColor:"#03091d" }}
           aria-label="Open chatbot"
         >
-          <FaRobot />
+         <span style={{ color:"#fff", fontWeight:800, fontSize:12, letterSpacing:0.4 }}>
+  Rent Saathi
+</span>
+
         </button>
       )}
 
-      {/* Chat card */}
-      <div className="card shadow" style={{ overflow:"hidden", borderRadius:16, display: mobileLike && !open ? "none" : "block" }}>
+      <div className="card shadow" style={{ overflow:"hidden", borderRadius:16, display: mobileLike && !open ? "none" : "block" ,}}>
         <div
-          className="card-header d-flex align-items-center justify-content-between"
-          style={{ cursor: mobileLike ? "default" : "pointer", background:"#ffffff" }}
-          onClick={()=> setOpen(o=> mobileLike ? o : !o)}  // on desktop header toggles; on mobile it doesn't
+          className="card-header"
+          style={{
+            background: "#03091d",
+            cursor: mobileLike ? "default" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: !mobileLike && !open ? "center" : "space-between",
+            padding: open ? "10px 12px" : (mobileLike ? "10px 12px" : "8px 12px"),
+            minHeight: mobileLike ? 48 : (open ? 56 : CLOSED_H),
+          }}
+          onClick={() => setOpen((o) => (mobileLike ? o : !o))}
         >
-          <div className="d-flex align-items-center gap-2">
-            <FaRobot /> <strong>Hostel Assistant</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+           <span
+  style={{
+    color: "#fff",
+    fontWeight: 800,
+    fontSize: (!mobileLike && !open) ? 14 : 15,
+    letterSpacing: 0.4,
+    lineHeight: 1,
+    marginTop: 2,
+    display: "block",
+  }}
+>
+  Rent Saathi
+</span>
+
           </div>
-          <div className="d-flex align-items-center gap-2">
-            {/* quick language/settings */}
-            <button
-              className="btn btn-sm btn-light"
-              title="Language"
-              onClick={(e)=>{ e.stopPropagation(); setShowLangPicker(v=>!v); }}
-            >
-              <FaCog />
-            </button>
-            {!mobileLike && (open ? <FaChevronDown /> : <FaChevronUp />)}
-            {mobileLike && (
-              <button className="btn btn-sm btn-outline-secondary" onClick={()=>setOpen(false)} aria-label="Close">
-                <FaTimes />
-              </button>
-            )}
-          </div>
+
+          {(!mobileLike && !open) ? null : (
+            <div className="d-flex align-items-center gap-2">
+              {open && (
+                <button
+                  className="btn btn-sm btn-light"
+                  title="Language"
+                  onClick={(e) => { e.stopPropagation(); setShowLangPicker((v) => !v); }}
+                >
+                  <FaCog />
+                </button>
+              )}
+              {mobileLike && (
+                <button className="btn btn-sm btn-outline-secondary" onClick={() => setOpen(false)} aria-label="Close">
+                  <FaTimes />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Language picker only when open */}
         {open && showLangPicker && <LanguagePicker />}
 
-        {/* Chat UI */}
         {open && (
           <>
             <div className="card-body" ref={boxRef} style={chatBodyStyle}>
-              {log.map((m, i) => {
-                const isUser = m.role === "user";
-                const content = m.message;
-                return (
-                  <div key={i} className={`d-flex mb-3 ${isUser ? "justify-content-end" : "justify-content-start"}`}>
-                    {!isUser && <div style={{ ...avatar, marginRight:8 }}><FaRobot size={14}/></div>}
-                    <div style={isUser ? userBubble : assistantBubble}>
-                      {typeof content === "string" ? (
-                        <pre className="m-0" style={{ whiteSpace:"pre-wrap" }}>{content}</pre>
-                      ) : content?.kind === "open-edit-link" ? (
-                        <div>
-                          <div className="mb-2">{content.label}</div>
-                          <a href="#" onClick={(e)=>{ e.preventDefault(); onOpenEdit?.(content.tenantId, content.month, content.year); }}>
-                            Open edit modal
-                          </a>
-                        </div>
-                      ) : (
-                        <pre className="m-0" style={{ whiteSpace:"pre-wrap" }}>{JSON.stringify(content,null,2)}</pre>
-                      )}
-                    </div>
-                    {isUser && <div style={{ ...userAvatar, marginLeft:8 }}><FaUser size={12}/></div>}
-                  </div>
-                );
-              })}
+             {log.map((m, i) => {
+  const isUser = m.role === "user";
+  const content = m.message;
+  return (
+    <div key={i} className={`d-flex mb-3 ${isUser ? "justify-content-end" : "justify-content-start"}`}>
+      {!isUser && <div className={`chat-avatar assistant`}>🤖</div>}
+      <div className={`chat-bubble ${isUser ? "user" : "assistant"}`}>
+        {content}
+      </div>
+      {isUser && <div className={`chat-avatar user`}>👤</div>}
+    </div>
+  );
+})}
+
             </div>
 
             <div className="card-footer position-relative" style={{ background:"#fff" }}>
@@ -695,7 +900,6 @@ export default function TenantChatbot({
                 </button>
               </div>
 
-              {/* Suggestions */}
               {showSug && suggestions.length>0 && (
                 <div className="shadow"
                      style={{ position:"absolute", left:12, right:84, bottom:58, background:"#fff", borderRadius:10, border:"1px solid #e6e6e6", maxHeight:220, overflowY:"auto", zIndex:10 }}>

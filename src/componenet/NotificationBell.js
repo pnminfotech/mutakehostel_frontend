@@ -5,90 +5,164 @@ import axios from "axios";
 const fmtINR = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const mmYY = (m, y) => (m && y ? `${String(m).padStart(2, "0")}/${y}` : "—");
 
+// const adminAuthHeader = () => {
+//   const token = localStorage.getItem("adminToken") || localStorage.getItem("token");
+//   return token ? { Authorization: `Bearer ${token}` } : {};
+// };
+const adminAuthHeader = () => {
+  const token =
+    localStorage.getItem("adminToken") ||
+    localStorage.getItem("authToken") || // ✅ added this
+    localStorage.getItem("token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 export default function NotificationBell({
-  apiUrl = "https://mutakehostel-backend.onrender.com/api/",
+  apiUrl = " http://localhost:8000/api/",
   onApproved,
+  onLeaveApproved,
 }) {
   const [items, setItems] = React.useState([]);
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [err, setErr] = React.useState("");
-  const [isMobile, setIsMobile] = React.useState(() =>
-    window.matchMedia("(max-width: 576px)").matches
-  );
 
-  React.useEffect(() => {
-    const mq = window.matchMedia("(max-width: 576px)");
-    const fn = () => setIsMobile(mq.matches);
-    mq.addEventListener?.("change", fn);
-    fn();
-    return () => mq.removeEventListener?.("change", fn);
-  }, []);
+  const isMobile = window.matchMedia("(max-width: 576px)").matches;
 
-  const fetchItems = React.useCallback(async () => {
+
+  const fetchAll = React.useCallback(async () => {
+    setLoading(true);
+    setErr("");
     try {
-      setLoading(true);
-      setErr("");
-      const { data } = await axios.get(`${apiUrl}payments/notifications`, {
-        params: { status: "pending", limit: 50 },
-      });
-      setItems(Array.isArray(data) ? data : []);
+      // const payP = axios.get(`${apiUrl}payments/notifications`, {
+      //   params: { status: "pending", limit: 50 },
+      // });
+
+      // const leaveP = axios.get(`${apiUrl}admin/notifications/leave`, {
+      //   params: { status: "pending", limit: 50 },
+      //   headers: adminAuthHeader(),
+      // });
+
+      // const [payRes, leaveRes] = await Promise.allSettled([payP, leaveP]);
+const payP = axios.get(`${apiUrl}payments/notifications`, {
+  params: { status: "pending", limit: 50 },
+});
+
+const leaveP = axios.get(`${apiUrl}admin/notifications/leave`, {
+  params: { status: "pending", limit: 50 },
+  headers: adminAuthHeader(),
+});
+
+const attendanceP = axios.get(`${apiUrl}admin/notifications/attendance`, {
+  headers: adminAuthHeader(),
+});
+
+const [payRes, leaveRes, attRes] = await Promise.allSettled([payP, leaveP, attendanceP]);
+
+const payments =
+  payRes.status === "fulfilled" && Array.isArray(payRes.value.data)
+    ? payRes.value.data.map((p) => ({ ...p, type: "payment" }))
+    : [];
+
+const leaves =
+  leaveRes.status === "fulfilled" && Array.isArray(leaveRes.value.data)
+    ? leaveRes.value.data.map((l) => ({ ...l, type: "leave_request" }))
+    : [];
+
+const attendance =
+  attRes.status === "fulfilled" && Array.isArray(attRes.value.data)
+    ? attRes.value.data.map((a) => ({ ...a, type: "system" }))
+    : [];
+
+const combined = [...payments, ...leaves, ...attendance].sort(
+  (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+);
+
+setItems(combined);
+
+      
     } catch (e) {
-      console.error("Notifications fetch failed:", e);
-      setErr(e?.response?.data?.message || e.message || "Failed to load");
+      setErr(e?.response?.data?.message || e.message || "Failed to load notifications");
     } finally {
       setLoading(false);
     }
   }, [apiUrl]);
 
   React.useEffect(() => {
-    fetchItems();
-    const id = setInterval(fetchItems, 20000);
+    fetchAll();
+    const id = setInterval(fetchAll, 20000);
     return () => clearInterval(id);
-  }, [fetchItems]);
+  }, [fetchAll]);
 
-  const approveNotif = async (notif) => {
-    try {
-      await axios.post(`${apiUrl}payments/approve/${notif._id}`);
-      setItems((prev) => prev.filter((x) => x._id !== notif._id));
-      const tenant = notif.tenantId || {};
-      const pay = notif.paymentId || {};
-      onApproved?.({
-        type: "approved",
-        tenantId: tenant._id,
-        tenantName: tenant.name,
-        roomNo: tenant.roomNo,
-        bedNo: tenant.bedNo,
-        amount: Number(pay.amount) || 0,
-        year: Number(pay.year),
-        month: Number(pay.month),
-        utr: pay.utr || "",
-        note: pay.note || "",
-        paymentMode: pay.mode || pay.paymentMode || "Online",
-        paymentDate: pay.paymentDate || notif.createdAt || new Date().toISOString(),
-      });
-    } catch (e) {
-      console.error("Approve failed:", e);
-      alert(e?.response?.data?.message || e.message || "Approval failed");
-    }
+  // --- Payment approve/reject ---
+  const approvePayment = async (notif) => {
+    await axios.post(`${apiUrl}payments/approve/${notif._id}`);
+    setItems((prev) => prev.filter((x) => x._id !== notif._id));
+
+    const tenant = notif.tenantId || {};
+    const pay = notif.paymentId || {};
+    onApproved?.({
+      type: "approved",
+      tenantId: tenant._id,
+      tenantName: tenant.name,
+      roomNo: tenant.roomNo,
+      bedNo: tenant.bedNo,
+      amount: Number(pay.amount) || 0,
+      year: Number(pay.year),
+      month: Number(pay.month),
+      utr: pay.utr || "",
+      note: pay.note || "",
+      paymentMode: pay.mode || pay.paymentMode || "Online",
+      paymentDate: pay.paymentDate || notif.createdAt || new Date().toISOString(),
+    });
   };
 
-  const rejectNotif = async (notif) => {
-    try {
-      await axios.post(`${apiUrl}payments/reject/${notif._id}`);
-      setItems((prev) => prev.filter((x) => x._id !== notif._id));
-    } catch (e) {
-      console.error("Reject failed:", e);
-      alert(e?.response?.data?.message || e.message || "Reject failed");
-    }
+  const rejectPayment = async (notif) => {
+    await axios.post(`${apiUrl}payments/reject/${notif._id}`);
+    setItems((prev) => prev.filter((x) => x._id !== notif._id));
   };
 
-  // Styles
+  // --- Leave approve/reject ---
+  const approveLeave = async (notif) => {
+    const id = notif.requestId || notif._id;
+    await axios.post(`${apiUrl}admin/leave/${id}/approve`, {}, { headers: adminAuthHeader() });
+    setItems((prev) => prev.filter((x) => x._id !== notif._id));
+
+    const tenantId = notif.tenantId?._id || notif.tenantId;
+    onLeaveApproved?.({
+      tenantId,
+      leaveDateISO: notif.leaveDate,
+    });
+  };
+
+  const rejectLeave = async (notif) => {
+    const id = notif.requestId || notif._id;
+    await axios.post(`${apiUrl}admin/leave/${id}/reject`, {}, { headers: adminAuthHeader() });
+    setItems((prev) => prev.filter((x) => x._id !== notif._id));
+  };
+
+  // --- Mark seen (attendance/system) ---
+ // --- Mark seen (attendance/system) ---
+const markSeen = async (id) => {
+  // Instantly remove from UI
+  setItems((prev) => prev.filter((x) => x._id !== id));
+
+  // Fire-and-forget backend call (no alert or blocking)
+  try {
+    await axios.post(`${apiUrl}admin/notifications/${id}/seen`, {}, { headers: adminAuthHeader() });
+    console.log("✅ Notification marked as seen:", id);
+  } catch (e) {
+    console.warn("⚠️ Failed to update read status on backend:", e?.response?.data?.message || e.message);
+    // Don’t restore it back — we remove visually anyway
+  }
+};
+
+
   const panelStyle = isMobile
     ? {
         position: "fixed",
-        left: 8,
-        right: 8,
+        left: 15,
+        right: 15,
         top: 64,
         zIndex: 1055,
         background: "#fff",
@@ -98,47 +172,28 @@ export default function NotificationBell({
         maxHeight: "65vh",
         overflowY: "auto",
       }
-    : {
-        minWidth: 360,
-        maxWidth: 400,
-        maxHeight: 420,
-        overflowY: "auto",
-      };
-
-  const overlayStyle = isMobile
-    ? {
-        position: "fixed",
-        inset: 0,
-        zIndex: 1050,
-        background: "rgba(2,6,23,.45)",
-        backdropFilter: "blur(1px)",
-      }
-    : null;
+    : { minWidth: 360, maxWidth: 400, maxHeight: 420, overflowY: "auto" };
 
   const wrapText = { wordBreak: "break-word", overflowWrap: "anywhere" };
-
-  const IconBtn = ({ onClick, label, title, children }) => (
-    <button
-      className="btn btn-sm btn-outline-secondary"
-      onClick={onClick}
-      aria-label={label}
-      title={title || label}
-      style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 34, height: 34, padding: 0 }}
-    >
-      {children}
-    </button>
-  );
 
   return (
     <div className="dropdown" style={{ position: "relative" }}>
       <button
-        className="btn btn-light position-relative"
+        className="btn position-relative"
         type="button"
+        style={{ padding: 0, borderRadius: "none" }}
         onClick={() => setOpen((o) => !o)}
-        aria-expanded={open ? "true" : "false"}
         title="Notifications"
       >
-        🔔
+        <i
+          className="bi bi-bell"
+          style={{
+            fontSize: "1.2rem",
+            backgroundColor: "#ffc107",
+            padding: 4,
+            borderRadius: "25%",
+          }}
+        />
         {items.length > 0 && (
           <span
             className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
@@ -149,92 +204,145 @@ export default function NotificationBell({
         )}
       </button>
 
-      {open && isMobile && <div style={overlayStyle} onClick={() => setOpen(false)} />}
-
       {open && (
         <div
           className={isMobile ? "p-2" : "dropdown-menu dropdown-menu-end show p-2"}
-          style={panelStyle}
+          style={{
+            ...panelStyle,
+            ...(isMobile ? {} : { position: "absolute", right: 0, marginRight: 0 }),
+          }}
         >
+          {/* Header */}
           <div className="d-flex align-items-center justify-content-between px-2 mb-2" style={wrapText}>
-            <strong>Payment notifications</strong>
+            <strong>Notifications</strong>
             <div className="d-flex gap-2">
-              {/* Refresh (icon) */}
-              <IconBtn label="Refresh" onClick={fetchItems}>
-                {/* circular arrow */}
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M20 12a8 8 0 1 1-2.343-5.657L20 8M20 8V4m0 4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </IconBtn>
-
-              {/* Close (icon) */}
-              <IconBtn label="Close" onClick={() => setOpen(false)}>
-                {/* X icon */}
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-              </IconBtn>
+              <button className="btn btn-sm btn-outline-secondary" onClick={fetchAll}>
+                ↻
+              </button>
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setOpen(false)}>
+                ✕
+              </button>
             </div>
           </div>
 
           {loading && <div className="text-muted px-2 py-1">Loading…</div>}
-          {err && <div className="text-danger px-2 py-1" style={wrapText}>{err}</div>}
-
-          {items.length === 0 && !loading ? (
+          {err && <div className="text-danger px-2 py-1">{err}</div>}
+          {items.length === 0 && !loading && (
             <div className="text-muted px-2 py-2">No new notifications</div>
-          ) : (
-            items.map((n) => {
-              const tenant = n.tenantId || {};
-              const pay = n.paymentId || {};
-              return (
-                <div key={n._id} className="border rounded p-2 mb-2 bg-white" style={wrapText}>
-                  <div className="d-flex justify-content-between align-items-baseline" style={wrapText}>
-                    <div className="fw-semibold">
-                      {(tenant.name || "Tenant")} • Room {(tenant.roomNo ?? "—")} • Bed {(tenant.bedNo ?? "—")}
-                    </div>
-                    <div className="small text-muted">
-                      {n.createdAt ? new Date(n.createdAt).toLocaleString() : ""}
-                    </div>
-                  </div>
+          )}
 
-                  <div className="small text-muted mt-1">
-                    Payment: {fmtINR(pay.amount)} for {mmYY(pay.month, pay.year)}
-                  </div>
-                  {pay.utr && (
-                    <div className="small">UTR: <span className="text-dark">{pay.utr}</span></div>
-                  )}
-                  {pay.note && <div className="small text-muted">Note: {pay.note}</div>}
+          {items.map((n) => {
+            const isLeave = n.type === "leave_request";
+            const isAttendance = n.type === "system" && /^attendance_/.test(n?.payload?.kind || "");
+            const when = n?.payload?.whenISO
+              ? new Date(n.payload.whenISO).toLocaleString()
+              : "";
+            const where = n?.payload?.where || {};
+            const mapUrl =
+              where.lat && where.lng ? `https://maps.google.com/?q=${where.lat},${where.lng}` : null;
 
-                  <div className="d-flex gap-2 mt-2">
-                    <button className="btn btn-sm btn-success" onClick={() => approveNotif(n)}>
-                      Approve
-                    </button>
-                    <button className="btn btn-sm btn-outline-danger" onClick={() => rejectNotif(n)}>
-                      Reject
-                    </button>
-                    <button
-                      className="btn btn-sm btn-outline-secondary ms-auto"
-                      onClick={() => {
-                        const lines = [
-                          `Tenant: ${tenant.name || "—"}`,
-                          `Room/Bed: ${tenant.roomNo ?? "—"} / ${tenant.bedNo ?? "—"}`,
-                          `Reported at: ${n.createdAt ? new Date(n.createdAt).toLocaleString() : "—"}`,
-                          "",
-                          `Amount: ${fmtINR(pay.amount)}`,
-                          `For month: ${mmYY(pay.month, pay.year)}`,
-                          `UTR: ${pay.utr || "—"}`,
-                          `Note: ${pay.note || "—"}`,
-                        ];
-                        window.alert(lines.join("\n"));
-                      }}
-                    >
-                      Details
-                    </button>
+            const tenantObj = n.tenantId && typeof n.tenantId === "object" ? n.tenantId : {};
+            const tenantName = n.tenantName || tenantObj.name || "Tenant";
+            const roomNo = n.roomNo ?? tenantObj.roomNo ?? "—";
+            const bedNo = n.bedNo ?? tenantObj.bedNo ?? "—";
+            const pay = n.paymentId || {};
+
+            return (
+              <div key={n._id} className="border rounded p-2 mb-2 bg-white" style={wrapText}>
+                <div className="d-flex justify-content-between align-items-baseline">
+                  <div className="fw-semibold">
+                    {tenantName} • Room {roomNo} • Bed {bedNo}
+                  </div>
+                  <div className="small text-muted">
+                    {n.createdAt ? new Date(n.createdAt).toLocaleString() : ""}
                   </div>
                 </div>
-              );
-            })
-          )}
+
+                {/* Attendance Notification */}
+                {isAttendance ? (
+                  <>
+                    <div className="small text-muted mt-1">
+                      {n.payload.kind === "attendance_late"
+                        ? "Late reported:"
+                        : n.payload.kind === "attendance_checkin"
+                        ? "Check-In:"
+                        : "Check-Out:"}{" "}
+                      <b>{when || "—"}</b>
+                      {mapUrl && (
+                        <>
+                          {" "}
+                          —{" "}
+                          <a href={mapUrl} target="_blank" rel="noreferrer">
+                            map
+                          </a>
+                        </>
+                      )}
+                    </div>
+                    {n.payload.reason && (
+                      <div className="small text-muted">Reason: {n.payload.reason}</div>
+                    )}
+                    {where.accuracy && (
+                      <div className="small text-muted">
+                        Accuracy ±{Math.round(where.accuracy)} m
+                      </div>
+                    )}
+                    <div className="d-flex gap-2 mt-2">
+                      <button
+                        className="btn btn-sm btn-outline-secondary"
+                        onClick={() => markSeen(n._id)}
+                      >
+                        Acknowledge
+                      </button>
+                    </div>
+                  </>
+                ) : isLeave ? (
+                  <>
+                    <div className="small text-muted mt-1">
+                      Leave request for{" "}
+                      <strong>
+                        {n.leaveDate ? new Date(n.leaveDate).toLocaleDateString() : "—"}
+                      </strong>
+                    </div>
+                    {n.note && <div className="small text-muted">Reason: {n.note}</div>}
+                    <div className="d-flex gap-2 mt-2">
+                      <button className="btn btn-sm btn-success" onClick={() => approveLeave(n)}>
+                        Approve
+                      </button>
+                      <button
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() => rejectLeave(n)}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="small text-muted mt-1">
+                      Payment: {fmtINR(pay.amount)} for {mmYY(pay.month, pay.year)}
+                    </div>
+                    {pay.utr && (
+                      <div className="small">
+                        UTR: <span className="text-dark">{pay.utr}</span>
+                      </div>
+                    )}
+                    {pay.note && <div className="small text-muted">Note: {pay.note}</div>}
+                    <div className="d-flex gap-2 mt-2">
+                      <button className="btn btn-sm btn-success" onClick={() => approvePayment(n)}>
+                        Approve
+                      </button>
+                      <button
+                        className="btn btn-sm btn-outline-danger"
+                        onClick={() => rejectPayment(n)}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

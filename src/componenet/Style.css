@@ -1,0 +1,329 @@
+/* Apply only till screen width 993px */
+
+/*
+@media (max-width: 993px) {
+  .modal-dialog {
+    position: relative;
+    top: 0%;
+    margin: auto;
+    max-width: 100% !important;
+    width: 95%; 
+  }
+}
+@media screen and (min-width: 994px) and (max-width: 1200px) {
+  .modal-dialog {
+    position: relative;
+    top: 0%;
+    margin: auto;
+    max-width: 100% !important;
+    width: 70%; 
+  }
+}
+.modal-dialog  .d-flex {
+    display: flex !important;
+    flex-wrap: wrap;
+    align-content: space-between;
+    justify-content: flex-end;
+    align-items: stretch;
+    flex-direction: row;
+}
+.btn-close{
+        background-color: #d9d6d6;
+    padding: 0px;
+    border: 1px solid black;
+}
+th{
+    background-color: #ffc0cb;
+}
+
+
+*/
+/*new */
+
+/* Apply only till screen width 993px */
+@media (max-width: 993px) {
+  .modal-dialog {
+    margin: auto;
+    max-width: 100% !important;
+    width: 95%;
+  }
+}
+
+/* Small laptops */
+@media screen and (min-width: 994px) and (max-width: 1200px) {
+  .modal-dialog {
+    margin: auto;
+    max-width: 100% !important;
+    width: 70%;
+  }
+}
+
+/* Modal scrolling */
+.modal-body {
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+/* SAFELY scoped flex wrapping */
+.modal-footer .d-flex {
+  flex-wrap: wrap;
+}
+
+/* Close button */
+.btn-close {
+  background-color: #d9d6d6;
+  padding: 0;
+  border: 1px solid black;
+}
+
+/* Table headers */
+th {
+  background-color: #ffc0cb;
+}
+
+/* Responsive table */
+.table-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive table {
+  min-width: 1000px;
+}
+
+/* Mobile buttons (scoped) */
+@media (max-width: 768px) {
+  td .btn,
+  .modal-footer .btn {
+    margin-bottom: 6px;
+  }
+}
+
+/* Optional mobile polish */
+@media (max-width: 576px) {
+  h4, h5 {
+    font-size: 16px;
+  }
+
+  .badge {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+}
+.shift-btn {
+  background-color: #f4b400; /* Yellow */
+  color: #000;
+  border: none;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s ease-in-out;
+}
+
+.shift-btn:hover {
+  background-color: #e0a800;
+  color: #000;
+}
+
+.shift-btn:active {
+  transform: scale(0.97);
+}
+/* -----------------------------------
+   EXPENSE / LIGHT TAB BUTTON GROUP
+----------------------------------- */
+.expense-tabs-wrapper {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Base button style */
+.expense-tabs-wrapper .btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 240px;
+  border-radius: 14px;
+  font-weight: 600;
+  padding: 12px 18px;
+  transition: all 0.2s ease;
+}
+
+/* Subtitle */
+.btn-subtext {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+/* Active tab */
+.active-tab {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+/* -----------------------------------
+   TABLET VIEW
+----------------------------------- */
+@media (max-width: 991px) {
+  .expense-tabs-wrapper .btn {
+    flex: 1 1 calc(50% - 8px); /* 2 per row */
+  }
+}
+
+/* -----------------------------------
+   MOBILE VIEW
+----------------------------------- */
+@media (max-width: 767px) {
+  .expense-tabs-wrapper {
+    flex-direction: column;
+  }
+
+  .expense-tabs-wrapper .btn {
+    width: 100%;
+    align-items: flex-start;
+  }
+}
+@media (max-width: 767px) {
+  .expense-tabs-wrapper .btn {
+    font-size: 15px;
+  }
+
+  .btn-subtext {
+    font-size: 11px;
+  }
+}
+/* ===============================
+   EXPENSE / LIGHT / STAFF TABS
+================================ */
+.expense-tabs-wrapper {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.expense-tabs-wrapper .btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 240px;
+  padding: 12px 18px;
+  border-radius: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+}
+
+.btn-subtext {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.active-tab {
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  transform: translateY(-1px);
+}
+
+/* Tablet → 2 buttons per row */
+@media (max-width: 991px) {
+  .expense-tabs-wrapper .btn {
+    flex: 1 1 calc(50% - 8px);
+    min-width: unset;
+  }
+}
+
+/* Mobile → stacked full width */
+@media (max-width: 767px) {
+  .expense-tabs-wrapper {
+    flex-direction: column;
+  }
+
+  .expense-tabs-wrapper .btn {
+    width: 100%;
+  }
+}
+/* ===============================
+   RENT TABLE BASE
+================================ */
+.rent-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.rent-table-wrapper table {
+  min-width: 1100px; /* months need space */
+}
+/* ===============================
+   TABLET STICKY COLUMNS
+================================ */
+@media (max-width: 992px) {
+  .rent-table-wrapper table {
+    min-width: 950px;
+  }
+
+  /* Sr */
+  /* .rent-table-wrapper th:first-child,
+  .rent-table-wrapper td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: #fff;
+  } */
+
+  /* Name */
+  /* .rent-table-wrapper th:nth-child(2),
+  .rent-table-wrapper td:nth-child(2) {
+    position: sticky;
+    left: 60px;
+    z-index: 3;
+    background: #fff;
+    min-width: 220px;
+  } */
+}
+/* ===============================
+   MOBILE CARD VIEW
+================================ */
+/* ===============================
+   MOBILE: HORIZONTAL TABLE HEADER
+   =============================== */
+@media (max-width: 768px) {
+
+  .rent-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .rent-table-wrapper table {
+    min-width: max-content;
+    white-space: nowrap;
+  }
+
+  .rent-table-wrapper thead tr {
+    display: table-row;
+  }
+
+  .rent-table-wrapper thead th {
+    display: table-cell;
+    white-space: nowrap;
+    vertical-align: middle;
+    text-align: center;
+  }
+
+  .rent-table-wrapper tbody tr {
+    display: table-row;
+  }
+
+  .rent-table-wrapper tbody td {
+    display: table-cell;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+}
+/* ===============================
+   MOBILE = DESKTOP TABLE + SCROLL
+   =============================== */

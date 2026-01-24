@@ -1,79 +1,88 @@
 // src/Pages/TenantIntake.js
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import '../form.css';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import "../form.css";
+import { useNavigate } from "react-router-dom";
 
-const API = 'https://mutakehostel-backend.onrender.com/api';
+const API = " http://localhost:8000/api";
 
 function TenantIntake() {
   const [formData, setFormData] = useState({
-    // Core
-    srNo: '',
-    name: '',
-    phoneNo: '',
-    address: '',
-    joiningDate: '',
-    dob: '',
-
-    // Relative address (single line)
-    relativeAddress: '',
-
-    // Company/College
-    companyAddress: '',
-    dateOfJoiningCollege: '',
-
-    // Room/Bed
-    roomNo: '',
-    bedNo: '',
-
-    // Money (editable)
-    baseRent: '',
-    rentAmount: '',
-    depositAmount: '',
-
-    // Relatives
-    relative1Relation: 'Self',
-    relative1Name: '',
-    relative1Phone: '',
-    relative2Relation: 'Self',
-    relative2Name: '',
-    relative2Phone: '',
+    srNo: "",
+    name: "",
+    phoneNo: "",
+    address: "",
+    joiningDate: "",
+    dob: "",
+    category: "",
+    relativeAddress: "",
+    companyAddress: "",
+    dateOfJoiningCollege: "",
+    roomNo: "",
+    bedNo: "",
+    baseRent: "",
+    rentAmount: "",
+    depositAmount: "",
+    relative1Relation: "Self",
+    relative1Name: "",
+    relative1Phone: "",
+    relative2Relation: "Self",
+    relative2Name: "",
+    relative2Phone: "",
   });
 
-  // Docs
-  const [docFiles, setDocFiles] = useState([]); // [{ file, relation }]
-  const [docMsg, setDocMsg] = useState('');
+  const [docFiles, setDocFiles] = useState([]);
+  const [docMsg, setDocMsg] = useState("");
 
-  // 🔹 Step 6.a — invite state
+  const [selfAadharFile, setSelfAadharFile] = useState(null);
+  const [parentAadharFile, setParentAadharFile] = useState(null);
+  const [photoFile, setPhotoFile] = useState(null);
+
   const [inviteToken, setInviteToken] = useState(null);
   const [inviteError, setInviteError] = useState("");
+  const [formId, setFormId] = useState(null);
 
-  // Query params
+  const [submitting, setSubmitting] = useState(false);
+
   const params = new URLSearchParams(window.location.search);
-  const isTenant = params.get('tenant') === 'true';
-  const isLocked =
-    params.get('lock') === '1' ||
-    params.get('lock') === 'true';
+  const isTenant = params.get("tenant") === "true";
+  const isLocked = params.get("lock") === "1" || params.get("lock") === "true";
 
   const navigate = useNavigate();
 
-  // Prefill from query params (only when provided)
+  /* ===========================
+     Prefill From Query Params
+  ============================ */
   useEffect(() => {
     setFormData((prev) => ({
       ...prev,
-      ...(params.has('name') ? { name: params.get('name') || '' } : {}),
-      ...(params.has('phoneNo') ? { phoneNo: (params.get('phoneNo') || '').replace(/\D/g, '').slice(0, 10) } : {}),
-      ...(params.has('roomNo') ? { roomNo: params.get('roomNo') || '' } : {}),
-      ...(params.has('bedNo') ? { bedNo: params.get('bedNo') || '' } : {}),
-      ...(params.has('baseRent') ? { baseRent: params.get('baseRent') || '' } : {}),
-      ...(params.has('rentAmount') ? { rentAmount: params.get('rentAmount') || '' } : {}),
-      ...(params.has('depositAmount') ? { depositAmount: params.get('depositAmount') || '' } : {}),
+      ...(params.has("category") ? { category: params.get("category") } : {}),
+      ...(params.has("name") ? { name: params.get("name") } : {}),
+      ...(params.has("phoneNo")
+        ? { phoneNo: params.get("phoneNo").replace(/\D/g, "").slice(0, 10) }
+        : {}),
+      ...(params.has("roomNo") ? { roomNo: params.get("roomNo") } : {}),
+      ...(params.has("bedNo") ? { bedNo: params.get("bedNo") } : {}),
+      ...(params.has("baseRent") ? { baseRent: params.get("baseRent") } : {}),
+      ...(params.has("rentAmount") ? { rentAmount: params.get("rentAmount") } : {}),
+      ...(params.has("depositAmount") ? { depositAmount: params.get("depositAmount") } : {}),
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once
+  }, []);
 
-  // 🔹 Step 6.b — validate & prefill using ?inv=
+  /* ===========================
+     Optional: formId from URL
+  ============================ */
+  useEffect(() => {
+    const fid = params.get("formId");
+    if (fid) setFormId(fid);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* ===========================
+     Invite Link Validation
+     ✅ pulls formId + srNo + prefill
+  ============================ */
   useEffect(() => {
     const token = params.get("inv");
     if (!token) return;
@@ -83,51 +92,93 @@ function TenantIntake() {
     (async () => {
       try {
         const r = await axios.get(`${API}/invites/${token}`);
+
+        const fid = r.data?.formId || r.data?.form?._id;
+        if (fid) setFormId(String(fid));
+
+        // Prefill from invite
         if (r.data?.ok && r.data.prefill) {
-          setFormData(prev => ({
+          const pre = { ...r.data.prefill };
+          if (pre.category == null) delete pre.category; // prevent null overwrite
+
+          setFormData((prev) => ({
             ...prev,
-            ...r.data.prefill,
+            ...pre,
+          }));
+        }
+
+        // If backend sends existing form data too (optional)
+        if (r.data?.form) {
+          const existing = { ...r.data.form };
+          delete existing._id;
+          delete existing.__v;
+
+          setFormData((prev) => ({
+            ...prev,
+            ...existing,
           }));
         }
       } catch (err) {
         const code = err?.response?.status;
         if (code === 409) setInviteError("This link has already been used.");
         else if (code === 410) setInviteError("This link has expired.");
-        else if (code === 404) setInviteError("Invalid link.");
+        else if (code === 404) setInviteError("Invalid invite link.");
         else setInviteError("Could not validate invite link.");
+
+        console.warn("Invite validation failed.");
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch next Sr No (display + used in payload)
+  /* ===========================
+     (Optional) SR No preview for admin-only pages
+     Tenant links should already have srNo from invite.
+  ============================ */
   const fetchSrNo = async () => {
     try {
       const res = await axios.get(`${API}/forms/count`);
       setFormData((prev) => ({ ...prev, srNo: res.data.nextSrNo }));
       return res.data.nextSrNo;
     } catch (err) {
-      console.error('Error fetching Sr No:', err);
-      return '';
+      console.error("Error fetching Sr No:", err);
+      return "";
     }
   };
 
   useEffect(() => {
-    fetchSrNo();
+    // Only fetch srNo preview when NOT tenant link
+    if (!params.get("inv")) fetchSrNo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Generic change
+  /* ===========================
+     Input Handlers
+  ============================ */
+  const lockedFields = [
+    "category",
+    "name",
+    "phoneNo",
+    "roomNo",
+    "bedNo",
+    "baseRent",
+    "rentAmount",
+    "depositAmount",
+  ];
+
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    // if field is locked, ignore input changes for those
-    if (isLocked && ['name', 'phoneNo', 'roomNo', 'bedNo', 'baseRent', 'rentAmount', 'depositAmount'].includes(name)) {
+    // ✅ tenants should never change these
+    if (isTenant && lockedFields.includes(name)) return;
+
+    // ✅ lock only if field already has value
+    if (isLocked && lockedFields.includes(name) && String(formData[name] || "").trim() !== "") {
       return;
     }
 
-    // normalize phone numbers
-    if (name === 'phoneNo' || name === 'relative1Phone' || name === 'relative2Phone') {
-      const onlyDigits = value.replace(/\D/g, '').slice(0, 10);
+    if (name === "phoneNo" || name === "relative1Phone" || name === "relative2Phone") {
+      const onlyDigits = value.replace(/\D/g, "").slice(0, 10);
       setFormData((prev) => ({ ...prev, [name]: onlyDigits }));
       return;
     }
@@ -135,204 +186,174 @@ function TenantIntake() {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Specific handlers for editable rents (numbers, >= 0)
-  const handleBaseRentChange = (e) => {
-    if (isLocked) return;
-    const v = e.target.value;
-    if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) {
-      setFormData((prev) => ({
-        ...prev,
-        baseRent: v,
-        // prefill rentAmount only if it's still empty
-        rentAmount: prev.rentAmount === '' ? v : prev.rentAmount,
-      }));
-    }
-  };
-
   const handleRentAmountChange = (e) => {
-    if (isLocked) return;
+    if (isTenant || isLocked) return;
     const v = e.target.value;
-    if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) {
+    if (v === "" || /^\d+(\.\d{0,2})?$/.test(v)) {
       setFormData((prev) => ({ ...prev, rentAmount: v }));
     }
   };
 
-  // Docs handling
-  const handleDocsChange = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (!files.length) return;
+  /* ===========================
+     Remove Doc
+  ============================ */
+  const removeDoc = (idx) => setDocFiles((prev) => prev.filter((_, i) => i !== idx));
 
-    const accepted = [];
-    for (const f of files) {
-      if (!/^image\//i.test(f.type)) {
-        setDocMsg('Only image files are allowed.');
-        continue;
-      }
-      accepted.push({ file: f, relation: 'Self' });
-    }
-    setDocFiles((prev) => [...prev, ...accepted]);
-    if (accepted.length) setDocMsg('');
-  };
-
-  const removeDoc = (idx) => {
-    setDocFiles((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  // ---------- helpers for safe payload + uploads ----------
+  /* ===========================
+     Sanitize Payload
+  ============================ */
   function sanitizeTenantPayload(obj) {
     const out = {};
-    for (const [k, v] of Object.entries(obj || {})) {
-      if (v === '' || v == null) { out[k] = undefined; continue; }  // "" -> undefined
 
-      // numbers
+    for (const [k, v] of Object.entries(obj || {})) {
+      if (v === "" || v == null) continue;
+
       if (/(amount|price|rent|deposit|srNo)$/i.test(k)) {
-        const n = Number(String(v).replace(/[,₹\s]/g, ''));
-        out[k] = Number.isFinite(n) ? n : undefined;
+        const n = Number(String(v).replace(/[,₹\s]/g, ""));
+        if (Number.isFinite(n)) out[k] = n;
         continue;
       }
 
-      // dates
       if (/(date|dob|joining)/i.test(k)) {
-        out[k] = v || undefined;
+        out[k] = v;
         continue;
       }
 
       out[k] = v;
     }
+
     return out;
   }
 
+  /* ===========================
+     Upload Docs
+  ============================ */
   async function uploadDocsIfAny(docs) {
     if (!docs.length) return [];
+
     const fd = new FormData();
-    // BACKEND EXPECTS: "documents"
-    docs.forEach((d) => fd.append('documents', d.file));
+    docs.forEach((d) => fd.append("documents", d.file));
 
     const up = await axios.post(`${API}/uploads/docs`, fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { "Content-Type": "multipart/form-data" },
     });
 
     const uploadedFiles = up.data?.files || [];
     return uploadedFiles.map((f, i) => ({
       fileName: docs[i]?.file?.name || f.filename || `doc-${i + 1}`,
-      relation: docs[i]?.relation || 'Self',
+      relation: docs[i]?.relation || "Self",
       url:
         f.url ||
         f.path ||
         f.location ||
         f.secure_url ||
-        (f._id ? `${API}/documents/${f._id}` : '#'),
+        (f._id ? `${API}/documents/${f._id}` : "#"),
     }));
   }
 
-  // POST to /forms (with 1x retry on E11000 duplicate srNo)
-  const postFormWithRetry = async (payload) => {
-    try {
-      return await axios.post(`${API}/forms`, payload);
-    } catch (err) {
-      const serverMsg =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err.message ||
-        '';
+  /* ===========================
+     ✅ UPDATE ONLY (NO CREATE)
+     Uses your existing route: PUT /api/update/:id (updateProfile)
+  ============================ */
+  async function submitUpdateOnly(payload) {
+    if (!formId) throw new Error("Missing formId. Invite must be linked to a draft form.");
 
-      // If duplicate key on srNo, refetch and try once more
-      if (/E11000/i.test(serverMsg) || /duplicate key/i.test(serverMsg)) {
-        const fresh = await fetchSrNo(); // get a fresh nextSrNo
-        const retryPayload = { ...payload, srNo: Number(fresh) || fresh || undefined };
-        return await axios.post(`${API}/forms`, retryPayload);
-      }
+    // Safety: never allow these to be updated from tenant intake
+    delete payload.srNo;
+    delete payload.category;
+    delete payload.roomNo;
+    delete payload.bedNo;
 
-      // rethrow others
-      throw err;
-    }
-  };
+    // ✅ IMPORTANT: use your existing backend update route
+    return await axios.put(`${API}/update/${formId}`, payload);
+  }
 
-  // Submit: upload docs (if any) -> post JSON to /forms
+  /* ===========================
+     SUBMIT FORM
+  ============================ */
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // quick validation
-    if (!formData.name?.trim()) { alert('Name is required'); return; }
-    if (!formData.joiningDate) { alert('Joining Date is required'); return; }
-    if (!formData.address?.trim()) { alert('Address is required'); return; }
-
-    if (formData.phoneNo && !/^\d{10}$/.test(formData.phoneNo)) {
-      alert('Please enter a valid 10-digit Phone No.');
-      return;
-    }
-    if (formData.relative1Phone && !/^\d{10}$/.test(formData.relative1Phone)) {
-      alert('Relative 1 phone should be a 10-digit number.');
-      return;
-    }
-    if (formData.relative2Phone && !/^\d{10}$/.test(formData.relative2Phone)) {
-      alert('Relative 2 phone should be a 10-digit number.');
-      return;
-    }
+    if (submitting) return;
+    setSubmitting(true);
 
     try {
-      // 1) Upload docs first (if any)
-      const documents = await uploadDocsIfAny(docFiles);
-
-      // 2) Build JSON payload (include srNo; server expects it)
-      const raw = {
-        ...formData,
-        relativeAddress1: formData.relativeAddress, // map to your backend field
-        documents,
-        source: 'public-intake',       // optional
-        status: 'pending_review',      // optional
-        ...(inviteToken ? { inviteToken } : {}), // 🔹 Step 6.c — include token if present
-      };
-      delete raw.relativeAddress;
-
-      // Ensure srNo is numeric if possible
-      if (raw.srNo !== undefined && raw.srNo !== '') {
-        const n = Number(String(raw.srNo).replace(/\D/g, ''));
-        raw.srNo = Number.isFinite(n) ? n : raw.srNo;
-      }
-
-      const payload = sanitizeTenantPayload(raw);
-
-      // 3) POST JSON (with 1x duplicate retry)
-      await postFormWithRetry(payload);
-
-      // 4) Redirect
-      if (isTenant) {
-        navigate('/form-submitted'); // public thank you
-      } else {
-        navigate('/add-data'); // admin flow
-      }
-    } catch (error) {
-      // Log rich details to devtools to help diagnose 500s
-      console.error('Error submitting form:', {
-        url: error?.config?.url,
-        method: error?.config?.method,
-        status: error?.response?.status,
-        dataSent: error?.config?.data,
-        serverData: error?.response?.data,
-        message: error?.message,
-      });
-
-      // 🔹 Step 6.c — 409 handling
-      if (error?.response?.status === 409) {
-        alert("This invitation link is invalid, expired, or already used.");
+      if (!inviteToken) {
+        alert("Invite token missing. Please open the original invite link.");
         return;
       }
 
-      const msg =
+      if (!formId) {
+        alert("formId missing. Admin invite must create & link a draft form.");
+        return;
+      }
+
+      if (!formData.category?.trim()) return alert("Category is required");
+      if (!formData.name?.trim()) return alert("Name is required");
+      if (!formData.joiningDate) return alert("Joining Date is required");
+      if (!formData.address?.trim()) return alert("Address is required");
+
+      if (formData.phoneNo && !/^\d{10}$/.test(formData.phoneNo))
+        return alert("Enter valid 10-digit phone number.");
+
+      if (formData.relative1Phone && !/^\d{10}$/.test(formData.relative1Phone))
+        return alert("Relative 1 phone must be 10 digits.");
+
+      if (formData.relative2Phone && !/^\d{10}$/.test(formData.relative2Phone))
+        return alert("Relative 2 phone must be 10 digits.");
+
+      const documents = await uploadDocsIfAny([...docFiles]);
+
+      const raw = {
+        ...formData,
+        relativeAddress1: formData.relativeAddress,
+        documents,
+        source: "public-intake",
+        status: "pending_review",
+        inviteToken,
+      };
+      delete raw.relativeAddress;
+
+      const payload = sanitizeTenantPayload(raw);
+
+      console.log("SUBMIT PAYLOAD =>", {
+        formId,
+        category: payload.category,
+        roomNo: payload.roomNo,
+        bedNo: payload.bedNo,
+      });
+await axios.put(`${API}/invites/${inviteToken}/submit`, payload);
+
+
+      if (isTenant) navigate("/form-submitted");
+      else navigate("/add-data");
+    } catch (error) {
+      console.error("Error submitting form:", error);
+
+      console.log("FAILED URL =>", error?.config?.url);
+      console.log("STATUS =>", error?.response?.status);
+      console.log("RESP =>", error?.response?.data);
+      console.log("RESP JSON =>", JSON.stringify(error?.response?.data, null, 2));
+      console.log("formId =>", formId);
+
+      alert(
         error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        error.message ||
-        'Failed to submit the form';
-      alert(msg);
+          error?.response?.data?.error ||
+          error.message ||
+          "Failed to submit"
+      );
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  /* ===========================
+     RENDER UI
+  ============================ */
   return (
     <>
       <h2>Tenant Form</h2>
 
-      {/* 🔹 Optional banner if invite has issues */}
       {inviteError && (
         <div className="alert alert-danger" role="alert">
           {inviteError}
@@ -340,315 +361,255 @@ function TenantIntake() {
       )}
 
       <form onSubmit={handleSubmit} className="form-container">
-        {/* Sr No (display + used) */}
+        {/* Sr No */}
         <div className="form-group">
-          <label htmlFor="srNo">Sr. No.</label>
-          <input type="text" name="srNo" id="srNo" value={formData.srNo} readOnly className="form-input" />
+          <label>Sr No.</label>
+          <input type="text" value={formData.srNo} readOnly className="form-input" />
         </div>
 
-        {/* Name (lockable) */}
+        {/* NAME */}
         <div className="form-group">
-          <label htmlFor="name">Name</label>
+          <label>Name</label>
           <input
-            type="text"
             name="name"
-            id="name"
-            placeholder="Name"
             value={formData.name}
             onChange={handleChange}
             className="form-input"
-            readOnly={isLocked}
+            readOnly={isTenant || isLocked}
           />
         </div>
 
-        {/* Phone (lockable) */}
+        {/* PHONE */}
         <div className="form-group">
-          <label htmlFor="phoneNo">Phone No</label>
+          <label>Phone No</label>
           <input
-            type="tel"
             name="phoneNo"
-            id="phoneNo"
-            placeholder="10-digit number"
             value={formData.phoneNo}
             onChange={handleChange}
             className="form-input"
-            readOnly={isLocked}
-          />
-          {formData.phoneNo && !/^\d{10}$/.test(formData.phoneNo) && (
-            <small className="text-danger">Enter 10-digit number</small>
-          )}
-        </div>
-
-        {/* Address */}
-        <div className="form-group">
-          <label htmlFor="address">Address</label>
-          <input
-            type="text"
-            name="address"
-            id="address"
-            placeholder="House, Street, City"
-            value={formData.address}
-            onChange={handleChange}
-            className="form-input"
+            readOnly={isTenant || isLocked}
           />
         </div>
 
-        {/* Dates */}
+        {/* ADDRESS */}
         <div className="form-group">
-          <label htmlFor="joiningDate">Joining Date</label>
-          <input
-            type="date"
-            name="joiningDate"
-            id="joiningDate"
-            value={formData.joiningDate}
-            onChange={handleChange}
-            className="form-input"
-          />
-        </div>
-        <div className="form-group">
-          <label htmlFor="dob">Date of Birth</label>
-          <input
-            type="date"
-            name="dob"
-            id="dob"
-            value={formData.dob}
-            onChange={handleChange}
-            className="form-input"
-          />
+          <label>Address</label>
+          <input name="address" value={formData.address} onChange={handleChange} className="form-input" />
         </div>
 
-        {/* Relative Address */}
+        {/* JOINING */}
         <div className="form-group">
-          <label htmlFor="relativeAddress">Relative Address</label>
-          <input
-            type="text"
-            name="relativeAddress"
-            id="relativeAddress"
-            placeholder="Optional single-line relative address"
-            value={formData.relativeAddress}
-            onChange={handleChange}
-            className="form-input"
-          />
+          <label>Joining Date</label>
+          <input type="date" name="joiningDate" value={formData.joiningDate} onChange={handleChange} className="form-input" />
         </div>
 
-        {/* Relatives */}
+        {/* DOB */}
+        <div className="form-group">
+          <label>DOB</label>
+          <input type="date" name="dob" value={formData.dob} onChange={handleChange} className="form-input" />
+        </div>
+
+        {/* RELATIVE ADDRESS */}
+        <div className="form-group">
+          <label>Relative Address</label>
+          <input name="relativeAddress" value={formData.relativeAddress} onChange={handleChange} className="form-input" />
+        </div>
+
+        {/* RELATIVE 1 */}
         <fieldset className="form-group">
           <legend>Relative 1</legend>
-          <div className="form-row">
-            <label>Relation</label>
-            <select
-              name="relative1Relation"
-              className="form-input"
-              value={formData.relative1Relation}
-              onChange={handleChange}
-            >
-              {['Self', 'Sister', 'Brother', 'Father', 'Husband', 'Mother'].map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-row">
-            <label>Name</label>
-            <input
-              name="relative1Name"
-              className="form-input"
-              placeholder="Name"
-              value={formData.relative1Name}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="form-row">
-            <label>Phone</label>
-            <input
-              name="relative1Phone"
-              className="form-input"
-              placeholder="10-digit number"
-              value={formData.relative1Phone}
-              onChange={handleChange}
-            />
-            {formData.relative1Phone && !/^\d{10}$/.test(formData.relative1Phone) && (
-              <small className="text-danger">Enter 10-digit number</small>
-            )}
-          </div>
+          <select name="relative1Relation" value={formData.relative1Relation} onChange={handleChange} className="form-input">
+            {["Self", "Sister", "Brother", "Father", "Husband", "Mother"].map((r) => (
+              <option key={r}>{r}</option>
+            ))}
+          </select>
+          <input name="relative1Name" value={formData.relative1Name} onChange={handleChange} className="form-input" placeholder="Name" />
+          <input name="relative1Phone" value={formData.relative1Phone} onChange={handleChange} className="form-input" placeholder="10 digit" />
         </fieldset>
 
+        {/* RELATIVE 2 */}
         <fieldset className="form-group">
           <legend>Relative 2</legend>
-          <div className="form-row">
-            <label>Relation</label>
-            <select
-              name="relative2Relation"
-              className="form-input"
-              value={formData.relative2Relation}
-              onChange={handleChange}
-            >
-              {['Self', 'Sister', 'Brother', 'Father', 'Husband', 'Mother'].map((r) => (
-                <option key={r} value={r}>{r}</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-row">
-            <label>Name</label>
-            <input
-              name="relative2Name"
-              className="form-input"
-              placeholder="Name"
-              value={formData.relative2Name}
-              onChange={handleChange}
-            />
-          </div>
-          <div className="form-row">
-            <label>Phone</label>
-            <input
-              name="relative2Phone"
-              className="form-input"
-              placeholder="10-digit number"
-              value={formData.relative2Phone}
-              onChange={handleChange}
-            />
-            {formData.relative2Phone && !/^\d{10}$/.test(formData.relative2Phone) && (
-              <small className="text-danger">Enter 10-digit number</small>
-            )}
-          </div>
+          <select name="relative2Relation" value={formData.relative2Relation} onChange={handleChange} className="form-input">
+            {["Self", "Sister", "Brother", "Father", "Husband", "Mother"].map((r) => (
+              <option key={r}>{r}</option>
+            ))}
+          </select>
+          <input name="relative2Name" value={formData.relative2Name} onChange={handleChange} className="form-input" placeholder="Name" />
+          <input name="relative2Phone" value={formData.relative2Phone} onChange={handleChange} className="form-input" placeholder="10 digit" />
         </fieldset>
 
-        {/* Company/College */}
+        {/* COMPANY */}
         <div className="form-group">
-          <label htmlFor="companyAddress">Company Address / College</label>
-          <input
-            type="text"
-            name="companyAddress"
-            id="companyAddress"
-            value={formData.companyAddress}
-            onChange={handleChange}
-            className="form-input"
-          />
+          <label>Company / College</label>
+          <input name="companyAddress" value={formData.companyAddress} onChange={handleChange} className="form-input" />
         </div>
+
+        {/* JOINING COLLEGE */}
         <div className="form-group">
-          <label htmlFor="dateOfJoiningCollege">Date of Joining College / Office</label>
+          <label>Date of Joining College/Office</label>
           <input
             type="date"
             name="dateOfJoiningCollege"
-            id="dateOfJoiningCollege"
             value={formData.dateOfJoiningCollege}
             onChange={handleChange}
             className="form-input"
           />
         </div>
 
-        {/* Room / Bed (lockable where required) */}
+        {/* Category (Admin only) */}
+        {!isTenant && (
+          <div className="form-group">
+            <label>Category</label>
+            <input
+              name="category"
+              value={formData.category}
+              onChange={handleChange}
+              className="form-input"
+              readOnly={isLocked}
+            />
+          </div>
+        )}
+
+        {/* ROOM */}
         <div className="form-group">
-          <label htmlFor="roomNo">Room No.</label>
+          <label>Room No</label>
           <input
-            type="text"
             name="roomNo"
-            id="roomNo"
             value={formData.roomNo}
             onChange={handleChange}
             className="form-input"
-            readOnly={isLocked}
+            readOnly={isTenant || isLocked}
           />
         </div>
 
+        {/* BED */}
         <div className="form-group">
-          <label htmlFor="bedNo">Bed No.</label>
+          <label>Bed No</label>
           <input
-            type="text"
             name="bedNo"
-            id="bedNo"
             value={formData.bedNo}
             onChange={handleChange}
             className="form-input"
-            readOnly={isLocked}
+            readOnly={isTenant || isLocked}
           />
         </div>
 
-        {/* Editable / Lockable Base Rent + Rent Amount */}
-        {/* <div className="form-group">
-          <label htmlFor="baseRent">Base Rent Amount</label>
-          <input
-            type="text"
-            inputMode="decimal"
-            name="baseRent"
-            id="baseRent"
-            placeholder="e.g., 3500"
-            value={formData.baseRent}
-            onChange={handleBaseRentChange}
-            className="form-input"
-            readOnly={isLocked}
-          />
-          <small className="text-muted">Auto-fills Rent Amount if it is blank.</small>
-        </div> */}
-
+        {/* RENT */}
         <div className="form-group">
-          <label htmlFor="rentAmount">Rent Amount</label>
+          <label>Rent Amount</label>
           <input
-            type="text"
-            inputMode="decimal"
             name="rentAmount"
-            id="rentAmount"
-            placeholder="e.g., 3500"
             value={formData.rentAmount}
             onChange={handleRentAmountChange}
             className="form-input"
-            readOnly={isLocked}
+            readOnly={isTenant || isLocked}
           />
         </div>
 
-        {/* Deposit (lockable) */}
+        {/* DEPOSIT */}
         <div className="form-group">
-          <label htmlFor="depositAmount">Deposit Amount</label>
+          <label>Deposit Amount</label>
           <input
-            type="text"
-            inputMode="decimal"
             name="depositAmount"
-            id="depositAmount"
-            placeholder="e.g., 5000"
             value={formData.depositAmount}
             onChange={(e) => {
-              if (isLocked) return;
+              if (isTenant || isLocked) return;
               const v = e.target.value;
-              if (v === '' || /^\d+(\.\d{0,2})?$/.test(v)) {
+              if (v === "" || /^\d+(\.\d{0,2})?$/.test(v)) {
                 setFormData((prev) => ({ ...prev, depositAmount: v }));
               }
             }}
             className="form-input"
-            readOnly={isLocked}
+            readOnly={isTenant || isLocked}
           />
         </div>
 
-        {/* Upload Docs */}
+        {/* DOCUMENT UPLOADS */}
         <div className="form-group">
-          <label>Upload Documents</label>
-          <input type="file" className="form-input" multiple accept="image/*" onChange={handleDocsChange} />
-          {docMsg && <small className="text-danger">{docMsg}</small>}
+          <label>Upload Aadhaar & Photograph</label>
+
+          {/* Self Aadhaar */}
+          <div>
+            <label>Self Aadhaar Card</label>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              className="form-input"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setSelfAadharFile(file);
+                setDocFiles((prev) => {
+                  const filtered = prev.filter((d) => d.role !== "selfAadhar");
+                  if (!file) return filtered;
+                  return [...filtered, { file, relation: "Self Aadhaar Card", role: "selfAadhar" }];
+                });
+              }}
+            />
+            {selfAadharFile && <small className="text-muted">{selfAadharFile.name}</small>}
+          </div>
+
+          {/* Parent Aadhaar */}
+          <div>
+            <label>Parent Aadhaar Card</label>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              className="form-input"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setParentAadharFile(file);
+                setDocFiles((prev) => {
+                  const filtered = prev.filter((d) => d.role !== "parentAadhar");
+                  if (!file) return filtered;
+                  return [...filtered, { file, relation: "Parent Aadhaar Card", role: "parentAadhar" }];
+                });
+              }}
+            />
+            {parentAadharFile && <small className="text-muted">{parentAadharFile.name}</small>}
+          </div>
+
+          {/* Photo */}
+          <div>
+            <label>Tenant Photograph</label>
+            <input
+              type="file"
+              accept="image/*"
+              capture="user"
+              className="form-input"
+              onChange={(e) => {
+                const file = e.target.files?.[0] || null;
+                setPhotoFile(file);
+                setDocFiles((prev) => {
+                  const filtered = prev.filter((d) => d.role !== "photo");
+                  if (!file) return filtered;
+                  return [...filtered, { file, relation: "Tenant Photo", role: "photo" }];
+                });
+              }}
+            />
+            {photoFile && <small className="text-muted">{photoFile.name}</small>}
+          </div>
+
+          {docMsg && <small className="text-danger mt-1 d-block">{docMsg}</small>}
         </div>
 
+        {/* Uploaded list */}
         {docFiles.length > 0 && (
           <div className="form-group">
-            <ul className="list-unstyled">
+            <ul>
               {docFiles.map((d, i) => (
                 <li key={i} className="doc-row">
-                  <span className="doc-name">
-                    {d.file.name} <small className="text-muted">({Math.ceil(d.file.size / 1024)} KB)</small>
-                  </span>
-                  <select
-                    className="form-input"
-                    value={d.relation}
-                    onChange={(e) => {
-                      const copy = [...docFiles];
-                      copy[i] = { ...copy[i], relation: e.target.value };
-                      setDocFiles(copy);
+                  {d.relation}: {d.file.name} ({Math.ceil(d.file.size / 1024)} KB)
+                  <button
+                    type="button"
+                    className="btn btn-outline-danger btn-sm ml-2"
+                    onClick={() => {
+                      if (d.role === "selfAadhar") setSelfAadharFile(null);
+                      if (d.role === "parentAadhar") setParentAadharFile(null);
+                      if (d.role === "photo") setPhotoFile(null);
+                      removeDoc(i);
                     }}
                   >
-                    <option value="Self">Self</option>
-                    <option value="Father">Father</option>
-                    <option value="Mother">Mother</option>
-                    <option value="Husband">Husband</option>
-                    <option value="Sister">Sister</option>
-                    <option value="Brother">Brother</option>
-                  </select>
-                  <button type="button" className="btn btn-outline-danger btn-sm" onClick={() => removeDoc(i)}>
                     Remove
                   </button>
                 </li>
@@ -657,10 +618,13 @@ function TenantIntake() {
           </div>
         )}
 
-        {/* Actions */}
-        <button type="submit" className="submit-btn">Submit</button>
+        {/* ACTION BUTTONS */}
+        <button type="submit" className="submit-btn" disabled={submitting}>
+          {submitting ? "Submitting..." : "Submit"}
+        </button>
+
         {!isTenant && (
-          <button type="button" className="back-btn" onClick={() => navigate('/mainpage')}>
+          <button type="button" className="back-btn" onClick={() => navigate("/mainpage")}>
             Back
           </button>
         )}

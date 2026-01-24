@@ -1,0 +1,196 @@
+/* ===============================
+   GENERAL LAYOUT
+================================ */
+.room-manager {
+  background: #f5f7fb;
+  min-height: 100vh;
+}
+
+/* ===============================
+   QUICK ADD ROOM CARD
+================================ */
+.quick-add-card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.quick-add-card h6 {
+  font-weight: 600;
+  color: #6b7280;
+  margin-bottom: 12px;
+}
+
+.quick-add-card input {
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+}
+
+.quick-add-card input:focus {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15);
+}
+
+.quick-add-card button {
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+/* ===============================
+   SEARCH + FILTER BAR
+================================ */
+.room-search-bar {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.room-search-bar input {
+  border-radius: 10px;
+}
+
+/* ===============================
+   ROOMS & BEDS CARD
+================================ */
+.rooms-card {
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08);
+}
+
+.rooms-card h5 {
+  font-weight: 700;
+  color: #374151;
+}
+
+/* ===============================
+   TABLE
+================================ */
+.rooms-table {
+  border-collapse: separate;
+  border-spacing: 0 10px;
+}
+
+.rooms-table thead th {
+  background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+  border: none;
+  color: #4c1d95;
+  font-weight: 600;
+  text-align: center;
+}
+
+.rooms-table tbody tr {
+  background: #f8fafc;
+  border-radius: 14px;
+}
+
+.rooms-table tbody tr td {
+  vertical-align: middle;
+  text-align: center;
+  border-top: none;
+}
+
+/* ===============================
+   BED TAGS
+================================ */
+.bed-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: 6px;
+}
+
+.bed-pill.price {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+/* ===============================
+   ACTION BUTTONS
+================================ */
+.btn-edit {
+  background: #6366f1;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn-add {
+  background: #10b981;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn-delete {
+  background: #ef4444;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.btn-edit:hover,
+.btn-add:hover,
+.btn-delete:hover {
+  opacity: 0.9;
+}
+
+/* ===============================
+   MODALS
+================================ */
+.custom-modal .modal-content {
+  border-radius: 18px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+}
+
+.custom-modal .modal-header {
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.custom-modal .modal-footer {
+  border-top: 1px solid #e5e7eb;
+}
+
+/* ===============================
+   MOBILE OPTIMIZATION
+================================ */
+@media (max-width: 768px) {
+  .rooms-table thead {
+    display: none;
+  }
+
+  .rooms-table tbody tr {
+    display: block;
+    padding: 12px;
+  }
+
+  .rooms-table tbody tr td {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+  }
+}
+.roomNoPill {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-weight: 800;
+  min-width: 70px;
+  text-align: center;
+
+  /* ✅ FORCE override */
+  background: var(--bg) !important;
+  color: var(--fg) !important;
+  border: 2px solid var(--fg) !important;
+}

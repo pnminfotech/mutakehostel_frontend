@@ -99,4 +99,43 @@
   .download-button:hover {
     background-color: #ffc0cb; /* Slightly darker pink */
   }
+   
+
+
+
+
+
+
+
+
+
+
+
+.form-photo-box {
+  width: 90px;
+  height: 110px;
+  border: 1px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.form-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+
+
+
+
+
+
+
+
+
+
+
   

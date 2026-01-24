@@ -8,7 +8,7 @@
 // import "../stylecss/LoginRegister.css";
 
 // // Single API base
-// const API = (process.env.REACT_APP_API_BASE || "https://mutakehostel-backend.onrender.com/api").replace(/\/+$/, "");
+// const API = (process.env.REACT_APP_API_BASE || " http://localhost:8000/api").replace(/\/+$/, "");
 // const setTenantToken = (t) => localStorage.setItem("tenantToken", t);
 
 // // (Optional) helper to keep only digits
@@ -491,7 +491,7 @@ import "../stylecss/LoginRegister.css";
 
 // import { API, setToken } from "../tenant/tenantApi";
 // Single API base
-// const API = (process.env.REACT_APP_API_BASE || "https://mutakehostel-backend.onrender.com/api").replace(/\/+$/, "");
+// const API = (process.env.REACT_APP_API_BASE || " http://localhost:8000/api").replace(/\/+$/, "");
 // const setTenantToken = (t) => localStorage.setItem("tenantToken", t);
 import { API, setToken } from "../tenant/tenantApi";
 // (Optional) helper to keep only digits
@@ -809,11 +809,11 @@ const Log = () => {
       }}
     >
       <div className="container-fluid">
-        <div className="row">
+        {/* <div className="row">
           <div className="col-md-12 mt-0 d-flex">
-            <img src={logo} alt="logo" style={{ height: "80px" }} />
+            <img src={logo} alt="logo" style={{ height: "50px" }} />
           </div>
-        </div>
+        </div> */}
 
         <div className="container">
           <center>
@@ -821,15 +821,14 @@ const Log = () => {
               <h2
                 style={{
                   color: "#07226c",
-                  fontSize: "42px",
+                  // fontSize: "42px",
                   marginBottom: "22px",
                   fontWeight: 800,
                 }}
-              >
-                Hos<span style={{ color: "#ffc107" }}>tel</span> Paym
-                <span style={{ color: "#ffc107" }}>ent</span>{" "}
-                <span style={{ color: "#ffc107" }}>Man</span>agement{" "}
-                <span style={{ color: "#ffc107" }}>Sys</span>tem
+              >   
+               Re<span style={{ color: "#ffc107" }}>nt {" "}</span>Man
+                <span style={{ color: "#ffc107" }}>ager</span>
+               
               </h2>
 
               <div className="btn-group mb-3" role="group" aria-label="Role switch">

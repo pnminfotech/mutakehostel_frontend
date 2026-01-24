@@ -109,7 +109,7 @@ import TenantSupport from "./pages/TenantSupport";
 import TenantProfile from "./pages/TenantProfile";
 import TenantEKYC from "./pages/TenantEKYC";
 import TenantPoliceVerification from "./pages/TenantPoliceVerification";
-
+import AttendanceCard from "./pages/AttendanceCard";
 export default function TenantApp() {
   const [authed, setAuthed] = useState(!!getToken());
   const [me, setMe] = useState(null);
@@ -188,6 +188,7 @@ useEffect(() => {
         <Route path="profile" element={<TenantProfile me={me} onChanged={fetchAll} />} />
         <Route path="ekyc" element={<TenantEKYC />} />
         <Route path="police-verification" element={<TenantPoliceVerification />} />
+        <Route path="attendance" element={<AttendanceCard />} />
 
         {/* safety remaps */}
         <Route path="home/profile" element={<Navigate to="/tenant/profile" replace />} />
@@ -198,6 +199,7 @@ useEffect(() => {
         <Route path="home/rent" element={<Navigate to="/tenant/rent" replace />} />
         <Route path="home/payments" element={<Navigate to="/tenant/payments" replace />} />
         <Route path="home/police-verification" element={<Navigate to="/tenant/police-verification" replace />} />
+        <Route path="home/attendance" element={<Navigate to="/tenant/attendance" replace />} />
 
         <Route path="*" element={<div style={{ padding: 16 }}>Not found</div>} />
       </Route>

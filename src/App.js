@@ -17,7 +17,7 @@ import FormDownload from './componenet/Maintanace/FormDownload';
 import MeterForm from './componenet/Maintanace/MeterForm';
 import Ruf from './componenet/rufWork';
 import NewYear from './componenet/newyear';
-import Sidebar from './Pages/Sidebar';
+// import Sidebar from './Pages/Sidebar';
 import Kahata from './Componen/Kahata';
 import Log from './componenet/Log';
 import ProjectDashboard from './Pages/ProjectDashboard';
@@ -36,7 +36,8 @@ import LightBillMatrixView from './componenet/Maintanace/LightBillMatrixView';
 import LightbillOtherExpenses from './componenet/Maintanace/LightbillOtherExpenses';
 import RoomManager from './componenet/RoomManager';
 import FormSubmitted from './componenet/FormSubmitted';
-
+import OtherExpense from "./Pages/OtherExpense";
+import LightBill from "./Pages/LightBill";
 // ✅ Import your tenant app (the module you shared at top)
 import TenantApp from './tenant/TenantApp';
 
@@ -96,11 +97,15 @@ function Layout() {
         <Route path="/LightBillMatrixView" element={<LightBillMatrixView />} />
         <Route path="/roommanager" element={<RoomManager />} />
         <Route path="/formdownload" element={<FormDownload />} />
+
+
+        <Route path="/other-expense" element={<OtherExpense />} />
+<Route path="/light-bill" element={<LightBill />} />
       </Routes>
 
       {shouldShowSidebar && (
         <div className="container" style={{ display: 'flex' }}>
-          <Sidebar />
+          {/* <Sidebar /> */}
         </div>
       )}
     </div>
@@ -109,7 +114,7 @@ function Layout() {
 
 function App() {
   return (
-    <BrowserRouter basename="/rentmanagementwebapp">
+    <BrowserRouter basename="/mutakegirlshostel">
       <Layout />
     </BrowserRouter>
   );

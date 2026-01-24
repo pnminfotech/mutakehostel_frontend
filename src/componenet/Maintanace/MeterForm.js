@@ -49,8 +49,8 @@ const navigate = useNavigate();
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     const apiUrl = isLightBill
-      ? "https://hostelpaymentmanger.onrender.com/api/light-bill"
-      : "https://hostelpaymentmanger.onrender.com/api/other-expense";
+      ? " http://localhost:8000/api/light-bill"
+      : " http://localhost:8000/api/other-expense";
     const data = isLightBill ? lightBillData : otherExpenseData;
 
     try {
@@ -69,8 +69,8 @@ const navigate = useNavigate();
 
   const downloadExcel = async () => {
     const apiUrl = isLightBill
-      ? "https://hostelpaymentmanger.onrender.com/api/light-bill/all"
-      : "https://hostelpaymentmanger.onrender.com/api/other-expense/all";
+      ? " http://localhost:8000/api/light-bill/all"
+      : " http://localhost:8000/api/other-expense/all";
   
     try {
       // Fetch data from the backend
