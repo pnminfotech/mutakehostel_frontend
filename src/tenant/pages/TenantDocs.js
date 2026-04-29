@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { API, authHeader } from "../tenantApi";
 import { FaFilePdf, FaFileImage, FaDownload, FaEye } from "react-icons/fa";
@@ -8,6 +8,20 @@ export default function TenantDocs({ me, onChanged }) {
   const [downloading, setDownloading] = useState(false);
   const [search, setSearch] = useState("");
   const fileInputRef = useRef();
+
+  const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
+  const ALLOWED_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"]);
+
+  const isAllowedImageFile = (file) => {
+    if (!file) return false;
+
+    const mime = String(file.type || "").toLowerCase();
+    const name = String(file.name || "");
+    const dotIndex = name.lastIndexOf(".");
+    const ext = dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : "";
+
+    return ALLOWED_IMAGE_MIME_TYPES.has(mime) && ALLOWED_IMAGE_EXTENSIONS.has(ext);
+  };
 
   const card = {
     background: "#fff",
@@ -28,7 +42,13 @@ export default function TenantDocs({ me, onChanged }) {
   };
 
   const handleFiles = (selectedFiles) => {
-    setFiles((prev) => [...prev, ...selectedFiles]);
+    const list = Array.from(selectedFiles || []);
+    if (list.some((file) => !isAllowedImageFile(file))) {
+      alert("Only JPG, JPEG, and PNG files are allowed.");
+      return;
+    }
+
+    setFiles((prev) => [...prev, ...list]);
   };
 
   const onDrop = (e) => {
@@ -36,54 +56,66 @@ export default function TenantDocs({ me, onChanged }) {
     handleFiles(Array.from(e.dataTransfer.files));
   };
 
+  // ✅ Build correct URL (ImageKit or backend served /uploads)
+  const getFileUrl = (doc) => {
+    if (!doc) return "#";
+
+    const url = String(doc.url || "").trim();
+    if (!url) return "#";
+
+    // ImageKit or any absolute link
+    if (/^https?:\/\//i.test(url)) return url;
+
+    // relative backend link like "/uploads/docs/xxx.webp"
+    // API is usually like "  http://localhost:8000/api"
+    const ORIGIN = String(API).replace(/\/api\/?$/i, "");
+    const rel = url.startsWith("/") ? url : `/${url}`;
+    return `${ORIGIN}${rel}`;
+  };
+
   const upload = async () => {
     if (!files.length) return;
-    const fd = new FormData();
-    files.forEach((f) => fd.append("documents", f));
 
-    await axios.post(`${API}/tenant/docs`, fd, {
-      headers: { ...authHeader(), "Content-Type": "multipart/form-data" },
-    });
-
-    setFiles([]);
-    onChanged && onChanged();
-  };
-
-  const getFileUrl = (doc) => {
-    if (!doc?.url) return "#";
-    if (doc.url.startsWith("http")) return doc.url;
-    return `${API.replace("/api", "")}${doc.url}`;
-  };
-
-  const handleDownload = async (doc) => {
     try {
-      setDownloading(true);
-      const url = getFileUrl(doc);
+      const fd = new FormData();
+      files.forEach((f) => fd.append("documents", f));
 
-      const response = await axios.get(url, {
-        responseType: "blob",
-        headers: authHeader(),
+      // ✅ backend should: upload to ImageKit + save in Mongo tenant.documents[]
+      const res = await axios.post(`${API}/tenant/docs`, fd, {
+        headers: { ...authHeader(), "Content-Type": "multipart/form-data" },
       });
 
-      const blob = new Blob([response.data], { type: response.data.type });
-      const link = document.createElement("a");
-      link.href = window.URL.createObjectURL(blob);
-      link.download = doc.fileName || "document";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(link.href);
+      // Optional debug
+      console.log("UPLOAD RES =>", res.data);
+
+      setFiles([]);
+      onChanged && onChanged(); // ✅ must refetch "me" from server
     } catch (err) {
-      console.error("Download failed", err);
-      alert("Download failed. Try again.");
+      console.error("Upload failed", err?.response?.data || err.message);
+      alert(err?.response?.data?.message || "Upload failed");
+    }
+  };
+
+  // ✅ ImageKit download: just open url with ik-attachment param
+  const handleDownload = (doc) => {
+    const url = getFileUrl(doc);
+    if (!url || url === "#") {
+      alert("No file URL available for download.");
+      return;
+    }
+
+    setDownloading(true);
+    try {
+      const finalUrl = `${url}${url.includes("?") ? "&" : "?"}ik-attachment=true`;
+      window.open(finalUrl, "_blank", "noopener,noreferrer");
     } finally {
-      setDownloading(false);
+      setTimeout(() => setDownloading(false), 500);
     }
   };
 
   const getFileIcon = (fileName) => {
-    if (!fileName) return <FaFilePdf color="#888" />;
-    const ext = fileName.split(".").pop().toLowerCase();
+    const name = String(fileName || "");
+    const ext = name.split(".").pop().toLowerCase();
     if (["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) {
       return <FaFileImage color="#f97316" />;
     }
@@ -93,88 +125,37 @@ export default function TenantDocs({ me, onChanged }) {
     return <FaFilePdf color="#888" />;
   };
 
-  const filteredDocs = me?.documents?.filter((doc) =>
-    (doc.fileName || "").toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredDocs = useMemo(() => {
+    const q = (search || "").toLowerCase().trim();
+    const docs = Array.isArray(me?.documents) ? me.documents : [];
+    if (!q) return docs;
+    return docs.filter((doc) =>
+      String(doc.fileName || "").toLowerCase().includes(q)
+    );
+  }, [me, search]);
 
   return (
     <div style={card} className="tdocs-container">
-      {/* Responsive styles */}
       <style>{`
-        .tdocs-container .row {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-        }
-        .tdocs-container .files-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-          gap: 8px;
-        }
-        .tdocs-container .doc-item {
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          padding: 10px 14px;
-          border-radius: 10px;
-          background: #f9fafb;
-          margin-bottom: 8px;
-          gap: 10px;
-        }
-        .tdocs-container .doc-left {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          min-width: 0;
-        }
-        .tdocs-container .doc-left span {
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-          display: inline-block;
-          max-width: 52vw;
-        }
-        .tdocs-container .doc-actions {
-          display: flex;
-          gap: 10px;
-          flex-wrap: wrap;
-          align-items: center;
-          justify-content: flex-end;
-        }
+        .tdocs-container .row { display:flex; gap:10px; flex-wrap:wrap; }
+        .tdocs-container .files-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
+        .tdocs-container .doc-item { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-radius:10px; background:#f9fafb; margin-bottom:8px; gap:10px; }
+        .tdocs-container .doc-left { display:flex; align-items:center; gap:10px; min-width:0; }
+        .tdocs-container .doc-left span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; max-width:52vw; }
+        .tdocs-container .doc-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end; }
 
-        /* Tablet: tighten text, allow wrapping */
-        @media (max-width: 1024px) {
-          .tdocs-container .doc-left span {
-            max-width: 42vw;
-          }
-        }
-
-        /* Phone: stack rows and make actions full width when needed */
-        @media (max-width: 640px) {
-          .tdocs-container .doc-item {
-            flex-direction: column;
-            align-items: stretch;
-          }
-          .tdocs-container .doc-left span {
-            max-width: 100%;
-          }
-          .tdocs-container .doc-actions {
-            justify-content: stretch;
-          }
-          .tdocs-container .doc-actions > * {
-            flex: 1 1 auto;
-            justify-content: center;
-            text-align: center;
-          }
-          .tdocs-container .drop-area {
-            padding: 16px;
-          }
+        @media (max-width:1024px){ .tdocs-container .doc-left span{ max-width:42vw; } }
+        @media (max-width:640px){
+          .tdocs-container .doc-item{ flex-direction:column; align-items:stretch; }
+          .tdocs-container .doc-left span{ max-width:100%; }
+          .tdocs-container .doc-actions{ justify-content:stretch; }
+          .tdocs-container .doc-actions > *{ flex:1 1 auto; justify-content:center; text-align:center; }
+          .tdocs-container .drop-area{ padding:16px; }
         }
       `}</style>
 
       <h5 style={{ marginBottom: 12 }}>📂 Tenant Documents</h5>
 
-      {/* Search */}
       <input
         type="text"
         placeholder="Search documents..."
@@ -183,7 +164,6 @@ export default function TenantDocs({ me, onChanged }) {
         style={inputBox}
       />
 
-      {/* Drag & Drop */}
       <div
         className="drop-area"
         style={dropArea}
@@ -197,12 +177,15 @@ export default function TenantDocs({ me, onChanged }) {
       <input
         type="file"
         multiple
+        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
         style={{ display: "none" }}
         ref={fileInputRef}
-        onChange={(e) => handleFiles(Array.from(e.target.files || []))}
+        onChange={(e) => {
+          handleFiles(Array.from(e.target.files || []));
+          e.target.value = "";
+        }}
       />
 
-      {/* Preview Before Upload */}
       {files.length > 0 && (
         <div style={{ marginBottom: 12 }}>
           <h6>Files to upload:</h6>
@@ -224,31 +207,45 @@ export default function TenantDocs({ me, onChanged }) {
         </div>
       )}
 
-      {/* Document List */}
       <div>
         {filteredDocs?.length ? (
           <ul style={{ paddingLeft: 0, listStyle: "none" }}>
-            {filteredDocs.map((d, i) => (
-              <li key={i} className="doc-item">
-                <div className="doc-left">
-                  {getFileIcon(d.fileName)}
-                  <span title={d.fileName}>{d.fileName}</span>
-                </div>
-                <div className="doc-actions">
-                  <a
-                    href={getFileUrl(d)}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={iconBtn}
-                  >
-                    <FaEye /> View
-                  </a>
-                  <button onClick={() => handleDownload(d)} style={iconBtn} disabled={downloading}>
-                    <FaDownload /> {downloading ? "..." : "Download"}
-                  </button>
-                </div>
-              </li>
-            ))}
+            {filteredDocs.map((d, i) => {
+              const href = getFileUrl(d);
+              return (
+                <li key={i} className="doc-item">
+                  <div className="doc-left">
+                    {getFileIcon(d.fileName)}
+                    <span title={d.fileName}>{d.fileName}</span>
+                  </div>
+
+                  <div className="doc-actions">
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={iconBtn}
+                      onClick={(e) => {
+                        if (!href || href === "#") {
+                          e.preventDefault();
+                          alert("No file URL available.");
+                        }
+                      }}
+                    >
+                      <FaEye /> View
+                    </a>
+
+                    <button
+                      onClick={() => handleDownload(d)}
+                      style={iconBtn}
+                      disabled={downloading}
+                    >
+                      <FaDownload /> {downloading ? "..." : "Download"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <div style={{ color: "#6b7280" }}>No documents uploaded</div>

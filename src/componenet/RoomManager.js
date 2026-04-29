@@ -1,8 +1,22 @@
 // src/pages/RoomManager.js
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-import { FaArrowLeft } from "react-icons/fa";
+import {
+  FaArrowLeft,
+  FaBed,
+  FaChevronDown,
+  FaChevronUp,
+  FaEdit,
+  FaFilter,
+  FaPlus,
+  FaSearch,
+  FaSlidersH,
+  FaTags,
+  FaTrash,
+  FaTimes,
+} from "react-icons/fa";
 import "../Pages/RoomManager.css";
 const ROOM_COLORS = [
   "#eef5ff",
@@ -25,7 +39,7 @@ const getRoomColor = (room) => {
 
   return ROOM_COLORS[Math.abs(hash) % ROOM_COLORS.length];
 };
-const apiUrl = " http://localhost:8000/api/rooms"; // change to your prod URL when needed
+const apiUrl = "   http://localhost:8000/api/rooms"; // change to your prod URL when needed
 
 /* Editable default categories – used only for filter dropdown & optional limits */
 const DEFAULT_CATEGORIES = ["Category 1", "Category 2", "Category 3", "Other"];
@@ -150,9 +164,18 @@ const [editTarget, setEditTarget] = useState({
 
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
+  const [mobileSection, setMobileSection] = useState("room");
+  const [showQuickAddForm, setShowQuickAddForm] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const roomSectionRef = React.useRef(null);
+  const filterSectionRef = React.useRef(null);
+  const categorySectionRef = React.useRef(null);
 
   const navigate = useNavigate();
   const handleNavigation = (path) => navigate(path);
+  const scrollToSection = (ref) => {
+    ref?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   /* -------- Load data -------- */
 
@@ -168,6 +191,12 @@ const [editTarget, setEditTarget] = useState({
     }
     fetchRooms();
   }, []);
+
+  useEffect(() => {
+    if (search || catFilter) {
+      setShowMobileFilters(true);
+    }
+  }, [search, catFilter]);
 
   const fetchRooms = async () => {
     try {
@@ -481,8 +510,11 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
     height: "100vh",
     display: "flex",
     justifyContent: "center",
-    alignItems: "center",
-    zIndex: 1050,
+    alignItems: "flex-start",
+    overflowY: "auto",
+    padding: "12px",
+    boxSizing: "border-box",
+    zIndex: 9999,
   };
 
   const remainingHint =
@@ -521,9 +553,15 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
   }, [rooms, search, catFilter]);
 
   const displayedRooms = baseFiltered;
+  const clearFilters = () => {
+    setSearch("");
+    setCatFilter("");
+  };
+  const renderModal = (node) =>
+    typeof document !== "undefined" ? createPortal(node, document.body) : node;
 
   /* -------- JSX -------- */
-const editRoomCategoryQuick = async (room) => {
+  const editRoomCategoryQuick = async (room) => {
   const current = (room.category || "").trim();
   const next = window.prompt(
     `Edit Category for Room ${room.roomNo}`,
@@ -555,68 +593,495 @@ const editRoomCategoryQuick = async (room) => {
     console.error("Failed to update room category:", err.response?.data || err.message);
     alert(err.response?.data?.message || "Failed to update room category.");
   }
-};
+  };
   return (
     <div
       className="container-fluid px-3 px-md-4 py-3"
       style={{ fontFamily: "Poppins, sans-serif" }}
     >
-      <h3 className="fw-bold mb-3 mb-md-4">Room &amp; Bed Management</h3>
+      <div className="room-manager-mobile d-md-none">
+        <div className="room-manager-mobile-topbar">
+          <button
+            type="button"
+            className="room-manager-mobile-back"
+            onClick={() => handleNavigation("/newcomponant")}
+          >
+            <FaArrowLeft />
+            <span>Back</span>
+          </button>
 
-      {/* Toolbar */}
-      <div className="card border-0 mb-3" style={{ background: "transparent" }}>
-        <div className="card-body p-0">
-          <div className="d-flex flex-wrap align-items-center gap-2">
-            <div className="d-flex align-items-center gap-2">
-              <button
-                className="btn me-2"
-                style={{ backgroundColor: "#5f7dfc", color: "white" }}
-                onClick={() => handleNavigation("/newcomponant")}
-              >
-                <FaArrowLeft className="me-1" />
-                Back
-              </button>
-            </div>
+          <div className="room-manager-mobile-topbadge">Rooms &amp; Beds</div>
+        </div>
 
-            <div className="me-md-auto d-flex align-items-center gap-2">
-              <h4 className="fw-bold mb-0 d-none d-md-block">Manage Rooms</h4>
-              <span className="badge bg-light text-dark border d-none d-md-inline">
-                Rooms &amp; Beds
+        <div className="room-manager-mobile-hero">
+          <div className="room-manager-mobile-hero-copy">
+            <div className="room-manager-mobile-kicker">Room Manager</div>
+            <h4>Manage rooms and beds</h4>
+            <p>
+              Add rooms, beds, prices, and categories in a clean mobile app style.
+            </p>
+          </div>
+          <div className="room-manager-mobile-hero-stat">
+            <span>Rooms</span>
+            <strong>{totalRooms}</strong>
+            <small>{totalBeds} beds total</small>
+          </div>
+        </div>
+
+        <div className="room-manager-mobile-stats">
+          <div className="room-manager-mobile-stat-card">
+            <span>Total Rooms</span>
+            <strong>{totalRooms}</strong>
+            <small>Managed rooms</small>
+          </div>
+          <div className="room-manager-mobile-stat-card">
+            <span>Total Beds</span>
+            <strong>{totalBeds}</strong>
+            <small>Across all floors</small>
+          </div>
+        </div>
+
+        {/* <div className="room-manager-mobile-actions">
+          <button
+            type="button"
+            className={`room-manager-mobile-action is-primary ${mobileSection === "room" ? "is-active" : ""}`}
+            onClick={() => {
+              setMobileSection("room");
+              setShowQuickAddForm(true);
+              scrollToSection(roomSectionRef);
+            }}
+          >
+            <FaPlus />
+            <span>Add Room</span>
+          </button>
+          <button
+            type="button"
+            className={`room-manager-mobile-action ${mobileSection === "filters" ? "is-active" : ""}`}
+            onClick={() => {
+              setMobileSection("filters");
+              scrollToSection(filterSectionRef);
+            }}
+          >
+            <FaSlidersH />
+            <span>Filters</span>
+          </button>
+          <button
+            type="button"
+            className={`room-manager-mobile-action ${mobileSection === "categories" ? "is-active" : ""}`}
+            onClick={() => {
+              setMobileSection("categories");
+              openCategoryEditor();
+              scrollToSection(categorySectionRef);
+            }}
+          >
+            <FaTags />
+            <span>Categories</span>
+          </button>
+        </div> */}
+
+        <section ref={filterSectionRef} className="room-manager-mobile-filter-wrap">
+          <button
+            type="button"
+            className="room-manager-mobile-filter-toggle"
+            onClick={() => setShowMobileFilters((prev) => !prev)}
+            aria-expanded={showMobileFilters}
+          >
+            <span className="room-manager-mobile-filter-toggle-left">
+              <FaFilter />
+              <span>Filter</span>
+            </span>
+            <span className="room-manager-mobile-filter-toggle-right">
+              <span className="room-manager-mobile-filter-toggle-label">
+                {displayedRooms.length} rooms
               </span>
-            </div>
+              {showMobileFilters ? <FaChevronUp /> : <FaChevronDown />}
+            </span>
+          </button>
 
-            <div className="w-100 d-md-none">
-              <div className="d-flex align-items-center justify-content-between">
-                <h5 className="fw-bold mb-0">Manage Rooms</h5>
-                <span className="badge bg-light text-dark border">
-                  Rooms &amp; Beds
-                </span>
+          {showMobileFilters ? (
+            <div className="room-manager-mobile-filter-panel">
+              <div className="room-manager-mobile-filter-panel-title">
+                <div>
+                  <h5>Search &amp; Filter</h5>
+                  <span>{displayedRooms.length} rooms shown</span>
+                </div>
+                <div className="room-manager-mobile-filter-panel-badge">
+                  <FaFilter />
+                  <span>Filter</span>
+                </div>
+              </div>
+
+              <label className="room-manager-mobile-filter-chip room-manager-mobile-filter-chip--search">
+                <FaSearch className="room-manager-mobile-search-icon" />
+                <input
+                  type="search"
+                  name="room-manager-mobile-search"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
+                  placeholder="Search room"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </label>
+
+              <label className="room-manager-mobile-filter-chip room-manager-mobile-filter-chip--select">
+                <span>Category</span>
+                <select
+                  className="form-select"
+                  value={catFilter}
+                  onChange={(e) => setCatFilter(e.target.value)}
+                >
+                  <option value="">All</option>
+                  {categories.map((c, idx) => (
+                    <option key={idx} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="room-manager-mobile-filter-actions">
+                <button
+                  type="button"
+                  className="room-manager-mobile-filter-chip room-manager-mobile-filter-chip--ghost"
+                  onClick={clearFilters}
+                  disabled={!search && !catFilter}
+                >
+                  <FaTimes />
+                  <span>Clear</span>
+                </button>
               </div>
             </div>
+          ) : null}
+        </section>
 
-            <div className="ms-md-auto flex-grow-1" style={{ maxWidth: 420 }}>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="Search room / bed / floor / category"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+        {showQuickAddForm ? (
+          <section ref={roomSectionRef} className="room-manager-mobile-panel">
+          <div className="room-manager-mobile-panel-title">
+            <div>
+              <h5>Quick Add Room</h5>
+              <span>Fast entry</span>
             </div>
+            <div className="room-manager-mobile-panel-actions">
+              <div className="room-manager-mobile-panel-badge room-manager-mobile-panel-badge--soft">
+                <FaBed />
+                <span>{displayedRooms.length} rooms</span>
+              </div>
+              <button
+                type="button"
+                className="room-manager-mobile-close-btn"
+                onClick={() => setShowQuickAddForm(false)}
+                aria-label="Close quick add form"
+              >
+                <FaTimes />
+              </button>
+            </div>
+          </div>
+
+          <div className="room-manager-mobile-form-grid">
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Category (e.g., Deluxe, Standard)"
+              value={roomForm.category}
+              onChange={(e) =>
+                setRoomForm((prev) => ({ ...prev, category: e.target.value }))
+              }
+            />
+
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Floor No (e.g., Ground, 1, 2, 3, Basement)"
+              value={roomForm.floorNo}
+              onChange={(e) =>
+                setRoomForm((prev) => ({ ...prev, floorNo: e.target.value }))
+              }
+            />
+
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Room No (e.g., 203)"
+              value={roomForm.roomNo}
+              onChange={(e) =>
+                setRoomForm((prev) => ({ ...prev, roomNo: e.target.value }))
+              }
+            />
+
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Bed No (e.g., B1)"
+              value={roomForm.bedNo}
+              onChange={(e) =>
+                setRoomForm((prev) => ({ ...prev, bedNo: e.target.value }))
+              }
+            />
+
+            <input
+              type="text"
+              className="form-control"
+              placeholder="Bed Category (e.g., Upper, Lower)"
+              value={roomForm.bedCategory}
+              onChange={(e) =>
+                setRoomForm((prev) => ({ ...prev, bedCategory: e.target.value }))
+              }
+            />
+
+            <input
+              type="number"
+              className="form-control"
+              placeholder="Bed Price (Rs.)"
+              value={roomForm.bedPrice}
+              onChange={(e) =>
+                setRoomForm((prev) => ({ ...prev, bedPrice: e.target.value }))
+              }
+            />
 
             <button
-              className="btn btn-sm btn-outline-secondary ms-auto ms-md-0"
-              onClick={openCategoryEditor}
-              title="Edit category names"
+              type="button"
+              className="room-manager-mobile-submit"
+              onClick={addRoom}
             >
-              ✏️ Edit Categories
+              <FaPlus />
+              <span>Room</span>
             </button>
           </div>
+          </section>
+        ) : null}
+
+        <section className="room-manager-mobile-section">
+          <div className="room-manager-mobile-section-title">
+            <div>
+              <h5>Rooms &amp; Beds</h5>
+              <span>{displayedRooms.length} rooms</span>
+            </div>
+          </div>
+
+          <div className="room-manager-mobile-room-list">
+            {displayedRooms.map((room) => {
+              const norm = normalizeFloorKey(room.floorNo);
+              const displayFloor = norm ? floorLabelFromKey(norm) : room.floorNo || "-";
+              const bedCount = room.beds?.length || 0;
+              const { bg, fg } = roomColors(room);
+              const roomStyle = { "--bg": bg, "--fg": fg };
+
+              return (
+                <article
+                  key={`mobile-${room.category}-${room.floorNo}-${room.roomNo}`}
+                  className="room-manager-mobile-room-card"
+                >
+                  <div className="room-manager-mobile-room-head">
+                    <div>
+                      <span className="roomNoPill room-manager-mobile-room-pill" style={roomStyle}>
+                        Room {room.roomNo}
+                      </span>
+                      <div className="room-manager-mobile-room-meta">
+                        Floor: {displayFloor} {bedCount} bed(s)
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="room-manager-mobile-category-pill"
+                      onClick={() => editRoomCategoryQuick(room)}
+                    >
+                      {room.category || "Category"}
+                    </button>
+                  </div>
+
+                  <div className="room-manager-mobile-bed-list">
+                    {(room.beds?.length ? room.beds : []).map((bed, idx) => (
+                      <div key={`mobile-${room.roomNo}-${bed.bedNo}-${idx}`} className="room-manager-mobile-bed-row">
+                        <div className="room-manager-mobile-bed-copy">
+                          <div className="room-manager-mobile-bed-pill-row">
+                            <span className="room-manager-mobile-bed-pill">Bed {bed.bedNo}</span>
+                            {bed.bedCategory ? (
+                              <span className="room-manager-mobile-bed-pill room-manager-mobile-bed-pill--alt">
+                                {bed.bedCategory}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="room-manager-mobile-bed-price">
+                            Price:{" "}
+                            {bed.price != null ? `Rs. ${Number(bed.price).toLocaleString("en-IN")}` : "—"}
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="room-manager-mobile-edit-btn"
+                          onClick={() =>
+                            openEditModal(
+                              room._id,
+                              room.roomNo,
+                              bed.bedNo,
+                              bed.bedCategory ?? "",
+                              bed.price ?? ""
+                            )
+                          }
+                        >
+                          <FaEdit />
+                         
+                        </button>
+                      </div>
+                    ))}
+
+                    {!room.beds?.length && (
+                      <div className="room-manager-mobile-empty-bed">No beds yet</div>
+                    )}
+                  </div>
+
+                  <div className="room-manager-mobile-room-actions">
+                    <button
+                      type="button"
+                      className="room-manager-mobile-room-action room-manager-mobile-room-action--primary"
+                      onClick={() => openAddBedModal(room)}
+                    >
+                      {/* <FaBed /> */}
+                      <span>Add Bed</span>
+                    </button>
+
+                    {room.beds?.length > 0 ? (
+                      <button
+                        type="button"
+                        className="room-manager-mobile-room-action room-manager-mobile-room-action--danger"
+                        onClick={() => openDeleteBedModal(room)}
+                      >
+                        {/* <FaTrash /> */}
+                        <span>Delete Bed</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="room-manager-mobile-room-action room-manager-mobile-room-action--ghost"
+                        onClick={() => openAddBedModal(room)}
+                      >
+                        <FaPlus />
+                        <span>Add First Bed</span>
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
+
+            {!displayedRooms.length && (
+              <div className="room-manager-mobile-empty">No rooms match your filters.</div>
+            )}
+          </div>
+        </section>
+
+        <div className="room-manager-mobile-bottom-nav">
+          <button
+            type="button"
+            className={`room-manager-mobile-bottom-action ${mobileSection === "room" ? "is-active" : ""}`}
+            onClick={() => {
+              setMobileSection("room");
+              setShowQuickAddForm(true);
+              scrollToSection(roomSectionRef);
+            }}
+          >
+            <span className="room-manager-mobile-bottom-icon">
+              <FaPlus />
+            </span>
+            <span>Add Room</span>
+          </button>
+          <button
+            type="button"
+            className={`room-manager-mobile-bottom-action ${mobileSection === "filters" ? "is-active" : ""}`}
+            onClick={() => {
+              setMobileSection("filters");
+              scrollToSection(filterSectionRef);
+            }}
+          >
+            <span className="room-manager-mobile-bottom-icon">
+              <FaSlidersH />
+            </span>
+            <span>Filters</span>
+          </button>
+          <button
+            type="button"
+            className={`room-manager-mobile-bottom-action ${mobileSection === "categories" ? "is-active" : ""}`}
+            onClick={() => {
+              setMobileSection("categories");
+              openCategoryEditor();
+              scrollToSection(categorySectionRef);
+            }}
+          >
+            <span className="room-manager-mobile-bottom-icon">
+              <FaTags />
+            </span>
+            <span>Categories</span>
+          </button>
         </div>
       </div>
 
-      {/* Quick Add + KPIs */}
-      <div className="row g-3 mb-4">
+      <div className="d-none d-md-block">
+        <h3 className="fw-bold mb-3 mb-md-4">Room &amp; Bed Management</h3>
+
+        {/* Toolbar */}
+        <div className="card border-0 mb-3" style={{ background: "transparent" }}>
+          <div className="card-body p-0">
+            <div className="d-flex flex-wrap align-items-center gap-2">
+              <div className="d-flex align-items-center gap-2">
+                <button
+                  className="btn me-2"
+                  style={{ backgroundColor: "#5f7dfc", color: "white" }}
+                  onClick={() => handleNavigation("/newcomponant")}
+                >
+                  <FaArrowLeft className="me-1" />
+                  Back
+                </button>
+              </div>
+
+              <div className="me-md-auto d-flex align-items-center gap-2">
+                <h4 className="fw-bold mb-0 d-none d-md-block">Manage Rooms</h4>
+                <span className="badge bg-light text-dark border d-none d-md-inline">
+                  Rooms &amp; Beds
+                </span>
+              </div>
+
+              <div className="w-100 d-md-none">
+                <div className="d-flex align-items-center justify-content-between">
+                  <h5 className="fw-bold mb-0">Manage Rooms</h5>
+                  <span className="badge bg-light text-dark border">
+                    Rooms &amp; Beds
+                  </span>
+                </div>
+              </div>
+
+              <div className="ms-md-auto flex-grow-1" style={{ maxWidth: 420 }}>
+                <input
+                  type="text"
+                  name="room-manager-desktop-search"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck="false"
+                  className="form-control"
+                  placeholder="Search room / bed / floor / category"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+
+              <button
+                className="btn btn-sm btn-outline-secondary ms-auto ms-md-0"
+                onClick={openCategoryEditor}
+                title="Edit category names"
+              >
+                ✏️ Edit Categories
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Add + KPIs */}
+        <div className="row g-3 mb-4">
         {/* Quick Add */}
       <div className="col-12 col-lg-6">
   <div className="bg-white border rounded-3 shadow-sm p-3 h-100">
@@ -923,7 +1388,7 @@ const editRoomCategoryQuick = async (room) => {
       </div>
 
       {/* Add Bed Modal */}
-      {showAddBedModal && selectedRoom && (
+      {showAddBedModal && selectedRoom && renderModal(
         <div
           style={modalBackdropStyle}
           onClick={() => setShowAddBedModal(false)}
@@ -939,14 +1404,16 @@ const editRoomCategoryQuick = async (room) => {
             role="dialog"
             aria-modal="true"
           >
-            <div
-              className="modal-content"
-              style={{
-                maxHeight: "calc(100vh - 24px)",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
+              <div
+                className="modal-content"
+                style={{
+                  maxHeight: "calc(100vh - 24px)",
+                  display: "flex",
+                  flexDirection: "column",
+                  width: "100%",
+                  maxWidth: "520px",
+                }}
+              >
               <div
                 className="modal-header bg-white sticky-top py-2"
                 style={{ zIndex: 1 }}
@@ -1042,13 +1509,14 @@ const editRoomCategoryQuick = async (room) => {
       )}
 
       {/* Edit Price Modal */}
-      {showEditModal && (
+      {showEditModal &&
+        renderModal(
         <div
           style={modalBackdropStyle}
           onClick={() => setShowEditModal(false)}
         >
           <div
-            className="modal-dialog modal-dialog-centered"
+            className="modal-dialog modal-dialog-centered "
             style={{
               width: "100%",
               maxWidth: "520px",
@@ -1059,7 +1527,7 @@ const editRoomCategoryQuick = async (room) => {
             aria-modal="true"
           >
             <div
-              className="modal-content"
+              className="modal-content roommodal"
               style={{
                 maxHeight: "calc(100vh - 24px)",
                 display: "flex",
@@ -1067,7 +1535,7 @@ const editRoomCategoryQuick = async (room) => {
               }}
             >
               <div
-                className="modal-header bg-white sticky-top py-2"
+                className="modal-header bg-white sticky-top py-2 "
                 style={{ zIndex: 1 }}
               >
                 <h6 className="modal-title mb-0">
@@ -1076,7 +1544,7 @@ const editRoomCategoryQuick = async (room) => {
                 </h6>
              <button
   type="button"
-  className="btn-close p-0"
+  className="btn-close btn-close1 p-1"
   onClick={() => setShowEditModal(false)}
 >
   x
@@ -1139,7 +1607,7 @@ const editRoomCategoryQuick = async (room) => {
       )}
 
       {/* 🔴 NEW: Delete Bed Modal */}
-      {showDeleteBedModal && (
+      {showDeleteBedModal && renderModal(
         <div
           style={modalBackdropStyle}
           onClick={() => setShowDeleteBedModal(false)}
@@ -1209,6 +1677,8 @@ const editRoomCategoryQuick = async (room) => {
                   </label>
                   <input
                     type="password"
+                    name="delete-bed-password"
+                    autoComplete="new-password"
                     className="form-control form-control-sm"
                     value={deleteBedState.password}
                     onChange={(e) =>
@@ -1247,7 +1717,8 @@ const editRoomCategoryQuick = async (room) => {
       )}
 
       {/* Category Editor Modal */}
-      {showCatEditor && (
+      {showCatEditor &&
+        renderModal(
         <div style={modalBackdropStyle} onClick={() => setShowCatEditor(false)}>
           <div
             className="modal-dialog modal-dialog-centered modal-fullscreen-sm-down"
@@ -1256,7 +1727,7 @@ const editRoomCategoryQuick = async (room) => {
             role="dialog"
             aria-modal="true"
           >
-            <div className="modal-content">
+            <div className="modal-content" style={{ width: "100%", maxWidth: "720px" }}>
               <div
                 className="modal-header sticky-top bg-white"
                 style={{ zIndex: 1 }}
@@ -1326,7 +1797,8 @@ const editRoomCategoryQuick = async (room) => {
             </div>
           </div>
         </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

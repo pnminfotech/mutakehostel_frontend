@@ -595,7 +595,13 @@ const AddTenantModal = ({
                 {/* Upload Docs */}
                 <div className="col-12 col-md-6">
                   <label className="form-label">Upload Documents</label>
-                  <input type="file" className="form-control form-control-sm" multiple accept="image/*" onChange={handleDocsChange} />
+                  <input
+                    type="file"
+                    className="form-control form-control-sm"
+                    multiple
+                    accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                    onChange={handleDocsChange}
+                  />
                   {docMsg && <small className="d-block mt-2 text-danger">{docMsg}</small>}
                 </div>
                 <div className="col-12 col-md-6 d-flex align-items-end">

@@ -213,6 +213,7 @@ const FormDownload = ({ formData }) => {
   });
 
   const [tenantDoc, setTenantDoc] = useState(null);
+  const [photoDataUrl, setPhotoDataUrl] = useState("");
 
   // ---------------- Helpers ----------------
   const safe = (v) =>
@@ -415,16 +416,19 @@ const FormDownload = ({ formData }) => {
           .map((b) => Number(pickRentFromBed(b)))
           .filter((n) => !Number.isNaN(n) && n > 0);
 
-        const minPrice =
-          allPrices.length > 0 ? Math.min(...allPrices) : "";
+        const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : "";
 
         const resolvedBedNo = bedObj?.bedNo
           ? `bed ${String(bedObj.bedNo).trim()}`
-          : (!isBadBed(tenantBed) ? tenantBed : "");
+          : !isBadBed(tenantBed)
+          ? tenantBed
+          : "";
 
         const resolvedBedRent = bedObj
           ? pickRentFromBed(bedObj)
-          : (tenantRentHint != null ? tenantRentHint : minPrice);
+          : tenantRentHint != null
+          ? tenantRentHint
+          : minPrice;
 
         if (cancelled) return;
 
@@ -457,7 +461,9 @@ const FormDownload = ({ formData }) => {
 
   const bedDisplay = !isBadBed(data?.bedNo)
     ? data?.bedNo
-    : (roomMeta?.bedNo ? roomMeta.bedNo : "_________");
+    : roomMeta?.bedNo
+    ? roomMeta.bedNo
+    : "_________";
 
   // ---------------- PDF Download ----------------
   const handleDownload = async () => {
@@ -518,41 +524,87 @@ const FormDownload = ({ formData }) => {
     pdf.save(`Admission_Form_${data?.srNo || ""}.pdf`);
   };
 
+  // ✅ STRICT PHOTO ONLY (NO OTHER DOC IMAGE)
+  const photoUrl = useMemo(() => {
+    const docs = Array.isArray(data?.documents)
+      ? data.documents
+      : Array.isArray(data?.docs)
+      ? data.docs
+      : Array.isArray(data?.files)
+      ? data.files
+      : [];
 
+    const isImage = (d) => {
+      const ct = String(d?.contentType || d?.type || d?.mime || "").toLowerCase();
+      const name = String(d?.fileName || d?.name || "").toLowerCase();
+      return ct.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(name);
+    };
 
+    const BASE_URL = "  http://localhost:8000"; // change to your backend URL
 
+    const getUrl = (d) => {
+      const raw =
+        d?.url || d?.fileUrl || d?.path || d?.secure_url || d?.location || "";
+      if (!raw) return "";
+      if (raw.startsWith("http")) return raw;
+      return `${BASE_URL}/${raw.replace(/^\/+/, "")}`;
+    };
 
+    // ✅ only photo relation
+    const preferred = docs.find((d) => {
+      const rel = String(
+        d?.relation || d?.docType || d?.documentType || ""
+      )
+        .toLowerCase()
+        .trim();
 
+      return (
+        isImage(d) &&
+        getUrl(d) &&
+        (rel === "photo" || rel === "tenant photo" || rel === "profile photo")
+      );
+    });
 
+    // ❌ no fallback to anyImg (so other docs never show)
+    return getUrl(preferred) || "";
+  }, [data?.documents, data?.docs, data?.files]);
 
-// pick photo from documents[]: prefer relation "Self"
-const photoUrl = useMemo(() => {
-  const docs = Array.isArray(data?.documents) ? data.documents : [];
+  useEffect(() => {
+    let cancelled = false;
 
-  const selfDoc =
-    docs.find(
-      (d) =>
-        String(d?.relation || "").toLowerCase() === "self" &&
-        String(d?.contentType || "").toLowerCase().startsWith("image") &&
-        d?.url
-    ) || null;
+    async function toDataUrl(url) {
+      try {
+        const res = await fetch(url, { mode: "cors" });
+        const blob = await res.blob();
 
-  const anyImgDoc =
-    docs.find(
-      (d) =>
-        String(d?.contentType || "").toLowerCase().startsWith("image") && d?.url
-    ) || null;
+        const reader = new FileReader();
+        const dataUrl = await new Promise((resolve, reject) => {
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
 
-  return selfDoc?.url || anyImgDoc?.url || "";
-}, [data?.documents]);
+        return dataUrl;
+      } catch (e) {
+        return "";
+      }
+    }
 
+    (async () => {
+      if (!photoUrl) {
+        setPhotoDataUrl("");
+        return;
+      }
 
+      const durl = await toDataUrl(photoUrl);
+      if (!cancelled) setPhotoDataUrl(durl || "");
+    })();
 
+    return () => {
+      cancelled = true;
+    };
+  }, [photoUrl]);
 
-
-
-
-  
   // ---------------- UI ----------------
   return (
     <div>
@@ -568,26 +620,29 @@ const photoUrl = useMemo(() => {
               New Admission Form
             </p>
           </div>
-         <div className="form-photo-box">
-  {photoUrl ? (
-    <img
-      src={photoUrl}
-      alt="Occupant"
-      className="form-photo"
-      crossOrigin="anonymous"
-    />
-  ) : (
-    <div style={{ fontSize: 10, textAlign: "center" }}>PHOTO</div>
-  )}
-</div>
 
+          <div className="form-photo-box">
+            {photoDataUrl ? (
+              <img src={photoDataUrl} alt="Occupant" className="form-photo" />
+            ) : (
+              <div style={{ fontSize: 10, textAlign: "center" }}>PHOTO</div>
+            )}
+          </div>
         </header>
 
         <div className="form-body">
-          <p><strong>SR No:</strong> {data?.srNo || "_________"}</p>
-          <p><strong>Name Of Occupant:</strong> {safeText(data?.name)}</p>
-          <p><strong>Phone No:</strong> {safeText(data?.phoneNo)}</p>
-          <p><strong>Address:</strong> {safeText(data?.address)}</p>
+          <p>
+            <strong>SR No:</strong> {data?.srNo || "_________"}
+          </p>
+          <p>
+            <strong>Name Of Occupant:</strong> {safeText(data?.name)}
+          </p>
+          <p>
+            <strong>Phone No:</strong> {safeText(data?.phoneNo)}
+          </p>
+          <p>
+            <strong>Address:</strong> {safeText(data?.address)}
+          </p>
 
           <hr />
 
@@ -608,17 +663,22 @@ const photoUrl = useMemo(() => {
           <hr />
 
           <p>
-            <strong>Name & Address of Company/College/Institute/Other:</strong><br />
+            <strong>Name & Address of Company/College/Institute/Other:</strong>
+            <br />
             {safeText(data?.companyAddress, "________________________________")}
           </p>
 
-          <p><strong>Date Of Joining (Company/College):</strong> {safeDate(data?.dateOfJoiningCollege)}</p>
-          <p><strong>Hostel Joining Date:</strong> {safeDate(data?.joiningDate)}</p>
+          <p>
+            <strong>Date Of Joining (Company/College):</strong> {safeDate(data?.dateOfJoiningCollege)}
+          </p>
+          <p>
+            <strong>Hostel Joining Date:</strong> {safeDate(data?.joiningDate)}
+          </p>
 
           <p>
             <strong>Category:</strong> {categoryVal} &nbsp;&nbsp;&nbsp;
             <strong>Floor No:</strong> {floorVal} &nbsp;&nbsp;&nbsp;
-            <strong>Room  No:</strong> {safe(data?.roomNo) || "_________"} &nbsp;&nbsp;&nbsp;
+            <strong>Room No:</strong> {safe(data?.roomNo) || "_________"} &nbsp;&nbsp;&nbsp;
             <strong>Bed No:</strong> {bedDisplay}
           </p>
 
@@ -627,7 +687,9 @@ const photoUrl = useMemo(() => {
             <strong>Deposit Amount:</strong> {fmtINR(data?.depositAmount)}
           </p>
 
-          <p><strong>Date Of Birth:</strong> {safeDate(data?.dob)}</p>
+          <p>
+            <strong>Date Of Birth:</strong> {safeDate(data?.dob)}
+          </p>
 
           <p>
             <strong>Has Occupant Given Rules & Regulation Copy To Read & Understand:</strong>{" "}
@@ -637,13 +699,16 @@ const photoUrl = useMemo(() => {
 
         <footer className="form-footer">
           <div className="signature" style={{ fontSize: "10px" }}>
-            <p>Sign of Warden:</p><span>_____</span>
+            <p>Sign of Warden:</p>
+            <span>_____</span>
           </div>
           <div className="signature" style={{ fontSize: "10px" }}>
-            <p>Sign of Occupant:</p><span>_____</span>
+            <p>Sign of Occupant:</p>
+            <span>_____</span>
           </div>
           <div className="signature" style={{ fontSize: "10px" }}>
-            <p>Sign of Guardian:</p><span>_____</span>
+            <p>Sign of Guardian:</p>
+            <span>_____</span>
           </div>
         </footer>
 

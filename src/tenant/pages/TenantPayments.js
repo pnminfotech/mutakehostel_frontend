@@ -42,6 +42,26 @@ const getYMFromRecord = (r) => {
   return null;
 };
 
+const monthIndexToYM = (ym) => {
+  if (!Number.isFinite(ym)) return null;
+  return { y: Math.floor(ym / 12), m: ym % 12 };
+};
+
+const getFirstBillYM = (tenant) => {
+  if (!tenant?.joiningDate) return null;
+
+  if (tenant?.firstRentMonth) {
+    const pm = parseMonthKey(tenant.firstRentMonth);
+    if (pm) return pm.y * 12 + pm.m;
+  }
+
+  const joinDate = new Date(tenant.joiningDate);
+  if (isNaN(joinDate)) return null;
+
+  const isAdvance = tenant?.firstRentStatus === "ADVANCE_PAID";
+  return joinDate.getFullYear() * 12 + joinDate.getMonth() + (isAdvance ? 0 : 1);
+};
+
 // safest numeric
 const toNum = (v) => {
   if (v === null || v === undefined) return 0;
@@ -255,22 +275,60 @@ export default function TenantPayments({ me: meProp, rents: rentsProp, refresh }
   }, [me?.joiningDate, paidSet]);
 
   // Prefill selectors to earliest unpaid (else current)
+  const firstBillYM = useMemo(
+    () => getFirstBillYM(me),
+    [me?.joiningDate, me?.firstRentMonth, me?.firstRentStatus]
+  );
+
   useEffect(() => {
+    const currentYM = now.getFullYear() * 12 + now.getMonth();
+
     if (pendingMonths.length) {
       setSelMonth(pendingMonths[0].m);
       setSelYear(pendingMonths[0].y);
+    } else if (firstBillYM != null && currentYM < firstBillYM) {
+      const ym = monthIndexToYM(firstBillYM);
+      if (ym) {
+        setSelMonth(ym.m + 1);
+        setSelYear(ym.y);
+      }
     } else {
       setSelMonth(now.getMonth() + 1);
       setSelYear(now.getFullYear());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingMonths.length]);
+  }, [pendingMonths.length, firstBillYM]);
 
   const currentMonthPaid = useMemo(() => {
+    const currentYM = now.getFullYear() * 12 + now.getMonth();
+    if (firstBillYM != null && currentYM < firstBillYM) return false;
+
     const m = now.getMonth();
     const y = now.getFullYear();
     return paidSet.has(`${m}-${y}`);
-  }, [paidSet]);
+  }, [paidSet, firstBillYM]);
+
+  const currentMonthState = useMemo(() => {
+    const currentYM = now.getFullYear() * 12 + now.getMonth();
+
+    if (firstBillYM != null && currentYM < firstBillYM) {
+      return { label: "Not due yet", color: "#2563eb", nextDueYM: firstBillYM };
+    }
+
+    if (currentMonthPaid) {
+      return {
+        label: "Paid",
+        color: "#16a34a",
+        nextDueYM: currentYM + 1,
+      };
+    }
+
+    return {
+      label: "Pending",
+      color: "#f59e0b",
+      nextDueYM: currentYM,
+    };
+  }, [currentMonthPaid, firstBillYM]);
 
   // years dropdown: current year down to current-2
   const years = useMemo(() => {
@@ -283,6 +341,13 @@ export default function TenantPayments({ me: meProp, rents: rentsProp, refresh }
     const amt = toNumber(amount);
     if (!amt) return alert("Enter amount");
     if (!selMonth || !selYear) return alert("Select month & year");
+
+    const selectedYM = Number(selYear) * 12 + (Number(selMonth) - 1);
+    if (firstBillYM != null && selectedYM < firstBillYM) {
+      const first = monthIndexToYM(firstBillYM);
+      const label = first ? fmtMonthYear(first.m + 1, first.y) : "the first bill month";
+      return alert(`Billing for this tenant starts from ${label}. Please choose that month or later.`);
+    }
 
     try {
       await axios.post(`${API}/tenant/payments/report`, {
@@ -404,8 +469,8 @@ export default function TenantPayments({ me: meProp, rents: rentsProp, refresh }
 
         <div style={card}>
           <div style={{ color: "#6b7280", fontSize: 12 }}>Current Month</div>
-          <div style={{ fontWeight: 700, color: currentMonthPaid ? "#16a34a" : "#f59e0b" }}>
-            {currentMonthPaid ? "Paid" : "Pending"}
+          <div style={{ fontWeight: 700, color: currentMonthState.color }}>
+            {currentMonthState.label}
           </div>
         </div>
       </div>
@@ -428,6 +493,10 @@ export default function TenantPayments({ me: meProp, rents: rentsProp, refresh }
                 </button>
               );
             })}
+          </div>
+        ) : currentMonthState.label === "Not due yet" ? (
+          <div style={{ color: "#6b7280" }}>
+            Billing has not started yet for this tenant. The first payable month is already selected below.
           </div>
         ) : (
           <div style={{ color: "#6b7280" }}>No pending months for this year 🎉</div>

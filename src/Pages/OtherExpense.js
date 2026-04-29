@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { FaPlus, FaDownload, FaEdit } from "react-icons/fa";
+import { FaPlus, FaDownload, FaEdit, FaClipboardList, FaRedoAlt } from "react-icons/fa";
+import { MdMiscellaneousServices } from "react-icons/md";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash } from "@fortawesome/free-solid-svg-icons";
 import * as XLSX from "xlsx";
@@ -7,11 +8,15 @@ import { HiHome } from "react-icons/hi";
 import { FaArrowLeft } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import "../Pages/lightbill.css";
+import "../componenet/RentTracker.css";
 
 const OtherExpense = ({ embedded = false }) => {
   const navigate = useNavigate();
 
   const [otherExpenses, setOtherExpenses] = useState([]);
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth <= 768 : false
+  );
 
   // Filters
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -61,6 +66,12 @@ const OtherExpense = ({ embedded = false }) => {
   // Load data
   useEffect(() => {
     fetchExpenses();
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   const fetchExpenses = async () => {
@@ -194,12 +205,382 @@ const OtherExpense = ({ embedded = false }) => {
     XLSX.writeFile(book, `OtherExpense-${selectedYear}.xlsx`);
   };
 
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate("/maindashboard");
+  };
+
+  const getExpenseTone = (status = "") => {
+    const s = String(status || "").toLowerCase();
+    if (s === "paid") return "paid";
+    if (s === "pending") return "pend";
+    return "due";
+  };
+
+  if (isMobile) {
+    return (
+      <div className="rent-mobile-view other-expense-mobile-view">
+        <div className="rent-mobile-shell">
+          <section className="rent-mobile-section">
+            <div className="rent-mobile-topbar section-text1">
+              <button
+                type="button"
+                className="rent-mobile-leaved-btn"
+                onClick={handleGoBack}
+              >
+                <FaArrowLeft />
+                <span>Back</span>
+              </button>
+
+              <button type="button" className="rent-mobile-leaved-btn" onClick={fetchExpenses}>
+                <FaRedoAlt />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            <div className="rent-mobile-section-title section-text1">
+              <div>
+                <h5>Other Expenses</h5>
+                <div className="rent-mobile-badge">Tap a card to edit</div>
+              </div>
+              <div className="rent-mobile-badge">
+                {filteredExpenses.length} {filteredExpenses.length === 1 ? "item" : "items"}
+              </div>
+            </div>
+
+            <div className="rent-mobile-actions">
+              <select
+                className="form-select"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+              >
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="form-select"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              >
+                {months.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="rent-mobile-tenant-list">
+              {filteredExpenses.length === 0 ? (
+                <div className="rent-mobile-empty">No data found.</div>
+              ) : (
+                filteredExpenses.map((item, idx) => {
+                  const tone = getExpenseTone(item.status);
+                  return (
+                    <article
+                      key={item._id}
+                      className={`rent-mobile-tenant-card rent-mobile-tenant-card--${tone}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => handleEdit(item)}
+                      onKeyDown={(e) => e.key === "Enter" && handleEdit(item)}
+                    >
+                      <div className="rent-mobile-tenant-core">
+                        <div className="rent-mobile-tenant-head">
+                          <div className="rent-mobile-tenant-avatar">
+                            {(item.expenses?.[0] || "O").charAt(0).toUpperCase()}
+                          </div>
+
+                          <div className="rent-mobile-tenant-main text-justify">
+                            <div className="rent-mobile-tenant-name">
+                              Other Expense #{idx + 1}
+                            </div>
+                            <div className="rent-mobile-tenant-meta">
+                              <FaClipboardList className="me-1" />
+                              {item.expenses?.join(", ") || "-"}
+                            </div>
+                            <div className="rent-mobile-tenant-meta">
+                              Date:{" "}
+                              <span className="lb-highlight-date">
+                                {new Date(item.date).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <div className="rent-mobile-tenant-meta">
+                              Main Amount:{" "}
+                              <span className="lb-highlight-date">
+                                ₹{Number(item.mainAmount || 0).toLocaleString("en-IN")}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: "8px" }}>
+                          <span className={`rent-status-pill ${tone}`}>
+                            {item.status === "paid" ? "Paid" : "Pending"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="rent-mobile-card-actions">
+                        <button
+                          type="button"
+                          className="rent-mobile-action secondary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(item);
+                          }}
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          className="rent-mobile-action warn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(item);
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          <div className="rent-mobile-actionbar" aria-label="Other expense quick actions">
+            <button
+              type="button"
+              className="rent-mobile-actionbar-btn"
+              onClick={() => setShowAddModal(true)}
+            >
+              <span className="rent-mobile-actionbar-icon">
+                <FaPlus />
+              </span>
+              <span>Add</span>
+            </button>
+
+            <button type="button" className="rent-mobile-actionbar-btn" onClick={downloadExcel}>
+              <span className="rent-mobile-actionbar-icon">
+                <FaDownload />
+              </span>
+              <span>Download</span>
+            </button>
+
+            <button
+              type="button"
+              className="rent-mobile-actionbar-btn"
+              onClick={handleGoBack}
+            >
+              <span className="rent-mobile-actionbar-icon">
+                <FaArrowLeft />
+              </span>
+              <span>Back</span>
+            </button>
+          </div>
+
+          {showAddModal && (
+            <div className="modal d-block" style={{ background: "#00000055" }}>
+              <div className="modal-dialog modal-lg">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5>Add Other Expense</h5>
+                    <button
+                      className="btn-close"
+                      onClick={() => setShowAddModal(false)}
+                      style={{ padding: "0px", margin: "0px" }}
+                    >
+                      x
+                    </button>
+                  </div>
+
+                  <div className="modal-body">
+                    <label>Main Amount</label>
+                    <input
+                      type="number"
+                      className="form-control mb-2"
+                      value={newEntry.mainAmount}
+                      onChange={(e) =>
+                        setNewEntry({ ...newEntry, mainAmount: e.target.value })
+                      }
+                    />
+
+                    <label>Expenses</label>
+                    {newEntry.expenses.map((exp, idx) => (
+                      <div key={idx} className="d-flex mb-2">
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={exp}
+                          placeholder={`Expense ${idx + 1}`}
+                          onChange={(e) => {
+                            const arr = [...newEntry.expenses];
+                            arr[idx] = e.target.value;
+                            setNewEntry({ ...newEntry, expenses: arr });
+                          }}
+                        />
+
+                        <button
+                          className="btn btn-danger ms-2"
+                          onClick={() => {
+                            const arr = newEntry.expenses.filter((_, i) => i !== idx);
+                            setNewEntry({ ...newEntry, expenses: arr });
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+
+                    <button
+                      className="btn btn-secondary mb-3"
+                      onClick={() =>
+                        setNewEntry({
+                          ...newEntry,
+                          expenses: [...newEntry.expenses, ""],
+                        })
+                      }
+                    >
+                      Add Expense
+                    </button>
+
+                    <label>Date</label>
+                    <input
+                      type="date"
+                      className="form-control mb-2"
+                      value={newEntry.date}
+                      onChange={(e) =>
+                        setNewEntry({ ...newEntry, date: e.target.value })
+                      }
+                    />
+
+                    <label>Status</label>
+                    <select
+                      className="form-select"
+                      value={newEntry.status}
+                      onChange={(e) =>
+                        setNewEntry({
+                          ...newEntry,
+                          status: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="paid">Paid</option>
+                    </select>
+                  </div>
+
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setShowAddModal(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button className="btn btn-success" onClick={handleAddExpense}>
+                      Save Entry
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {showEditModal && (
+            <div className="modal d-block" style={{ background: "#00000055" }}>
+              <div className="modal-dialog">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5>Edit Expense</h5>
+                    <button
+                      className="btn-close"
+                      onClick={() => setShowEditModal(false)}
+                    >X</button>
+                  </div>
+
+                  <div className="modal-body">
+                    <label>Status</label>
+                    <select
+                      className="form-select mb-2"
+                      value={updatedStatus}
+                      onChange={(e) => setUpdatedStatus(e.target.value)}
+                    >
+                      <option value="pending">Pending</option>
+                      <option value="paid">Paid</option>
+                    </select>
+
+                    <label>Main Amount</label>
+                    <input
+                      type="number"
+                      className="form-control mb-2"
+                      value={updatedMainAmount}
+                      onChange={(e) => setUpdatedMainAmount(e.target.value)}
+                    />
+
+                    <label>Expenses (comma separated)</label>
+                    <input
+                      type="text"
+                      className="form-control mb-2"
+                      value={updatedExpenses}
+                      onChange={(e) => setUpdatedExpenses(e.target.value)}
+                    />
+
+                    <label>Date</label>
+                    <input
+                      type="date"
+                      className="form-control mb-2"
+                      value={updatedDate}
+                      onChange={(e) => setUpdatedDate(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setShowEditModal(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn-success"
+                      onClick={handleUpdateSubmit}
+                    >
+                      Save Changes
+                    </button>
+
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => handleDelete(selectedExpense)}
+                    >
+                      <FontAwesomeIcon icon={faTrash} /> Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`p-2 ${embedded ? "" : "container-fluid"}`}>
 
 <div className="d-flex justify-content-center align-items-center gap-2 mb-3">
   <div className="section-icon">
-    <FaEdit />
+    <FaClipboardList />
   </div>
   <div className="section-text">
     Maintenance & Other Expenses
@@ -277,10 +658,10 @@ const OtherExpense = ({ embedded = false }) => {
               Rent & Deposit
             </button>
 
-            <button
-              className="btn btn-dark"
-              onClick={() => navigate("/maindashboard")}
-            >
+          <button
+            className="btn btn-dark"
+            onClick={handleGoBack}
+          >
               <FaArrowLeft className="me-1" />
               Back
             </button>
@@ -361,8 +742,10 @@ const OtherExpense = ({ embedded = false }) => {
                 <h5>Add Other Expense</h5>
                 <button
                   className="btn-close"
-                  onClick={() => setShowAddModal(false)}
-                />
+                  onClick={() => setShowAddModal(false)} style={{padding:"0px",margin:"0px"} }
+                  >
+                x
+                </button>
               </div>
 
               <div className="modal-body">

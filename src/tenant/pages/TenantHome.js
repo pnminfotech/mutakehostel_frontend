@@ -78,6 +78,26 @@ const getYMFromRecord = (r) => {
   return null;
 };
 
+const monthIndexToYM = (ym) => {
+  if (!Number.isFinite(ym)) return null;
+  return { y: Math.floor(ym / 12), m: ym % 12 };
+};
+
+const getFirstBillYM = (tenant) => {
+  if (!tenant?.joiningDate) return null;
+
+  if (tenant?.firstRentMonth) {
+    const pm = parseMonthKey(tenant.firstRentMonth);
+    if (pm) return pm.y * 12 + pm.m;
+  }
+
+  const joinDate = new Date(tenant.joiningDate);
+  if (isNaN(joinDate)) return null;
+
+  const isAdvance = tenant?.firstRentStatus === "ADVANCE_PAID";
+  return joinDate.getFullYear() * 12 + joinDate.getMonth() + (isAdvance ? 0 : 1);
+};
+
 /* ---------- Due calc EXACTLY like admin/NewComponant ------------------- */
 const calcDueAdminAligned = ({ joiningDate, rents }) => {
   if (!joiningDate) return 0;
@@ -257,7 +277,15 @@ export default function TenantHome({
 
   const now = new Date();
 
+  const firstBillYM = useMemo(
+    () => getFirstBillYM(me),
+    [me?.joiningDate, me?.firstRentMonth, me?.firstRentStatus]
+  );
+
   const currentMonthPaid = useMemo(() => {
+    const currentYM = now.getFullYear() * 12 + now.getMonth();
+    if (firstBillYM != null && currentYM < firstBillYM) return false;
+
     if (!rentList.length) return false;
     const m = now.getMonth();
     const y = now.getFullYear();
@@ -265,7 +293,21 @@ export default function TenantHome({
       const ym = getYMFromRecord(r);
       return ym && ym.m === m && ym.y === y && toNumber(r.rentAmount) > 0;
     });
-  }, [rentList]);
+  }, [rentList, firstBillYM]);
+
+  const currentMonthState = useMemo(() => {
+    const currentYM = now.getFullYear() * 12 + now.getMonth();
+
+    if (firstBillYM != null && currentYM < firstBillYM) {
+      return { label: "Not due yet", color: colors.primary, nextDueYM: firstBillYM };
+    }
+
+    if (currentMonthPaid) {
+      return { label: "Paid", color: colors.success, nextDueYM: currentYM + 1 };
+    }
+
+    return { label: "Pending", color: colors.warning, nextDueYM: currentYM };
+  }, [currentMonthPaid, firstBillYM]);
 
   const monthsPaidThisYear = useMemo(() => {
     const y = now.getFullYear();
@@ -280,12 +322,10 @@ export default function TenantHome({
   }, [rentList]);
 
   const nextDueLabel = useMemo(() => {
-    if (currentMonthPaid) {
-      const nm = (now.getMonth() + 1) % 12;
-      return `${monthName(nm)} ${nm === 0 ? now.getFullYear() + 1 : now.getFullYear()}`;
-    }
-    return `${monthName(now.getMonth())} ${now.getFullYear()}`;
-  }, [currentMonthPaid]);
+    const next = monthIndexToYM(currentMonthState.nextDueYM);
+    if (!next) return `${monthName(now.getMonth())} ${now.getFullYear()}`;
+    return `${monthName(next.m)} ${next.y}`;
+  }, [currentMonthState.nextDueYM]);
 
   const lastFive = useMemo(() => {
     const withSortKey = rentList.map((r) => {
@@ -448,15 +488,17 @@ export default function TenantHome({
           <div
             style={{
               ...styles.kpiNumber,
-              color: currentMonthPaid ? colors.success : colors.warning,
+              color: currentMonthState.color,
             }}
           >
-            {currentMonthPaid ? "Paid" : "Pending"}
+            {currentMonthState.label}
           </div>
           <div style={styles.kpiLabel}>
-            {currentMonthPaid
-              ? "Thanks for paying on time!"
-              : "Please clear dues soon"}
+            {currentMonthState.label === "Not due yet"
+              ? "Billing starts from the first payable month after joining."
+              : currentMonthPaid
+                ? "Thanks for paying on time!"
+                : "Please clear dues soon"}
           </div>
         </div>
 

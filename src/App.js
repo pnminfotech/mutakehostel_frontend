@@ -87,20 +87,20 @@ function Layout() {
         <Route path="/record" element={<ProtectedRoute><Record /></ProtectedRoute>} />
 
         {/* Maintenance manager and others */}
-        <Route path="/maintenance-manager" element={<MaintenanceManager />} />
-        <Route path="/Adddatademo" element={<AddDataDemo />} />
-        <Route path="/lightbillmaintance" element={<LightbillMaintenace />} />
-        <Route path="/lightbillotherexpenses" element={<LightbillOtherExpenses />} />
-        <Route path="/NewComponant" element={<NewComponant />} />
-        <Route path="/NewComponantOriginal" element={<NewComponantOriginal />} />
-        <Route path="/maindashboard" element={<MainDashboard />} />
-        <Route path="/LightBillMatrixView" element={<LightBillMatrixView />} />
-        <Route path="/roommanager" element={<RoomManager />} />
-        <Route path="/formdownload" element={<FormDownload />} />
+        <Route path="/maintenance-manager" element={<ProtectedRoute><MaintenanceManager /></ProtectedRoute>} />
+        <Route path="/Adddatademo" element={<ProtectedRoute><AddDataDemo /></ProtectedRoute>} />
+        <Route path="/lightbillmaintance" element={<ProtectedRoute><LightbillMaintenace /></ProtectedRoute>} />
+        <Route path="/lightbillotherexpenses" element={<ProtectedRoute><LightbillOtherExpenses /></ProtectedRoute>} />
+        <Route path="/NewComponant" element={<ProtectedRoute><NewComponant /></ProtectedRoute>} />
+        <Route path="/NewComponantOriginal" element={<ProtectedRoute><NewComponantOriginal /></ProtectedRoute>} />
+        <Route path="/maindashboard" element={<ProtectedRoute><MainDashboard /></ProtectedRoute>} />
+        <Route path="/LightBillMatrixView" element={<ProtectedRoute><LightBillMatrixView /></ProtectedRoute>} />
+        <Route path="/roommanager" element={<ProtectedRoute><RoomManager /></ProtectedRoute>} />
+        <Route path="/formdownload" element={<ProtectedRoute><FormDownload /></ProtectedRoute>} />
 
 
-        <Route path="/other-expense" element={<OtherExpense />} />
-<Route path="/light-bill" element={<LightBill />} />
+        <Route path="/other-expense" element={<ProtectedRoute><OtherExpense /></ProtectedRoute>} />
+        <Route path="/light-bill" element={<ProtectedRoute><LightBill /></ProtectedRoute>} />
       </Routes>
 
       {shouldShowSidebar && (

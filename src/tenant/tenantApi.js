@@ -18,7 +18,7 @@
 // export const TOKEN_KEY = "tenantToken";
 
 // // ✅ always HTTPS
-// const ORIGIN = " http://localhost:8000";
+// const ORIGIN = "   http://localhost:8000";
 // export const API = `${ORIGIN}/api`;
 
 // export function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
@@ -67,7 +67,7 @@ export const TOKEN_KEY = "tenantToken";
 // Switch this between local and deployed as you need.
 const ORIGIN =
   process.env.REACT_APP_API_ORIGIN ||
-  " http://localhost:8000"; // e.g. " http://localhost:8000"
+  "   http://localhost:8000"; // e.g. "   http://localhost:8000"
 
 export const API = `${ORIGIN}/api`;
 

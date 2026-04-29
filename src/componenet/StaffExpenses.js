@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import "../Pages/lightbill.css";
-import { FaEdit } from "react-icons/fa";
+import "../componenet/RentTracker.css";
+import { FaArrowLeft, FaEdit, FaPlus, FaRedoAlt } from "react-icons/fa";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash } from "@fortawesome/free-solid-svg-icons";
-
+import { useNavigate } from "react-router-dom";
 export default function StaffExpenses({ embedded = false, openAddModal = false, onModalOpened }) {
+  const navigate = useNavigate();
 
 const apiUrl = (process.env.REACT_APP_API_URL || " http://localhost:8000/api/")
   .replace(/\/?$/, "/"); // ✅ always ends with /
@@ -13,6 +15,9 @@ const apiUrl = (process.env.REACT_APP_API_URL || " http://localhost:8000/api/")
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth <= 768 : false
+  );
 
   const [monthFilter, setMonthFilter] = useState(() => {
     const d = new Date();
@@ -74,6 +79,26 @@ const handleDelete = (item) => {
   deleteExpense(item._id);
 };
 
+  const openAddExpenseModal = () => {
+    setExpensesForm((p) => ({ ...p, month: monthFilter || "" }));
+    setShowExpensesModal(true);
+  };
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate("/maindashboard");
+  };
+
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     fetchExpenses();
@@ -154,6 +179,257 @@ const saveExpense = async () => {
   };
 
   const total = items.reduce((sum, x) => sum + (Number(x.amount) || 0), 0);
+
+  if (isMobile) {
+    return (
+      <div className="rent-mobile-view">
+        <div className="rent-mobile-shell">
+          <section className="rent-mobile-section">
+            <div className="rent-mobile-topbar section-text1">
+              <button
+                type="button"
+                className="rent-mobile-leaved-btn"
+                onClick={handleGoBack}
+              >
+                <FaArrowLeft />
+                <span>Back</span>
+              </button>
+
+              <button type="button" className="rent-mobile-leaved-btn" onClick={fetchExpenses}>
+                <FaRedoAlt />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            <div className="rent-mobile-section-title section-text1">
+              <div>
+                <h5>Staff Expenses</h5>
+                <div className="rent-mobile-badge">Tap an item to edit</div>
+              </div>
+              <div className="rent-mobile-badge">
+                {items.length} {items.length === 1 ? "item" : "items"}
+              </div>
+            </div>
+
+            <div className="rent-mobile-actions">
+              <input
+                type="month"
+                className="form-select"
+                value={monthFilter}
+                onChange={(e) => setMonthFilter(e.target.value)}
+              />
+
+              <button type="button" className="rent-mobile-action primary addstaff" onClick={openAddExpenseModal}>
+                <FaPlus className="me-1" />
+                Add Expense
+              </button>
+            </div>
+
+            <div className="rent-mobile-tenant-list">
+              {loading ? (
+                <div className="rent-mobile-empty">Loading...</div>
+              ) : items.length === 0 ? (
+                <div className="rent-mobile-empty">No expenses found for {monthFilter}</div>
+              ) : (
+                items.map((x) => (
+                  <article
+                    key={x._id}
+                    className="rent-mobile-tenant-card rent-mobile-tenant-card--pend"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleEdit(x)}
+                    onKeyDown={(e) => e.key === "Enter" && handleEdit(x)}
+                  >
+                    <div className="rent-mobile-tenant-core">
+                      <div className="rent-mobile-tenant-head">
+                        <div className="rent-mobile-tenant-avatar">
+                          {(x.name || x.type || "S").charAt(0).toUpperCase()}
+                        </div>
+
+                        <div className="rent-mobile-tenant-main text-justify">
+                          <div className="rent-mobile-tenant-name">{x.name || "-"}</div>
+                          <div className="rent-mobile-tenant-meta">{x.type || "-"}</div>
+                          <div className="rent-mobile-tenant-meta">
+                            Month: <span className="lb-highlight-date">{x.month || "-"}</span>
+                          </div>
+                          <div className="rent-mobile-tenant-meta">
+                            Amount:{" "}
+                            <span className="lb-highlight-date">
+                              ₹{Number(x.amount || 0).toLocaleString("en-IN")}
+                            </span>
+                          </div>
+                          {x.notes ? <div className="rent-mobile-tenant-meta">{x.notes}</div> : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rent-mobile-card-actions">
+                      <button
+                        type="button"
+                        className="rent-mobile-action secondary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEdit(x);
+                        }}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        className="rent-mobile-action warn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(x);
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </section>
+
+          <div className="rent-mobile-actionbar" aria-label="Staff expense quick actions">
+            <button type="button" className="rent-mobile-actionbar-btn" onClick={openAddExpenseModal}>
+              <span className="rent-mobile-actionbar-icon">
+                <FaPlus />
+              </span>
+              <span>Add</span>
+            </button>
+
+            <button type="button" className="rent-mobile-actionbar-btn" onClick={fetchExpenses}>
+              <span className="rent-mobile-actionbar-icon">
+                <FaRedoAlt />
+              </span>
+              <span>Refresh</span>
+            </button>
+
+            <button
+              type="button"
+              className="rent-mobile-actionbar-btn"
+              onClick={handleGoBack}
+            >
+              <span className="rent-mobile-actionbar-icon">
+                <FaArrowLeft />
+              </span>
+              <span>Back</span>
+            </button>
+          </div>
+
+          {showExpensesModal && (
+            <div className="modal d-block" tabIndex="-1" style={{ background: "rgba(0,0,0,0.5)" }}>
+              <div className="modal-dialog">
+                <div className="modal-content">
+                  <div className="modal-header">
+                    <h5 className="modal-title">
+                      {isEditMode ? "Edit Expense" : "Add Staff Expense"}
+                    </h5>
+
+                    <button
+                      className="btn-close p-0"
+                      onClick={() => setShowExpensesModal(false)}
+                    >
+                      x
+                    </button>
+                  </div>
+
+                  <div className="modal-body">
+                    <div className="mb-3">
+                      <label className="form-label">Expense Type</label>
+                      <select
+                        className="form-select"
+                        value={expensesForm.type}
+                        onChange={(e) =>
+                          setExpensesForm((prev) => ({ ...prev, type: e.target.value }))
+                        }
+                      >
+                        <option value="Employee">Employee Salary</option>
+                        <option value="Cleaning Lady">Maushi</option>
+                        <option value="Security">Security</option>
+                        <option value="Maintenance">Maintenance</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label">Name (Employee / Cleaning Lady)</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="e.g. Sunita (Cleaning Lady)"
+                        value={expensesForm.name}
+                        onChange={(e) =>
+                          setExpensesForm((prev) => ({ ...prev, name: e.target.value }))
+                        }
+                      />
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label">Month</label>
+                      <input
+                        type="month"
+                        className="form-control"
+                        value={expensesForm.month}
+                        onChange={(e) =>
+                          setExpensesForm((prev) => ({ ...prev, month: e.target.value }))
+                        }
+                      />
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label">Amount (₹)</label>
+                      <input
+                        type="number"
+                        className="form-control"
+                        min="0"
+                        value={expensesForm.amount}
+                        onChange={(e) =>
+                          setExpensesForm((prev) => ({ ...prev, amount: e.target.value }))
+                        }
+                      />
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label">Notes / Details</label>
+                      <textarea
+                        className="form-control"
+                        rows="3"
+                        placeholder="e.g. Monthly salary, extra cleaning on weekend, etc."
+                        value={expensesForm.notes}
+                        onChange={(e) =>
+                          setExpensesForm((prev) => ({ ...prev, notes: e.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setShowExpensesModal(false);
+                        setIsEditMode(false);
+                        setEditId(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+
+                    <button className="btn btn-primary" onClick={saveExpense}>
+                      {isEditMode ? "Save Changes" : "Save Expense"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

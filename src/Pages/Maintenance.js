@@ -12,6 +12,20 @@ const Maintenance = () => {
   const [search, setSearch] = useState(""); // Search state
   const navigate = useNavigate();
 
+  const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
+  const ALLOWED_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"]);
+
+  const isAllowedImageFile = (file) => {
+    if (!file) return false;
+
+    const mime = String(file.type || "").toLowerCase();
+    const name = String(file.name || "");
+    const dotIndex = name.lastIndexOf(".");
+    const ext = dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : "";
+
+    return ALLOWED_IMAGE_MIME_TYPES.has(mime) && ALLOWED_IMAGE_EXTENSIONS.has(ext);
+  };
+
   useEffect(() => {
     axios
       .get(" http://localhost:8000/api/projects")
@@ -23,6 +37,11 @@ const Maintenance = () => {
     e.preventDefault();
     
     console.log("Form Data Before Sending:", form); // Debugging
+
+    if (form.image && !isAllowedImageFile(form.image)) {
+      alert("Only JPG, JPEG, and PNG files are allowed.");
+      return;
+    }
   
     const formData = new FormData();
     formData.append("heading", form.heading);
@@ -61,6 +80,11 @@ const Maintenance = () => {
 
   const handleUpdate = async (e) => {
     e.preventDefault();
+
+    if (form.image && !isAllowedImageFile(form.image)) {
+      alert("Only JPG, JPEG, and PNG files are allowed.");
+      return;
+    }
 
     const formData = new FormData();
     formData.append("heading", form.heading);
@@ -180,7 +204,7 @@ const Maintenance = () => {
             value={form.remainingAmount}
             onChange={(e) => setForm({ ...form, remainingAmount: e.target.value })}
           />
-         <input type="file" accept="image/*" onChange={(e) => setForm({ ...form, image: e.target.files[0] })}/>
+         <input type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" onChange={(e) => setForm({ ...form, image: e.target.files[0] })}/>
           <button type="submit">Add Project</button>
         </form>
 </div>
@@ -295,7 +319,7 @@ fontStyle: 'normal',
           <input type="text" placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required />
           <input type="number" placeholder="Total Amount" value={form.totalAmount} onChange={(e) => setForm({ ...form, totalAmount: e.target.value })} />
           <input type="number" placeholder="Remaining Amount" value={form.remainingAmount} onChange={(e) => setForm({ ...form, remainingAmount: e.target.value })} />
-          <input type="file" accept="image/*" onChange={(e) => setForm({ ...form, image: e.target.files[0] })} />
+          <input type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" onChange={(e) => setForm({ ...form, image: e.target.files[0] })} />
           <button type="submit">Update</button>
         </form>
       )}

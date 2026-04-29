@@ -79,8 +79,8 @@ const MaintenanceManager = () => {
   const fetchData = async () => {
     const url =
       activeTab === 'light'
-        ? ' http://localhost:8000/api/light-bill/all'
-        : ' http://localhost:8000/api/other-expense/all';
+        ? '   http://localhost:8000/api/light-bill/all'
+        : '   http://localhost:8000/api/other-expense/all';
 
     try {
       const res = await fetch(url);
@@ -94,8 +94,8 @@ const MaintenanceManager = () => {
  const handleSubmit = async () => {
   try {
     const url = activeTab === 'light'
-      ? ' http://localhost:8000/api/light-bill'
-      : ' http://localhost:8000/api/other-expense';
+      ? '   http://localhost:8000/api/light-bill'
+      : '   http://localhost:8000/api/other-expense';
 
     const body = activeTab === 'light' ? lightForm : expenseForm;
 
@@ -170,7 +170,7 @@ const MaintenanceManager = () => {
   };
   const handleUpdateSubmit = async () => {
     try {
-      const res = await fetch(` http://localhost:8000/api/light-bill/${selectedBill._id}`, {
+      const res = await fetch(`   http://localhost:8000/api/light-bill/${selectedBill._id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -200,7 +200,7 @@ const MaintenanceManager = () => {
 //   const updatedDate = prompt("Enter updated date (YYYY-MM-DD):", bill.date?.slice(0, 10));
 //   if (updatedDate === null) return;
 
-//   fetch(` http://localhost:8000/api/light-bill/${bill._id}`, {
+//   fetch(`   http://localhost:8000/api/light-bill/${bill._id}`, {
 //     method: 'PUT',
 //     headers: { 'Content-Type': 'application/json' },
 //     body: JSON.stringify({
@@ -225,7 +225,7 @@ const handleDelete = async (bill) => {
   if (window.confirm("Are you sure you want to delete this light bill?")) {
     try {
       // Make the DELETE request to the backend
-      const response = await fetch(` http://localhost:8000/api/light-bill/${bill._id}`, {
+      const response = await fetch(`   http://localhost:8000/api/light-bill/${bill._id}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',

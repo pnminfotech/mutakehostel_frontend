@@ -1,17 +1,20 @@
 import React, { useEffect, useState } from "react";
-import { FaPlus, FaDownload, FaEdit, FaBolt } from "react-icons/fa";
+import { FaDownload, FaBolt,  FaPlus, FaRedoAlt  } from "react-icons/fa";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash } from "@fortawesome/free-solid-svg-icons";
 import * as XLSX from "xlsx";
 import { HiHome } from "react-icons/hi";
 import { FaArrowLeft } from "react-icons/fa";
 import { FaTachometerAlt } from "react-icons/fa";
+import { MdOutlineElectricBolt } from "react-icons/md";
+import { FiBell, FiDownload, FiChevronRight } from "react-icons/fi";
 import { useNavigate } from "react-router-dom";
+import MobileMonthNavigator from "../componenet/MobileMonthNavigator";
 import "../Pages/lightbill.css";
+import "../componenet/RentTracker.css";
 const LightBill = ({ embedded }) => {
   const navigate = useNavigate();
 
-  // hide top Rent/Deposit + Back buttons when shown inside NewComponant
   const hideNav = embedded === true;
 
   const [lightBills, setLightBills] = useState([]);
@@ -20,10 +23,13 @@ const LightBill = ({ embedded }) => {
 
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(0);
+  const currentMonthIndex = new Date().getMonth();
+  const [mobileMonthStart, setMobileMonthStart] = useState(
+    Math.max(Math.min(currentMonthIndex - 1, 9), 0)
+  );
 
   const [selectedBill, setSelectedBill] = useState(null);
 
-  // ADD ENTRY DATA
   const [newEntry, setNewEntry] = useState({
     type: "meter",
     meterNo: "",
@@ -34,7 +40,6 @@ const LightBill = ({ embedded }) => {
     status: "pending",
   });
 
-  // EDIT ENTRY DATA
   const [updatedTotalReading, setUpdatedTotalReading] = useState("");
   const [updatedAmount, setUpdatedAmount] = useState("");
   const [updatedDate, setUpdatedDate] = useState("");
@@ -65,7 +70,7 @@ const LightBill = ({ embedded }) => {
 
   const fetchLightBills = async () => {
     try {
-      const res = await fetch(" http://localhost:8000/api/light-bill/all");
+      const res = await fetch("http://localhost:8000/api/light-bill/all");
       const data = await res.json();
       setLightBills(data);
     } catch (err) {
@@ -133,7 +138,7 @@ const LightBill = ({ embedded }) => {
         date: formattedDate,
       };
 
-      const res = await fetch(" http://localhost:8000/api/light-bill", {
+      const res = await fetch("http://localhost:8000/api/light-bill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bodyData),
@@ -161,12 +166,10 @@ const LightBill = ({ embedded }) => {
 
   const handleEdit = (bill) => {
     setSelectedBill(bill);
-
     setUpdatedTotalReading(bill.totalReading);
     setUpdatedAmount(bill.amount);
     setUpdatedDate(bill.date?.slice(0, 10));
     setUpdatedStatus(bill.status);
-
     setShowEditModal(true);
   };
 
@@ -181,7 +184,7 @@ const LightBill = ({ embedded }) => {
       };
 
       const res = await fetch(
-        ` http://localhost:8000/api/light-bill/${selectedBill._id}`,
+        `http://localhost:8000/api/light-bill/${selectedBill._id}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -203,12 +206,9 @@ const LightBill = ({ embedded }) => {
     if (!window.confirm("Delete this bill?")) return;
 
     try {
-      const res = await fetch(
-        ` http://localhost:8000/api/light-bill/${bill._id}`,
-        {
-          method: "DELETE",
-        }
-      );
+      const res = await fetch(`http://localhost:8000/api/light-bill/${bill._id}`, {
+        method: "DELETE",
+      });
 
       if (!res.ok) throw new Error("Delete failed");
 
@@ -226,6 +226,7 @@ const LightBill = ({ embedded }) => {
       "Total Reading": item.totalReading,
       Amount: item.amount,
       Date: new Date(item.date).toLocaleDateString(),
+      Status: item.status,
     }));
 
     const sheet = XLSX.utils.json_to_sheet(formatted);
@@ -234,171 +235,449 @@ const LightBill = ({ embedded }) => {
     XLSX.writeFile(book, `LightBill-${selectedYear}.xlsx`);
   };
 
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate("/maindashboard");
+  };
+
   const grouped = groupData(filteredLightBills);
 
+  const getStatusText = (status) => {
+    const s = (status || "").toLowerCase();
+    if (s === "paid") return "Paid";
+    if (s === "pending") return "Pending";
+    if (s === "upcoming") return "Upcoming";
+    return "Due";
+  };
+
+  const getStatusTone = (status = "") => {
+    const normalized = String(status).toLowerCase();
+    if (normalized.startsWith("paid")) return "paid";
+    if (normalized.startsWith("due")) return "due";
+    if (normalized.startsWith("pend")) return "pend";
+    if (normalized.startsWith("upcoming")) return "upcoming";
+    return "pend";
+  };
+
+  const monthOptions = months.filter((m) => m.value !== 0);
+  const mobileMonthLimit = Math.max(monthOptions.length - 3, 0);
+  const mobileVisibleMonths = monthOptions.slice(mobileMonthStart, mobileMonthStart + 3);
+
+  useEffect(() => {
+    const nextStart =
+      selectedMonth === 0
+        ? Math.max(Math.min(currentMonthIndex - 1, mobileMonthLimit), 0)
+        : Math.max(Math.min(selectedMonth - 2, mobileMonthLimit), 0);
+
+    setMobileMonthStart(nextStart);
+  }, [selectedMonth, selectedYear, currentMonthIndex, mobileMonthLimit]);
+
+  const handleMobilePrevMonth = () => {
+    setMobileMonthStart((prev) => Math.max(prev - 1, 0));
+  };
+
+  const handleMobileNextMonth = () => {
+    setMobileMonthStart((prev) => Math.min(prev + 1, mobileMonthLimit));
+  };
+
+  const mobileFilteredLightBills = filteredLightBills;
+
+  const mobileGrouped = groupData(mobileFilteredLightBills);
+  const mobileGroupedEntries = Object.entries(mobileGrouped);
+
   return (
-    <div className="container-fluid p-3">
-
-      {/* ---- TOP BUTTONS (HIDE IN EMBEDDED MODE) ---- */}
+    <div className="container-fluid  light-bill-page">
       {!hideNav && (
-        <>
-          <div className="d-flex gap-2 mb-3">
+        <div className="d-flex gap-2 mb-3 light-bill-top-nav">
+          <button
+            className="btn"
+            style={{ backgroundColor: "#3db7b1", color: "white" }}
+            onClick={() => navigate("/NewComponant")}
+          >
+            <HiHome className="me-1" />
+            Rent & Deposit
+          </button>
 
-            <button
-              className="btn"
-              style={{ backgroundColor: "#3db7b1", color: "white" }}
-              onClick={() => navigate("/NewComponant")}
-            >
-              <HiHome className="me-1" />
-              Rent & Deposit
-            </button>
-
-            <button
-              className="btn btn-dark"
-              onClick={() => navigate("/maindashboard")}
-            >
-              <FaArrowLeft className="me-1" />
-              Back
-            </button>
-          </div>
-        </>
+          <button
+            className="btn btn-dark"
+            onClick={handleGoBack}
+          >
+            <FaArrowLeft className="me-1" />
+            Back
+          </button>
+        </div>
       )}
 
-<div className="d-flex justify-content-center align-items-center gap-2 mb-3">
-  <div className="section-icon">
-    ⚡
-  </div>
-  <div className="section-text">
-    Monthly Expense – Light Bill
-  </div>
-</div>
+      {/* DESKTOP / TABLE HEADER */}
+      <div className="light-bill-desktop-view">
+        <div className="d-flex  align-items-center gap-2 mb-3">
+          <div className="section-icon">⚡</div>
+          <div className="section-text">Monthly Expense – Light Bill</div>
+        </div>
 
+        <div className="filter-bar mb-3">
+          <select
+            className="form-select"
+            style={{ width: "120px" }}
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(Number(e.target.value))}
+          >
+            {years.map((y) => (
+              <option key={y}>{y}</option>
+            ))}
+          </select>
 
+          <select
+            className="form-select"
+            style={{ width: "120px" }}
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          >
+            {months.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
 
-      {/* FILTERS */}
-      <div className="filter-bar mb-3">
+          <button
+            type="button"
+            className="btn"
+            style={{ backgroundColor: "rgb(85, 114, 241)", color: "white" }}
+            onClick={() => setShowAddModal(true)}
+          >
+            Add Light Bill
+          </button>
 
-        <select
-          className="form-select"
-          style={{ width: "120px" }}
-          value={selectedYear}
-          onChange={(e) => setSelectedYear(Number(e.target.value))}
-        >
-          {years.map((y) => (
-            <option key={y}>{y}</option>
-          ))}
-        </select>
+          <button
+            className="btn"
+            style={{ backgroundColor: "rgb(85, 114, 241)", color: "white" }}
+            onClick={downloadExcel}
+          >
+            <FaDownload className="me-1" />
+            Download Excel
+          </button>
+        </div>
 
-        <select
-          className="form-select"
-          style={{ width: "120px" }}
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(Number(e.target.value))}
-        >
-          {months.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-<button
-  type="button"
-  className="btn"
-  style={{ backgroundColor: "rgb(85, 114, 241)", color: "white" }}
-  onClick={() => setShowAddModal(true)}
->
-  Add Light Bill
-</button>
+        <div className="table-responsive mt-3">
+          <div className="light-table-wrapper">
+            <table className="table light-bill-table align-middle">
+              <thead>
+                <tr>
+                  <th>Meter No</th>
+                  {months
+                    .filter((m) => m.value !== 0)
+                    .map((m) => (
+                      <th key={m.value}>{m.label}</th>
+                    ))}
+                </tr>
+              </thead>
 
+              <tbody>
+                {Object.entries(grouped).map(([meter, monthData]) => (
+                  <tr key={meter}>
+                    <td>
+                      <b>{meter}</b>
+                    </td>
 
-        <button
-          className="btn"
-         style={{
-    backgroundColor: "rgb(85, 114, 241)",
-    color: "white",
-  }}
-          onClick={downloadExcel}
-        >
-          <FaDownload className="me-1" />
-          Download Excel
-        </button>
+                    {months
+                      .filter((m) => m.value !== 0)
+                      .map((monthObj) => {
+                        const item = monthData[monthObj.label];
+                        return (
+                          <td
+                            key={monthObj.label}
+                            style={{ cursor: item ? "pointer" : "default" }}
+                            onClick={() => item && handleEdit(item)}
+                          >
+                            {item ? (
+                              <>
+                                <FaBolt style={{ color: "#e37727" }} /> ₹
+                                {item.amount}
+                                <br />
+                                <small className="text-muted">
+                                  <FaTachometerAlt className="me-1 text-success" />
+                                  {item.totalReading}
+                                </small>
+                                <br />
+                                <span
+                                  className={`badge ${
+                                    item.status === "paid"
+                                      ? "bg-success"
+                                      : "bg-warning text-dark"
+                                  }`}
+                                >
+                                  {item.status}
+                                </span>
+                              </>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                        );
+                      })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
-      {/* TABLE */}
-<div className="table-responsive mt-3">
-  <div className="light-table-wrapper">
-    <table className="table light-bill-table align-middle">
+      {/* MOBILE VIEW */}
+      <div className="light-bill-mobile-view rent-mobile-view">
+        <div className="lb-mobile-shell rent-mobile-shell">
+          <div className=" rent-mobile-section">
+            <div className="rent-mobile-topbar section-text1">
+             
+               <div className="rent-mobile-topbar">
+                           <button
+                             type="button"
+                             className="rent-mobile-leaved-btn"
+                             onClick={handleGoBack}
+                           >
+                             <FaArrowLeft />
+                             <span>Back</span>
+                           </button>
+             
+                           <button type="button" className="rent-mobile-leaved-btn" onClick={fetchLightBills}>
+                             <FaRedoAlt />
+                             <span>Refresh</span>
+                           </button>
+                         </div>
+             
+           
 
-          <thead>
-            <tr>
-              <th>Meter No</th>
-              {months
-                .filter((m) => m.value !== 0)
-                .map((m) => (
-                  <th key={m.value}>{m.label}</th>
+             
+            </div>
+  <div className="lb-mobile-title-wrap section-text1">
+                
+                <div>
+                  <h2 className="lb-mobile-title">Light Bill</h2>
+                </div>
+              </div>
+            <div className="rent-mobile-actions">
+              <select
+                className="form-select"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+              >
+                {years.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
                 ))}
-            </tr>
-          </thead>
+              </select>
 
-          <tbody>
-            {Object.entries(grouped).map(([meter, monthData]) => (
-              <tr key={meter}>
-                <td>
-                  <b>{meter}</b>
-                </td>
+              <select
+                className="form-select"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              >
+                {months.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
 
-                {months
-                  .filter((m) => m.value !== 0)
-                  .map((monthObj) => {
-                    const item = monthData[monthObj.label];
-                    return (
-                      <td
-                        key={monthObj.label}
-                        style={{ cursor: item ? "pointer" : "default" }}
-                        onClick={() => item && handleEdit(item)}
-                      >
-                        {item ? (
-                          <>
-                            <FaBolt style={{ color: "#e37727" }} /> ₹
-                            {item.amount}
-                            <br />
-                            <small className="text-muted">
-                              <FaTachometerAlt className="me-1 text-success" />
-                              {item.totalReading}
-                            </small>
-                            <br />
-                            <span
-                              className={`badge ${
-                                item.status === "paid"
-                                  ? "bg-success"
-                                  : "bg-warning text-dark"
-                              }`}
-                            >
-                              {item.status}
+              {/* <button
+                className="lb-mobile-download-btn"
+                onClick={downloadExcel}
+                type="button"
+              >
+                <FiDownload />
+                <span>Download Excel</span>
+              </button> */}
+            </div>
+
+            <MobileMonthNavigator
+              visibleMonths={mobileVisibleMonths}
+              title="Bill Months"
+              onPrev={handleMobilePrevMonth}
+              onNext={handleMobileNextMonth}
+              canPrev={mobileMonthStart > 0}
+              canNext={mobileMonthStart < mobileMonthLimit}
+            />
+          </div>
+
+          <div className="rent-mobile-section-title">
+            <div>
+              <h5>All Meters</h5>
+              <div className="rent-mobile-badge">Tap a meter to view details</div>
+            </div>
+            <div className="rent-mobile-badge">
+              {mobileGroupedEntries.length} {mobileGroupedEntries.length === 1 ? "meter" : "meters"}
+            </div>
+          </div>
+
+          <div className="rent-mobile-tenant-list">
+            {mobileGroupedEntries.length === 0 ? (
+              <div className="rent-mobile-empty">No light bill data found.</div>
+            ) : (
+              mobileGroupedEntries.map(([meter, monthData], index) => {
+                const allMonthItems = mobileVisibleMonths
+                  .map((m) => monthData[m.label])
+                  .filter(Boolean)
+                  .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                const latestItem =
+                  allMonthItems.length > 0
+                    ? allMonthItems[allMonthItems.length - 1]
+                    : null;
+
+                return (
+                  <article
+                    className={`rent-mobile-tenant-card rent-mobile-tenant-card--${
+                      getStatusTone(latestItem?.status || "pending")
+                    }`}
+                    key={meter}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => latestItem && handleEdit(latestItem)}
+                    onKeyDown={(e) => e.key === "Enter" && latestItem && handleEdit(latestItem)}
+                  >
+                    <div className="rent-mobile-tenant-core">
+                      <div className="rent-mobile-tenant-head">
+                        <div className="rent-mobile-tenant-avatar">
+                          {meter?.charAt(0)?.toUpperCase() || "M"}
+                        </div>
+
+                        <div className="rent-mobile-tenant-main text-justify">
+                          <div className="rent-mobile-tenant-name">{meter}</div>
+                          <div className="rent-mobile-tenant-meta">
+                            <FaBolt className="me-1" />
+                            Customer ID: {latestItem?._id?.slice(-4) || `10${index + 1}`}
+                          </div>
+                          <div className="rent-mobile-tenant-meta">
+                            Last Updated:{" "}
+                            <span className="lb-highlight-date">
+                              {latestItem
+                                ? new Date(latestItem.date).toLocaleDateString("en-GB", {
+                                    day: "2-digit",
+                                    month: "short",
+                                    year: "numeric",
+                                  })
+                                : "-"}
                             </span>
-                          </>
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                    );
-                  })}
-              </tr>
-            ))}
-          </tbody>
-      </table>
-  </div>
-</div>
+                          </div>
+                        </div>
 
-      {/* --- ADD MODAL --- */}
+                        {/* <button
+                          type="button"
+                          className="lb-meter-chevron"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            latestItem && handleEdit(latestItem);
+                          }}
+                        >
+                          <FiChevronRight />
+                        </button> */}
+                      </div>
+                    </div>
+
+                    <div className="rent-mobile-month-strip">
+                      {mobileVisibleMonths.map((monthObj) => {
+                        const item = monthData[monthObj.label];
+                        return (
+                          <div
+                            key={monthObj.label}
+                            className={`rent-month-card ${item ? getStatusTone(item.status) : "empty"}`}
+                            onClick={() => item && handleEdit(item)}
+                            style={{ cursor: item ? "pointer" : "default" }}
+                          >
+                            <div className="rent-month-title">
+                              {monthObj.label} {selectedYear}
+                            </div>
+
+                            <div className={`rent-month-status-btn ${item ? getStatusTone(item.status) : "empty"}`}>
+                              {item ? getStatusText(item.status) : "No Bill"}
+                            </div>
+
+                            <div className="rent-month-range">
+                              {item
+                                ? new Date(item.date).toLocaleDateString("en-GB", {
+                                    day: "2-digit",
+                                    month: "short",
+                                  })
+                                : "--"}
+                            </div>
+
+                            <div className="rent-month-note">
+                              {item ? `Reading: ${item.totalReading || "-"}` : "-"}
+                            </div>
+
+                            <div className="rent-month-amount">
+                              {item ? `₹${item.amount}` : "-"}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </div>
+
+          {/* <div className="lb-mobile-legend-row">
+            <div className="lb-legend-pill">
+              <span className="lb-dot due"></span> Due
+            </div>
+            <div className="lb-legend-pill">
+              <span className="lb-dot pending"></span> Pending
+            </div>
+            <div className="lb-legend-pill">
+              <span className="lb-dot upcoming"></span> Upcoming
+            </div>
+            <div className="lb-legend-pill">
+              <span className="lb-dot paid"></span> Paid
+            </div>
+          </div> */}
+
+          <div className="rent-mobile-actionbar" aria-label="Light bill quick actions">
+            <button type="button" className="rent-mobile-actionbar-btn" onClick={() => setShowAddModal(true)}>
+              <span className="rent-mobile-actionbar-icon">
+              <FaPlus />
+              </span>
+              <span>Add Bill</span>
+            </button>
+
+            <button type="button" className="rent-mobile-actionbar-btn" onClick={downloadExcel}>
+              <span className="rent-mobile-actionbar-icon">
+                <FaDownload />
+              </span>
+              <span>Download</span>
+            </button>
+
+            <button type="button" className="rent-mobile-actionbar-btn" onClick={handleGoBack}>
+              <span className="rent-mobile-actionbar-icon">
+                <FaArrowLeft />
+              </span>
+              <span>Back</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ADD MODAL */}
       {showAddModal && (
         <div className="modal d-block" style={{ background: "#00000055" }}>
           <div className="modal-dialog">
             <div className="modal-content">
-
               <div className="modal-header">
                 <h5>Add Light Bill</h5>
-                <button className="btn-close" onClick={() => setShowAddModal(false)} />
+                <button
+                  className="btn-close"
+                  onClick={() => setShowAddModal(false)}
+                  style={{ padding: "0px", margin: "0px" }}
+                >
+                  x
+                </button>
               </div>
 
               <div className="modal-body">
@@ -467,32 +746,38 @@ const LightBill = ({ embedded }) => {
                 >
                   <option value="pending">Pending</option>
                   <option value="paid">Paid</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="due">Due</option>
                 </select>
               </div>
 
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setShowAddModal(false)}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowAddModal(false)}
+                >
                   Cancel
                 </button>
                 <button className="btn btn-success" onClick={handleAddEntry}>
                   Save
                 </button>
               </div>
-
             </div>
           </div>
         </div>
       )}
 
-      {/* --- EDIT MODAL --- */}
+      {/* EDIT MODAL */}
       {showEditModal && (
         <div className="modal d-block" style={{ background: "#00000055" }}>
           <div className="modal-dialog">
             <div className="modal-content">
-
               <div className="modal-header">
                 <h5>Edit Light Bill</h5>
-                <button className="btn-close" onClick={() => setShowEditModal(false)} />
+                <button
+                  className="btn-close"
+                  onClick={() => setShowEditModal(false)}
+                > X </button>
               </div>
 
               <div className="modal-body">
@@ -504,6 +789,8 @@ const LightBill = ({ embedded }) => {
                 >
                   <option value="pending">Pending</option>
                   <option value="paid">Paid</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="due">Due</option>
                 </select>
 
                 <label>Total Reading</label>
@@ -532,22 +819,26 @@ const LightBill = ({ embedded }) => {
               </div>
 
               <div className="modal-footer">
-                <button className="btn btn-secondary" onClick={() => setShowEditModal(false)}>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setShowEditModal(false)}
+                >
                   Cancel
                 </button>
                 <button className="btn btn-success" onClick={handleUpdateSubmit}>
                   Save Changes
                 </button>
-                <button className="btn btn-danger" onClick={() => handleDelete(selectedBill)}>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => handleDelete(selectedBill)}
+                >
                   <FontAwesomeIcon icon={faTrash} /> Delete
                 </button>
               </div>
-
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 };

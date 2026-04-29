@@ -5,7 +5,7 @@ import "../Pages/NewComponent.css";
 
 import axios from "axios";
 // import { useNavigate } from 'react-router-dom';
-import { FaPlus, FaEdit } from "react-icons/fa";
+import { FaPlus, FaEdit, FaBars } from "react-icons/fa";
 import { FaInfoCircle } from "react-icons/fa";
 import * as XLSX from "xlsx";
 import { getDocHref } from "../utils/getDocHref"; // adjust path if needed
@@ -13,13 +13,13 @@ import { FaBolt, FaReceipt, FaEye, FaTrash, FaExchangeAlt } from "react-icons/fa
 
 import { saveAs } from "file-saver";
 import { FaArrowLeft } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
  // example icons
 import StaffExpenses from "../componenet/StaffExpenses";
 
 // or "../components/StaffExpense" if you kept it in components
 import { useParams } from "react-router-dom";
-
+import {FaUtensils} from "react-icons/fa";
 import { FaThLarge } from "react-icons/fa";
  import OtherExpense from "../Pages/OtherExpense";
 import LightBill from "../Pages/LightBill";
@@ -28,12 +28,23 @@ import { FaSignOutAlt, FaUndo, FaDownload } from "react-icons/fa";
 import FormDownload from "../componenet/Maintanace/FormDownload";
 import TenantChatbot from "../componenet/TenantChatbot";
 import NotificationBell from "../componenet/NotificationBell";
+import RentSummaryCards from "./RentSummaryCards";
+import RentHeaderBar from "./RentHeaderBar";
+import MobileSectionSidebar from "./MobileSectionSidebar";
+import RentTenantListView from "./RentTenantListView";
+import RentTenantProfileView from "./RentTenantProfileViewCard";
+import LeavedTenantScreen from "./LeavedTenantScreen";
+import VacantBedScreen from "./VacantBedScreen";
+import { MdOutlineBedroomParent, MdLightbulbOutline, MdOutlineReceiptLong, MdPerson, MdCalendarToday, MdDashboard } from "react-icons/md";
+
 import LeaveNotificationBell from "../componenet/LeaveNotificationBell";
 import RoomManager from "./RoomManager"; // adjust path if needed
 // import { useNavigate } from 'react-router-dom';
 import { FaMoneyBillWave, FaPhoneAlt, FaCalendarAlt } from "react-icons/fa";
 import { api } from "../api";
 function NewComponant() {
+  console.log("[NewComponant] loaded at", new Date().toISOString());
+  const location = useLocation();
   const [formData, setFormData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -42,6 +53,11 @@ function NewComponant() {
 const [selfAadharFile, setSelfAadharFile] = useState(null);
 const [parentAadharFile, setParentAadharFile] = useState(null);
 const [photoFile, setPhotoFile] = useState(null);
+// Edit Tenant: document uploads
+const [editSelfAadharFile, setEditSelfAadharFile] = useState(null);
+const [editParentAadharFile, setEditParentAadharFile] = useState(null);
+const [editPhotoFile, setEditPhotoFile] = useState(null);
+const [editDocMsg, setEditDocMsg] = useState("");
 // For Staff & Other Expenses
 const [showExpensesModal, setShowExpensesModal] = useState(false);
 const [expensesForm, setExpensesForm] = useState({
@@ -57,7 +73,9 @@ const [expensesForm, setExpensesForm] = useState({
 const [showOtherExpenseModal, setShowOtherExpenseModal] = useState(false);
 
 
+const [showPendingModal, setShowPendingModal] = useState(false);
 
+const [pendingTenants, setPendingTenants] = useState([]);
 
 
 
@@ -65,9 +83,32 @@ const [paid, setPaid] = useState(false);
 
 
 
+const [showVacantModal, setShowVacantModal] = useState(false);
+const [editNote, setEditNote] = useState("");
 
+  const roomColorStyleMap = useMemo(() => {
+    const rooms = Array.from(
+      new Set(
+        (formData || [])
+          .map((t) => String(t?.roomNo ?? "").trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
+    const total = Math.max(rooms.length, 1);
+    const out = {};
 
+    rooms.forEach((roomNo, idx) => {
+      const hue = Math.round((idx * 360) / total);
+      out[roomNo] = {
+        backgroundColor: `hsl(${hue} 72% 44%)`,
+        border: `1px solid hsl(${hue} 72% 34%)`,
+        color: "#ffffff",
+      };
+    });
+
+    return out;
+  }, [formData]);
   const [tenants, setTenants] = useState([]);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [shiftTenant, setShiftTenant] = useState(null);
@@ -76,7 +117,7 @@ const [paid, setPaid] = useState(false);
   const [rentStart, setRentStart] = useState(null); // shared 3-month window start
   const [docs, setDocs] = useState([]);
   const [editingTenant, setEditingTenant] = useState(null);
-  const [editRentAmount, setEditRentAmount] = useState("");
+const [editRentAmount, setEditRentAmount] = useState("");
   const [editRentDate, setEditRentDate] = useState("");
 
   
@@ -92,16 +133,23 @@ const [paid, setPaid] = useState(false);
   const [currentLeaveName, setCurrentLeaveName] = useState("");
   const [showRentModal, setShowRentModal] = useState(false);
   const [selectedRentDetails, setSelectedRentDetails] = useState([]);
+  const [photoEditTenant, setPhotoEditTenant] = useState(null);
   // const [selectedTenantName, setSelectedTenantName] = useState('');
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState(null);
   ////form
+  const [mobileSelectedTenant, setMobileSelectedTenant] = useState(null);
+  const [showMobileLeavedTenants, setShowMobileLeavedTenants] = useState(false);
+  const [showMobileVacantBeds, setShowMobileVacantBeds] = useState(false);
+  const [showMobileSections, setShowMobileSections] = useState(false);
+ const [showMobileTenantProfile, setShowMobileTenantProfile] = useState(false);
+
   const [openStaffModal, setOpenStaffModal] = useState(false);
 
   const [showFModal, setShowFModal] = useState(false);
   const [selectedRowData, setSelectedRowData] = useState(null);
   // const [lang, setLang] = useState("en");
-  const [showAddModal, setShowAddModal] = useState(false);
+ const [showAddModal, setShowAddModal] = useState(false);
  const [newTenant, setNewTenant] = useState({
     srNo: "",
     name: "",
@@ -109,6 +157,11 @@ const [paid, setPaid] = useState(false);
     roomNo: "",
     depositAmount: "",
     address: "",
+    pincode: "",
+    city: "",
+    state: "",
+    houseNo: "",
+    nearbyPlace: "",
     phoneNo: "",
     relativeAddress1: "",
     relativeAddress2: "",
@@ -131,11 +184,48 @@ const [paid, setPaid] = useState(false);
     newBedPrice: "",
     __bedMsg: "",
     __savingBed: false,
+
+
+  firstRentStatus: "NOT_PAID",
+  firstRentPaidDate: "",
   });
+  useEffect(() => {
+    const pin = String(newTenant?.pincode || "").trim();
+    if (!/^\d{6}$/.test(pin)) return;
+
+    let cancelled = false;
+    // Clear previous city/state so user can enter manually if lookup fails
+    setNewTenant((prev) => ({ ...prev, city: "", state: "" }));
+
+    const fetchPincodeDetails = async () => {
+      try {
+        const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const office = data?.[0]?.PostOffice?.[0];
+        if (!office || cancelled) return;
+
+        setNewTenant((prev) => ({
+          ...prev,
+          city: office.District || "",
+          state: office.State || "",
+        }));
+      } catch {
+        // Fail silently to keep form usable
+      }
+    };
+
+    fetchPincodeDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [newTenant?.pincode]);
+
+  const [firstRentStatusSelection, setFirstRentStatusSelection] = useState("NOT_PAID");
   const [sortConfig, setSortConfig] = useState({
-  column: null,      // 'sr' | 'name' | 'status' | 'due'
-  direction: "asc",  // 'asc' | 'desc'
-});
+    column: null,      // 'sr' | 'name' | 'status' | 'due'
+    direction: "asc",  // 'asc' | 'desc'
+  });
 
 
 
@@ -154,6 +244,16 @@ const totalBeds = roomsData.reduce(
 );
 
 
+ const sectionItems = [
+    { key: "dashboard", label: "Dashboard", icon: <MdDashboard size={20} />, onClick: () => handleNavigation("/maindashboard") },
+    { key: "rent", label: "Rent & Deposit", icon: <MdOutlineBedroomParent /> },
+    { key: "light", label: "Light Bill", icon: <MdLightbulbOutline /> },
+    { key: "other-expense", label: "Other Expense", icon: <MdOutlineReceiptLong /> },
+    { key: "staff", label: "Staff", icon: <MdPerson /> },
+    // { key: "holiday", label: "Holiday Management", icon: <MdCalendarToday /> },
+    // { key: "canteen-expenses", label: "Canteen Portal", icon: <FaUtensils /> },
+    // { key: "canteen-attendance", label: "Meal Attendance", icon: <FaUtensils /> },
+  ];
 
 
 
@@ -169,6 +269,9 @@ const [quickRoom, setQuickRoom] = useState({
 
 const [addingQuickRoom, setAddingQuickRoom] = useState(false);
 const [quickRoomMsg, setQuickRoomMsg] = useState("");
+const [submittingAdd, setSubmittingAdd] = useState(false); // for Save
+const [creatingInvite, setCreatingInvite] = useState(false); // for Share Link
+const [creatingEditInvite, setCreatingEditInvite] = useState(false); // Edit: Share Link
 
 
 const addRoomFromTenantModal = async () => {
@@ -255,30 +358,16 @@ const toNum = (v) => {
 };
 
 
-
-
-
-
-
 const [inviteToken, setInviteToken] = useState(null);
-
-
-
-
-
-
-
-
 
 const [staffExpenses, setStaffExpenses] = useState([]);
 
 
 const [formId, setFormId] = useState(null);
 
-
 const fetchStaffExpenses = async () => {
   try {
-    const res = await fetch(" http://localhost:8000/api/staff-expense/all");
+    const res = await fetch("   http://localhost:8000/api/staff-expense/all");
     const data = await res.json();
     // if you have list state like setStaffExpenses, update it here
     // setStaffExpenses(Array.isArray(data) ? data : []);
@@ -304,7 +393,7 @@ const handleSaveStaffExpense = async () => {
       date: `${expensesForm.month}-01`, // store as YYYY-MM-01 (like LightBill)
     };
 
-    const res = await fetch(" http://localhost:8000/api/staff-expense", {
+    const res = await fetch("   http://localhost:8000/api/staff-expense", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(bodyData),
@@ -334,12 +423,6 @@ const handleSaveStaffExpense = async () => {
 
 
 
-
-
-
-
-
-
 //===========================================================
 
 // ✅ helper: key for occupied bed (roomId-bedNo)
@@ -355,6 +438,21 @@ const normBedNo = (v) =>
 
 const occKey = (roomNo, bedNo) => `${normRoomNo(roomNo)}-${normBedNo(bedNo)}`;
 
+
+
+// Tenant should remain active/occupied until leave date has actually passed.
+const hasLeaveDatePassed = (leaveDate) => {
+  if (!leaveDate) return false;
+  const ld = new Date(leaveDate);
+
+
+  
+  if (isNaN(ld.getTime())) return false;
+  ld.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return ld < today;
+};
 // ✅ use tenants if present else formData (safe)
 const occupiedBeds = useMemo(() => {
   const list = (tenants && tenants.length ? tenants : formData) || [];
@@ -407,24 +505,89 @@ const roomHasVacantBed = (room) => {
 
 
 
+//-------------------------------------------------------------------------
 
+useEffect(() => {
+  if (!formData || !formData.length) return;
 
+  // 🔥 Billing month = previous month of today
+  const today = new Date();
+  let billYear = today.getFullYear();
+  let billMonth = today.getMonth() - 1; // previous month
 
+  if (billMonth < 0) {
+    billMonth = 11;
+    billYear -= 1;
+  }
 
+  const billLabel = new Date(billYear, billMonth, 1).toLocaleString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
 
+  // ✅ helper inside effect (no hoisting issues)
+  const isPaidForBillingMonth = (r) => {
+    if (!r) return false;
 
+    if (r.date) {
+      const d = new Date(r.date);
+      if (!isNaN(d)) {
+        return (
+          d.getFullYear() === billYear &&
+          d.getMonth() === billMonth &&
+          Number(r.rentAmount) > 0
+        );
+      }
+    }
 
+    if (r.month) {
+      try {
+        const [mon, yy] = String(r.month).split("-");
+        const year = yy && yy.length === 2 ? Number("20" + yy) : Number(yy);
+        const month = new Date(`${mon} 1, ${year}`).getMonth();
+        return (
+          year === billYear &&
+          month === billMonth &&
+          Number(r.rentAmount) > 0
+        );
+      } catch (e) {
+        return false;
+      }
+    }
 
+    return false;
+  };
 
+  // ✅ Build detailed list for modal
+  const pendingList = (formData || [])
+    .filter((t) => {
+      if (!t) return false;
+      if (t.leaveDate) return false;
+      if (!t.bedNo) return false;
 
+      const rentDue = Number(t.rentDue || 0);
+      if (rentDue > 0) return true;
 
+      const rents = t.rents || [];
+      const paidForBillingMonth = rents.some(isPaidForBillingMonth);
+      return !paidForBillingMonth;
+    })
+    .map((t) => {
+      const rentDue = Number(t.rentDue || 0);
+      const rents = t.rents || [];
+      const paidForBillingMonth = rents.some(isPaidForBillingMonth);
 
+      return {
+        tenant: t,
+        billLabel,
+        reason: rentDue > 0 ? "Due Amount Pending" : `Not paid for ${billLabel}`,
+        dueAmount: rentDue > 0 ? rentDue : null,
+      };
+    });
 
-
-
-
-
-
+  setPendingRents(pendingList.length);
+  setPendingTenants(pendingList);
+}, [formData]);
 
 
 
@@ -478,6 +641,69 @@ const getStatusWeight = (status) => {
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTenantData, setEditTenantData] = useState(null);
+  const isEditRentAtJoiningVisible = useMemo(() => {
+    if (!editTenantData?.joiningDate) return false;
+    const joinDate = new Date(String(editTenantData.joiningDate).split("T")[0]);
+    if (Number.isNaN(joinDate.getTime())) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    joinDate.setHours(0, 0, 0, 0);
+    const diffDays = (today - joinDate) / (1000 * 60 * 60 * 24);
+    return diffDays >= -30 && diffDays < 31;
+  }, [editTenantData?.joiningDate]);
+  useEffect(() => {
+    const pin = String(editTenantData?.pincode || "").trim();
+    if (!/^\d{6}$/.test(pin)) return;
+
+    let cancelled = false;
+    // Clear previous city/state so user can enter manually if lookup fails
+    setEditTenantData((prev) => (prev ? { ...prev, city: "", state: "" } : prev));
+
+    const fetchPincodeDetails = async () => {
+      try {
+        const res = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const office = data?.[0]?.PostOffice?.[0];
+        if (!office || cancelled) return;
+
+        setEditTenantData((prev) =>
+          prev
+            ? {
+                ...prev,
+                city: office.District || "",
+                state: office.State || "",
+              }
+            : prev
+        );
+      } catch {
+        // Fail silently to keep form usable
+      }
+    };
+
+    fetchPincodeDetails();
+    return () => {
+      cancelled = true;
+    };
+  }, [editTenantData?.pincode]);
+
+
+
+// const [password, setPassword] = useState("");
+// const [currentDeleteId, setCurrentDeleteId] = useState(null);
+// const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+// const [editPaymentMode, setEditPaymentMode] = useState("Cash");
+  const [showPhotoEditModal, setShowPhotoEditModal] = useState(false);
+  // const [photoEditTenant, setPhotoEditTenant] = useState(null);
+  const [photoEditDocIndex, setPhotoEditDocIndex] = useState(null);
+  const [photoEditTransform, setPhotoEditTransform] = useState({
+    rotate: 0,
+    flipX: false,
+    flipY: false,
+  });
+  const [savingPhotoTransform, setSavingPhotoTransform] = useState(false);
+
+
 
   const [showDueModal, setShowDueModal] = useState(false);
   const [dueMonths, setDueMonths] = useState([]);
@@ -489,7 +715,12 @@ const getStatusWeight = (status) => {
 
   const [selectedYear, setSelectedYear] = useState("All Records");
 const [editMonthYM, setEditMonthYM] = useState({ y: null, m: null });
-
+ const closeFormModal = () => {
+ setShowAddModal(false);
+  setFormTenant(null);          // ✅ clear selected tenant
+  // if you have any other related states, reset them here too
+  // setSomethingElse(...)
+};
 const years = useMemo(() => {
   const ys = new Set();
   (formData || []).forEach((d) => {
@@ -499,6 +730,22 @@ const years = useMemo(() => {
   });
   return ["All Records", ...Array.from(ys).sort((a, b) => b - a)];
 }, [formData]);
+
+const handleRentYearChange = (nextValueOrEvent) => {
+  const value =
+    typeof nextValueOrEvent === "string"
+      ? nextValueOrEvent
+      : nextValueOrEvent?.target?.value;
+  setSelectedYear(value || "All Records");
+};
+
+const handleRentSearchChange = (nextValueOrEvent) => {
+  const value =
+    typeof nextValueOrEvent === "string"
+      ? nextValueOrEvent
+      : nextValueOrEvent?.target?.value;
+  setSearchText(value || "");
+};
 
 
 
@@ -513,13 +760,13 @@ const existingForm = formData?.find(
 const ROOMS_API = `${apiUrl}rooms`;
 
   const refreshTenants = React.useCallback(async () => {
-  try {
-    const { data } = await axios.get(apiUrl);
-    setFormData(data);
-  } catch (e) {
-    console.error("Failed to refresh tenants after approval:", e);
-  }
-}, [apiUrl]);
+    try {
+      const { data } = await axios.get(`${apiUrl}forms`);
+      setFormData(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Failed to refresh tenants:", e);
+    }
+  }, [apiUrl]);
 const fmtMonthKey = (y, m) => {
   const mon = new Date(y, m, 1).toLocaleString("en-US", { month: "short" }); // e.g., "Sep"
   const yy = String(y).slice(-2); // "25"
@@ -570,6 +817,21 @@ const getYMFromRecord = (r) => {
    return rents;
  }, []);
 
+const pad2 = (n) => String(n).padStart(2, "0");
+
+const monthKeyFromDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+
+const addMonthsSafe = (date, months) => {
+  const d = new Date(date);
+  const day = d.getDate();
+  d.setMonth(d.getMonth() + months);
+
+  // handle month overflow (e.g. Jan 31 + 1 month)
+  if (d.getDate() !== day) d.setDate(0);
+  return d;
+};
+
+const sameMonthKey = (y, m) => `${y}-${pad2(m + 1)}`; // m is 0-based
 
 const [invToken, setInvToken] = useState("");
 const [invLoading, setInvLoading] = useState(false);
@@ -636,57 +898,6 @@ const handleApprovedFromBell = React.useCallback((payload) => {
   }, [newTenant]);
 
 
-  // Share button handler (Web Share API with clipboard fallback)
-  // const handleShareAddTenantModal = React.useCallback(async () => {
-  //   // basic validation
-  //   if (
-  //     !newTenant.roomNo ||
-  //     !newTenant.bedNo ||
-  //     newTenant.bedNo === "__other__"
-  //   ) {
-  //     alert("Please select a Room and a Bed before sharing the form.");
-  //     return;
-  //   }
-
-  //   const url = buildTenantFormUrl();
-  //   const shareData = {
-  //     title: "Tenant Form",
-  //     text: "Please fill out this tenant form:",
-  //     url,
-  //   };
-
-  //   const copyFallback = async () => {
-  //     try {
-  //       await navigator.clipboard.writeText(url);
-  //       alert("Form link copied to clipboard. Share it with the tenant.");
-  //     } catch {
-  //       const ta = document.createElement("textarea");
-  //       ta.value = url;
-  //       document.body.appendChild(ta);
-  //       ta.select();
-  //       document.execCommand("copy");
-  //       document.body.removeChild(ta);
-  //       alert("Could not open share dialog. Link copied to clipboard instead.");
-  //     }
-  //   };
-
-  //   try {
-  //     if (navigator.share) {
-  //       if (
-  //         typeof navigator.canShare === "function" &&
-  //         !navigator.canShare(shareData)
-  //       ) {
-  //         return copyFallback();
-  //       }
-  //       await navigator.share(shareData);
-  //     } else {
-  //       await copyFallback();
-  //     }
-  //   } catch (err) {
-  //     console.error("Share failed:", err);
-  //     await copyFallback();
-  //   }
-  // }, [buildTenantFormUrl, newTenant.roomNo, newTenant.bedNo]);
 const params = new URLSearchParams(window.location.search);
 const token = params.get("inv");
 
@@ -711,7 +922,7 @@ useEffect(() => {
       setInvLoading(true);
       setInvError("");
 
-      const r = await axios.get(` http://localhost:8000/api/invites/${token}`);
+      const r = await axios.get(`   http://localhost:8000/api/invites/${token}`);
       setFormId(r.data?.formId);
       setNewTenant((p) => ({ ...p, ...(r.data?.prefill || {}) }));
     } catch (e) {
@@ -793,6 +1004,76 @@ setInviteToken(res.data?.token || null);
 
 
 
+const parseDate = (v) => {
+  if (!v) return null;
+
+  // works for ISO / Date-string
+  const d = new Date(v);
+  if (!isNaN(d)) return d;
+
+  // try DD-MM-YYYY or DD/MM/YYYY
+  const s = String(v).trim();
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+
+  return null;
+};
+
+const today0 = useMemo(() => {
+  const t = new Date();
+  t.setHours(0, 0, 0, 0);
+  return t;
+}, []);
+
+const isActiveTenant = (t) => {
+  // active if: no leaveDate OR leaveDate is today/future (upcoming)
+  const ld = parseDate(t.leaveDate);
+  if (!ld) return true;
+  ld.setHours(0, 0, 0, 0);
+  return ld >= today0;
+};
+
+const vacantBedsList = useMemo(() => {
+  // ✅ Occupied set = ACTIVE tenants only (includes upcoming leaveDate)
+  const occupiedSet = new Set(
+    (formData || [])
+      .filter(isActiveTenant)
+      .map((t) => `${t.roomNo}__${t.bedNo}`)
+  );
+
+  const list = [];
+  (roomsData || []).forEach((room) => {
+    const roomNo = room.roomNo ?? room.room ?? room.number ?? "";
+    const floorNo = room.floorNo ?? room.floor ?? "";
+    const category = room.category ?? "";
+
+    (room.beds || []).forEach((bed) => {
+      const bedNo = bed.bedNo ?? bed.no ?? bed.number ?? bed;
+      const key = `${roomNo}__${bedNo}`;
+
+      // ✅ vacant only if not in occupiedSet
+      if (!occupiedSet.has(key)) {
+        list.push({
+          roomNo,
+          bedNo,
+          floorNo,
+          category,
+          price: bed.price ?? bed.bedRent ?? room.bedRent ?? room.price ?? 0,
+        });
+      }
+    });
+  });
+
+  list.sort((a, b) => {
+    const r = String(a.roomNo).localeCompare(String(b.roomNo), undefined, { numeric: true });
+    if (r !== 0) return r;
+    return String(a.bedNo).localeCompare(String(b.bedNo), undefined, { numeric: true });
+  });
+
+  return list;
+}, [roomsData, formData, today0]);
+
+const vacantCount = vacantBedsList.length;
 
 
 
@@ -805,6 +1086,239 @@ setInviteToken(res.data?.token || null);
 
 
 
+
+const clampRotate = (deg) => ((deg % 360) + 360) % 360;
+
+const getTenantPhotoDoc = (tenant) => {
+  const docs = tenant?.documents || [];
+  if (!docs.length) return null;
+
+  // priority: relation contains 'photo'
+  const byRelation = docs.find(
+    (d) => d?.url && String(d?.relation || "").toLowerCase().includes("photo")
+  );
+  if (byRelation) return byRelation;
+
+  // fallback: first image contentType
+  const byType = docs.find(
+    (d) => d?.url && String(d?.contentType || "").toLowerCase().startsWith("image/")
+  );
+  return byType || null;
+};
+
+
+
+
+
+
+// ✅ Always return a usable URL from your doc object
+ const getDocHref = (doc) => {
+  const url = (doc?.url || "").trim();
+  return url ? url : "#"; // ✅ ImageKit URL stored in DB
+};
+
+
+// ✅ Pick tenant photo from documents
+// const getTenantPhotoUrl = (tenant) => {
+//   const docs = tenant?.documents || [];
+//   if (!docs.length) return "";
+
+//   // priority: relation contains 'photo'
+//   const byRelation = docs.find(
+//     (d) => d?.url && String(d?.relation || "").toLowerCase().includes("photo")
+//   );
+//   if (byRelation?.url) return byRelation.url;
+
+//   // fallback: first image contentType
+//   const byType = docs.find(
+//     (d) => d?.url && String(d?.contentType || "").toLowerCase().startsWith("image/")
+//   );
+//   return byType?.url || "";
+// };
+
+
+
+const docHrefSafe = (doc) => {
+  const u = getDocHref(doc);
+  return u && u !== "#" ? String(u).trim() : "";
+};
+
+const isMediaDoc = (d) => {
+  const ct = String(d?.contentType || "").toLowerCase();
+  const name = String(d?.fileName || "").toLowerCase();
+  return (
+    ct.startsWith("image/") ||
+    ct.startsWith("video/") ||
+    /\.(png|jpe?g|webp|gif|heic|heif|avif|mp4|mov|webm)$/i.test(name)
+  );
+};
+
+const docRel = (d) => String(d?.relation || "").trim().toLowerCase();
+const docName = (d) => String(d?.fileName || "").toLowerCase();
+
+
+const findTenantPhotoDoc = (tenant) => {
+  const docs = tenant?.documents || [];
+  if (!Array.isArray(docs) || docs.length === 0) return null;
+
+  // ✅ 1) STRICT: preferred labels (new system)
+  let idx =
+    docs.findIndex((d) => docRel(d) === "tenant photo" && docHrefSafe(d)) ??
+    -1;
+  if (idx < 0) idx = docs.findIndex((d) => docRel(d) === "photo" && docHrefSafe(d));
+  if (idx < 0) idx = docs.findIndex((d) => docRel(d) === "selfie" && docHrefSafe(d));
+  if (idx >= 0) return { doc: docs[idx], index: idx };
+
+  // ✅ 2) Fallback (old system): look for filename hints
+  idx = docs.findIndex(
+    (d) => isMediaDoc(d) && /photo|selfie|tenant|profile|passport/.test(docName(d)) && docHrefSafe(d)
+  );
+  if (idx >= 0) return { doc: docs[idx], index: idx };
+
+  // ✅ 3) LAST fallback (old uploads): take the LAST "Self" media file
+  let lastIdx = -1;
+  docs.forEach((d, i) => {
+    if (docRel(d) === "self" && isMediaDoc(d) && docHrefSafe(d)) lastIdx = i;
+  });
+  if (lastIdx >= 0) return { doc: docs[lastIdx], index: lastIdx };
+
+  return null;
+};
+
+
+const normalizePhotoTransform = (doc) => {
+  const rotate = Number(doc?.photoTransform?.rotate) || 0;
+  const flipX = !!doc?.photoTransform?.flipX;
+  const flipY = !!doc?.photoTransform?.flipY;
+  return { rotate, flipX, flipY };
+};
+const photoTransformStyle = (t) => {
+  const nt = normalizePhotoTransform(t);
+  const sx = nt.flipX ? -1 : 1;
+  const sy = nt.flipY ? -1 : 1;
+  return {
+    transform: `rotate(${nt.rotate}deg) scaleX(${sx}) scaleY(${sy})`,
+    transformOrigin: "center",
+  };
+};
+
+const isSameDoc = (a, b) => {
+  if (!a || !b) return false;
+  if (a._id && b._id) return String(a._id) === String(b._id);
+  if (a.url && b.url) return String(a.url) === String(b.url);
+  return String(a.fileName || "") === String(b.fileName || "");
+};
+
+
+
+
+
+
+
+
+// ✅ Pick tenant photo from documents
+const getTenantPhotoUrl = (tenant) => {
+  const docs = tenant?.documents || [];
+  if (!docs.length) return "";
+
+  // priority: relation contains 'photo'
+  const byRelation = docs.find(
+    (d) => d?.url && String(d?.relation || "").toLowerCase().includes("photo")
+  );
+  if (byRelation?.url) return byRelation.url;
+
+  // fallback: first image contentType
+  const byType = docs.find(
+    (d) => d?.url && String(d?.contentType || "").toLowerCase().startsWith("image/")
+  );
+  return byType?.url || "";
+};
+
+const updateTenantPhotoTransform = async (tenant, updater, setFormData, setTenants, apiUrl) => {
+  const photoDoc = getTenantPhotoDoc(tenant);
+  if (!photoDoc) return;
+
+  const current = normalizePhotoTransform(photoDoc);
+  const next = updater(current);
+
+  const updatedDocs = (tenant.documents || []).map((d) =>
+    isSameDoc(d, photoDoc)
+      ? {
+          ...d,
+          photoTransform: {
+            rotate: clampRotate(next.rotate || 0),
+            flipX: !!next.flipX,
+            flipY: !!next.flipY,
+          },
+        }
+      : d
+  );
+
+  try {
+    await axios.put(`${apiUrl}update/${tenant._id}`, {
+      documents: updatedDocs,
+    });
+
+    setFormData((prev) =>
+      prev.map((t) =>
+        t._id === tenant._id ? { ...t, documents: updatedDocs } : t
+      )
+    );
+    setTenants((prev) =>
+      prev.map((t) =>
+        t._id === tenant._id ? { ...t, documents: updatedDocs } : t
+      )
+    );
+  } catch (err) {
+    console.error("Failed to update photo transform:", err);
+    alert("Failed to update photo orientation.");
+  }
+};
+
+
+
+
+
+
+
+
+
+const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+const clampDay = (y, m, d) => Math.min(d, daysInMonth(y, m));
+
+const fmtDM = (d) =>
+  d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }); // "07 Jan"
+
+function getCycleRangeStr(tenant, cycleIndex) {
+  const baseStart = getFirstCycleStart(tenant);
+  baseStart.setHours(0, 0, 0, 0);
+
+  const start = new Date(baseStart);
+  start.setMonth(start.getMonth() + cycleIndex);
+
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + 1);
+
+  return `${start.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+  })} - ${end.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+  })}`;
+}
+
+
+
+
+
+
+
+
+
+
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 
@@ -834,32 +1348,56 @@ setInviteToken(res.data?.token || null);
 
   const correctPassword = "987654";
 
-  // existing line in your file
-
-  // // ✅ add these right below apiUrl
-  // const API_ORIGIN = process.env.REACT_APP_API_ORIGIN || " http://localhost:8000";
-
-  // const getDocHref = (doc) => {
-  //   // absolute URL already? use it
-  //   if (doc?.url && /^https?:\/\//i.test(doc.url)) return doc.url;
-
-  //   // relative URL from backend like "/api/documents/:id"
-  //   if (doc?.url) return `${API_ORIGIN}${doc.url}`;
-
-  //   // ID-only record
-  //   if (doc?.fileId) return `${API_ORIGIN}/api/documents/${doc.fileId}`;
-
-  //   return "#";
-  // };
+ 
 
   // state at top of component
   const [docFiles, setDocFiles] = useState([]); // [{file: File, relation: "Self"}]
   const [docMsg, setDocMsg] = useState("");
 
+  const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png"]);
+  const ALLOWED_IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"]);
+
+  const isAllowedImageFile = (file) => {
+    if (!file) return false;
+
+    const mime = String(file.type || "").toLowerCase();
+    const name = String(file.name || "");
+    const dotIndex = name.lastIndexOf(".");
+    const ext = dotIndex >= 0 ? name.slice(dotIndex).toLowerCase() : "";
+
+    return ALLOWED_IMAGE_MIME_TYPES.has(mime) && ALLOWED_IMAGE_EXTENSIONS.has(ext);
+  };
+
+  const handleStrictImageSelection = (file, setter, messageSetter, label) => {
+    if (!file) {
+      setter(null);
+      if (messageSetter) messageSetter("");
+      return false;
+    }
+
+    if (!isAllowedImageFile(file)) {
+      setter(null);
+      if (messageSetter) messageSetter(`${label} must be JPG, JPEG, or PNG.`);
+      return false;
+    }
+
+    if (messageSetter) messageSetter("");
+    setter(file);
+    return true;
+  };
+
   // onChange for <input type="file" multiple>
   function handleDocsChange(e) {
     const files = Array.from(e.target.files || []);
+    const invalid = files.find((f) => !isAllowedImageFile(f));
+    if (invalid) {
+      setDocMsg("Only JPG, JPEG, and PNG files are allowed.");
+      e.target.value = "";
+      return;
+    }
+
     const mapped = files.map((f) => ({ file: f, relation: "Self" }));
+    setDocMsg("");
     setDocFiles((prev) => [...prev, ...mapped]);
   }
 
@@ -871,6 +1409,11 @@ setInviteToken(res.data?.token || null);
   function sanitizeTenantPayload(obj) {
     const out = {};
     for (const [k, v] of Object.entries(obj || {})) {
+      // keep non-numeric rent fields as-is
+      if (k === "firstRentStatus" || k === "firstRentMonth" || k === "firstRentPaidDate") {
+        out[k] = v;
+        continue;
+      }
       // turn empty strings/null into undefined (so Mongoose can skip/validate)
       if (v === "" || v === null) {
         out[k] = undefined;
@@ -894,114 +1437,36 @@ setInviteToken(res.data?.token || null);
     }
     return out;
   }
-  function logAxiosError(err, label = "Axios error") {
-    console.error(label, {
-      url: err?.config?.url,
-      method: err?.config?.method,
-      data: err?.config?.data,
-      status: err?.response?.status,
-      resp: err?.response?.data,
-    });
+function logAxiosError(err, label = "Axios error") {
+  const isAxios = !!err?.isAxiosError;
+
+  console.error(label, {
+    isAxios,
+    message: err?.message,
+    url: err?.config?.url,
+    method: err?.config?.method,
+    status: err?.response?.status,
+    resp: err?.response?.data,
+  });
+
+  // ✅ useful extra: show the upload response shape when upload fails
+  if (err?.response?.data?.files) {
+    console.error(label + " (files)", err.response.data.files);
   }
 
-  // SAVE handler (posts form + files)
-  // --- NEW: save wrapper that includes docs ---
-// const handleAddTenantWithDocs = async () => {
-//   try {
-//     setDocMsg("");
+  // ✅ useful extra: show FormData keys when request was multipart
+  const data = err?.config?.data;
+  try {
+    if (data && typeof data?.entries === "function") {
+      const keys = [];
+      for (const [k] of data.entries()) keys.push(k);
+      console.error(label + " (FormData keys)", keys);
+    }
+  } catch (_) {}
+}
 
-//     if (!selfAadharFile || !parentAadharFile) {
-//       setDocMsg("Please upload both Self and Parent Aadhaar cards.");
-//       return;
-//     }
 
-//     // ✅ REQUIRED BY YOUR SCHEMA
-//     const srNo = Number(newTenant.srNo);
-//     const rentAmount = Number(
-//       newTenant.rentAmount ?? newTenant.baseRent ?? 0
-//     );
-//     const depositAmount = Number(newTenant.depositAmount ?? 0);
 
-//     if (!Number.isFinite(srNo) || srNo <= 0) {
-//       setDocMsg("Sr No is required (must be a valid number).");
-//       return;
-//     }
-
-//     if (!Number.isFinite(rentAmount) || rentAmount <= 0) {
-//       setDocMsg("Rent Amount is required (must be a valid number).");
-//       return;
-//     }
-
-//     if (!newTenant.joiningDate) {
-//       setDocMsg("Joining Date is required.");
-//       return;
-//     }
-
-//     const formData = new FormData();
-
-//     // ✅ MUST SEND
-//     formData.append("srNo", String(srNo));
-//     formData.append("rentAmount", String(rentAmount)); // backend will convert to rents[0]
-//     formData.append("depositAmount", String(depositAmount));
-
-//     // Existing fields
-//     formData.append("name", newTenant.name || "");
-//     formData.append("phoneNo", newTenant.phoneNo || "");
-//     formData.append("address", newTenant.address || "");
-//     formData.append("joiningDate", newTenant.joiningDate);
-
-//     // Optional fields
-//     if (newTenant.dob) formData.append("dob", newTenant.dob);
-//     if (newTenant.dateOfJoiningCollege)
-//       formData.append("dateOfJoiningCollege", newTenant.dateOfJoiningCollege);
-//     if (newTenant.relativeAddress)
-//       formData.append("relativeAddress", newTenant.relativeAddress);
-//     if (newTenant.companyAddress)
-//       formData.append("companyAddress", newTenant.companyAddress);
-
-//     // Relatives
-//     formData.append("relative1Relation", newTenant.relative1Relation || "Self");
-//     formData.append("relative1Name", newTenant.relative1Name || "");
-//     formData.append("relative1Phone", newTenant.relative1Phone || "");
-
-//     formData.append("relative2Relation", newTenant.relative2Relation || "Self");
-//     formData.append("relative2Name", newTenant.relative2Name || "");
-//     formData.append("relative2Phone", newTenant.relative2Phone || "");
-
-//     // Room/Bed
-//     formData.append("roomNo", newTenant.roomNo || "");
-//     if (newTenant.bedNo && newTenant.bedNo !== "__other__") {
-//       formData.append("bedNo", newTenant.bedNo);
-//     }
-
-//     // Files
-//     formData.append("selfAadhar", selfAadharFile);
-//     formData.append("parentAadhar", parentAadharFile);
-//     if (photoFile) formData.append("photo", photoFile);
-
-//     // ✅ API Call
-//     const res = await axios.post(
-//       " http://localhost:8000/api/tenant/with-docs",
-//       formData
-//       // ✅ NOTE: you can omit Content-Type, axios sets boundary automatically
-//     );
-
-//     alert("Tenant saved successfully.");
-//     console.log("Saved tenant:", res.data);
-
-//     // Reset
-//     setSelfAadharFile(null);
-//     setParentAadharFile(null);
-//     setPhotoFile(null);
-//     setDocMsg("");
-//     setShowAddModal(false);
-//   } catch (err) {
-//     console.error("Failed to save tenant:", err.response?.data || err);
-//     setDocMsg(
-//       err.response?.data?.message || "Could not save tenant. Please check server."
-//     );
-//   }
-// };
 
 
 // const formId = params?.id; // SAFE
@@ -1036,9 +1501,30 @@ const handleAddTenantWithDocs = async () => {
 
     // ✅ required by your schema
     const paymentMode = "Cash";
-    const j = new Date(newTenant.joiningDate);
-    const nextMonth = new Date(j.getFullYear(), j.getMonth() + 1, 1);
-    const month = fmtMonthKey(nextMonth.getFullYear(), nextMonth.getMonth());
+    const joinDate = new Date(newTenant.joiningDate);
+    const firstRentStatus =
+      firstRentStatusSelection || newTenant.firstRentStatus || "NOT_PAID";
+
+let firstRentMonth;
+
+if (firstRentStatus === "ADVANCE_PAID") {
+  // ✅ joining month
+  firstRentMonth = fmtMonthKey(
+    joinDate.getFullYear(),
+    joinDate.getMonth()
+  );
+} else {
+  // ✅ next cycle month
+  const next = new Date(
+    joinDate.getFullYear(),
+    joinDate.getMonth() + 1,
+    1
+  );
+  firstRentMonth = fmtMonthKey(
+    next.getFullYear(),
+    next.getMonth()
+  );
+}
 
     const fd = new FormData(); // ✅ use fd everywhere
 
@@ -1051,12 +1537,17 @@ const handleAddTenantWithDocs = async () => {
     fd.append("depositAmount", String(depositAmount));
 
     fd.append("paymentMode", paymentMode);
-    fd.append("month", month);
+    fd.append("month", firstRentMonth);
 
     fd.append("name", newTenant.name || "");
     fd.append("phoneNo", newTenant.phoneNo || "");
     fd.append("address", newTenant.address || "");
     fd.append("joiningDate", newTenant.joiningDate);
+    if (newTenant.pincode) fd.append("pincode", newTenant.pincode);
+    if (newTenant.city) fd.append("city", newTenant.city);
+    if (newTenant.state) fd.append("state", newTenant.state);
+    if (newTenant.houseNo) fd.append("houseNo", newTenant.houseNo);
+    if (newTenant.nearbyPlace) fd.append("nearbyPlace", newTenant.nearbyPlace);
 
     if (newTenant.dob) fd.append("dob", newTenant.dob);
     if (newTenant.dateOfJoiningCollege) fd.append("dateOfJoiningCollege", newTenant.dateOfJoiningCollege);
@@ -1071,14 +1562,42 @@ const handleAddTenantWithDocs = async () => {
     fd.append("relative2Phone", newTenant.relative2Phone || "");
 
     fd.append("roomNo", newTenant.roomNo || "");
+    fd.append("firstRentStatus", firstRentStatus);
+    fd.append("firstRentMonth", firstRentMonth);
+
     if (newTenant.bedNo && newTenant.bedNo !== "__other__") fd.append("bedNo", newTenant.bedNo);
 
     const cat = (newTenant.category || existingForm?.category || "").trim();
     if (cat) fd.append("category", cat);
 
-    if (selfAadharFile) { fd.append("documents", selfAadharFile); fd.append("relations", "Self"); }
-    if (parentAadharFile) { fd.append("documents", parentAadharFile); fd.append("relations", "Father"); }
-    if (photoFile) { fd.append("documents", photoFile); fd.append("relations", "Self"); }
+    if (selfAadharFile && !isAllowedImageFile(selfAadharFile)) {
+      setDocMsg("Self Aadhaar Card must be JPG, JPEG, or PNG.");
+      return;
+    }
+    if (parentAadharFile && !isAllowedImageFile(parentAadharFile)) {
+      setDocMsg("Parent Aadhaar Card must be JPG, JPEG, or PNG.");
+      return;
+    }
+    if (photoFile && !isAllowedImageFile(photoFile)) {
+      setDocMsg("Tenant Photograph must be JPG, JPEG, or PNG.");
+      return;
+    }
+
+    if (selfAadharFile) {
+      const f = await compressForUpload(selfAadharFile);
+      fd.append("documents", f);
+      fd.append("relations", "Self Aadhaar Card");
+    }
+    if (parentAadharFile) {
+      const f = await compressForUpload(parentAadharFile);
+      fd.append("documents", f);
+      fd.append("relations", "Parent Aadhaar Card");
+    }
+    if (photoFile) {
+      const f = await compressForUpload(photoFile);
+      fd.append("documents", f);
+      fd.append("relations", "Tenant Photo");
+    }
 
     // ✅ safe URL build (won’t affect other code)
     const API_ROOT = String(apiUrl).replace(/\/+$/, "");
@@ -1087,13 +1606,18 @@ const handleAddTenantWithDocs = async () => {
       : `${API_ROOT}/api/forms-with-docs`;
 
     console.log("POST =>", FORMS_WITH_DOCS_URL);
+    console.log("firstRentStatus (submit):", firstRentStatus);
 
     const res = await axios.post(FORMS_WITH_DOCS_URL, fd, {
       headers: { "Content-Type": "multipart/form-data" },
     });
 
     alert("Tenant saved successfully.");
+    
     console.log("Saved tenant:", res.data);
+closeAddTenantModal(); // ✅ closes + clears form
+    await refreshTenants();
+    window.location.reload();
 
     setSelfAadharFile(null);
     setParentAadharFile(null);
@@ -1118,89 +1642,26 @@ const handleAddTenantWithDocs = async () => {
 
 
 
+// ✅ ADD THIS FUNCTION
+const closeAddTenantModal = () => {
+  setShowAddModal(false);
+
+  // ✅ clear Add Tenant form
+  setNewTenant(EMPTY_TENANT);
+  setFirstRentStatusSelection("NOT_PAID");
+
+  // ✅ clear files + message
+  setSelfAadharFile(null);
+  setParentAadharFile(null);
+  setPhotoFile(null);
+  setDocMsg("");
+
+  // ✅ clear locking states (if you have these)
+  setCreatingInvite(false);
+  setSubmittingAdd(false);
+};
 
 
-
-
-// async function handleAddTenantWithDocs() {
-//   // ✅ Required-field guard (before any uploads or POSTs)
-//   const missing = [];
-//   if (!newTenant.name?.trim()) missing.push("Name");
-//   if (!newTenant.joiningDate)   missing.push("Joining Date");
-//   if (!newTenant.roomNo)        missing.push("Room No");
-//   if (!newTenant.bedNo || newTenant.bedNo === "__other__") missing.push("Bed No");
-
-//   // Optional: soft validation for phone and deposit
-//   if (newTenant.phoneNo && !/^\d{10}$/.test(String(newTenant.phoneNo).trim())) {
-//     alert("Phone No must be a 10-digit number.");
-//     return;
-//   }
-//   if (newTenant.depositAmount !== "" && newTenant.depositAmount != null) {
-//     const dep = Number(String(newTenant.depositAmount).replace(/[,₹\s]/g, ""));
-//     if (!Number.isFinite(dep) || dep < 0) {
-//       alert("Deposit Amount must be a non-negative number.");
-//       return;
-//     }
-//   }
-
-//   if (missing.length) {
-//     alert(`Please fill: ${missing.join(", ")}`);
-//     return;
-//   }
-
-//   try {
-//     let uploaded = [];
-
-//     // ⬇️ your existing upload block (unchanged)
-//     if (docFiles.length) {
-//       const fd = new FormData();
-//       docFiles.forEach((d) => {
-//         fd.append("documents", d.file); // field name MUST be "documents" on server Multer
-//       });
-
-//       const up = await axios.post(`${apiUrl}uploads/docs`, fd, {
-//         headers: { "Content-Type": "multipart/form-data" },
-//       });
-
-//       const uploadedFiles = up.data?.files || [];
-//       uploaded = uploadedFiles.map((f, i) => ({
-//         fileName: docFiles[i]?.file?.name || f.filename || `doc-${i + 1}`,
-//         relation: docFiles[i]?.relation || "Self",
-//         url:
-//           f.url ||
-//           f.path ||
-//           f.location ||
-//           f.secure_url ||
-//           (f._id ? `${apiUrl}documents/${f._id}` : "#"),
-//       }));
-//     }
-
-//     const rawPayload = {
-//       ...newTenant,
-//       documents: uploaded,
-//     };
-//     const payload = sanitizeTenantPayload(rawPayload);
-
-//     console.log("🚀 Payload sending:", payload);
-
-//     await axios.post(`${apiUrl}forms`, payload);
-
-//     setShowAddModal(false);
-
-//     // const tenantsRes = await axios.get(`${apiUrl}forms`);
-//     // setTenants(tenantsRes.data);
-//        // 🔄 refresh main table data
-//    await refreshTenants();
-//   } catch (err) {
-//     logAxiosError(err, "handleAddTenantWithDocs");
-//     const msg = err?.response?.data?.message || err.message;
-//     if (/E11000/i.test(msg)) {
-//       alert("Sr No already exists. Close and reopen Add Tenant to get a fresh Sr No.");
-//     } else {
-//       alert(msg || "Failed to save tenant");
-//     }
-//   }
-// }
 
 
   //  for file less than 10 kb
@@ -1274,78 +1735,20 @@ const handleAddTenantWithDocs = async () => {
     return null; // couldn’t reach 10KB
   }
 
-  // Handle file choose: allow multiple, images only, compress to <=10KB
-  // async function handleDocsChange(e) {
-  //   setDocMsg("");
-  //   const files = Array.from(e.target.files || []);
-  //   if (!files.length) return;
+  // Compress large images before upload to speed up slow networks
+  const DEFAULT_UPLOAD_MAX = 300 * 1024; // 300KB target
+  const compressForUpload = async (file, maxBytes = DEFAULT_UPLOAD_MAX) => {
+    if (!file || !file.type || !file.type.startsWith("image/")) return file;
+    if (file.size && file.size <= maxBytes) return file;
+    try {
+      const compressed = await compressImageToTarget(file, maxBytes);
+      return compressed || file;
+    } catch {
+      return file;
+    }
+  };
 
-  //   const accepted = [];
-  //   for (const f of files) {
-  //     if (!f.type.startsWith("image/")) {
-  //       setDocMsg("Only images are allowed for 10KB storage (jpg/png/webp).");
-  //       continue;
-  //     }
-  //     try {
-  //       const c = await compressImageToTarget(f, 10 * 1024);
-  //       if (c) accepted.push(c);
-  //       else setDocMsg((m) => (m ? m + " " : "") + `“${f.name}” couldn’t be reduced to ≤ 10KB.`);
-  //     } catch {
-  //       setDocMsg((m) => (m ? m + " " : "") + `Failed to process “${f.name}”.`);
-  //     }
-  //   }
-  //   setCompressedDocs((prev) => [...prev, ...accepted]);
-  //   e.target.value = ""; // allow selecting same file later
-  // }
-
-  // const removeDoc = (idx) => setCompressedDocs((prev) => prev.filter((_, i) => i !== idx));
-
-  // --- NEW: save wrapper that includes docs ---
-  // async function handleAddTenantWithDocs() {
-  //   try {
-  //     let uploaded = [];
-
-  //     if (compressedDocs.length) {
-  //       const fd = new FormData();
-  //       compressedDocs.forEach(doc => {
-  //         fd.append("documents", doc.file); // only raw files go to upload API
-  //       });
-
-  //       const up = await axios.post(" http://localhost:8000/api/uploads/docs", fd, {
-  //         headers: { "Content-Type": "multipart/form-data" },
-  //       });
-
-  //       const uploadedFiles = up.data?.files || [];
-
-  //       // merge relation + url here
-  //       uploaded = uploadedFiles.map((f, i) => ({
-  //         fileName: compressedDocs[i].name,
-  //         relation: compressedDocs[i].relation,
-  //         url: f.url,
-  //       }));
-  //     }
-
-  //     const payload = {
-  //       ...newTenant,
-  //       documents: uploaded, // ✅ don't remap again
-  //     };
-
-  //     console.log("🚀 Payload sending:", JSON.stringify(payload, null, 2));
-
-  //     const res = await axios.post(" http://localhost:8000/api/forms", payload);
-  //     console.log("Saved:", res.data);
-
-  //     setShowAddModal(false);
-
-  //     // refresh list
-  //     const tenantsRes = await axios.get(" http://localhost:8000/api/forms");
-  //     setTenants(tenantsRes.data);
-  //   } catch (err) {
-  //     console.error(err);
-  //     alert(err?.response?.data?.message || err.message || "Failed to save tenant");
-  //   }
-  // }
-
+  
   // If you already post in handleAddTenant, you can move the FormData logic there instead.
 
   const PAGE = 3; // number of month sub-columns under Rent
@@ -1376,26 +1779,6 @@ const handleAddTenantWithDocs = async () => {
   }
   return months;
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1520,9 +1903,30 @@ console.log("ROOM FOUND BED PRICE →", bed?.price, bed);
 
 
 
+function getFirstBillYM(tenant) {
+  if (tenant?.firstRentMonth) {
+    const pm = parseMonthKey(tenant.firstRentMonth); // "Jan-26"
+    if (pm) return pm.y * 12 + pm.m;
+  }
+  const jd = new Date(tenant.joiningDate);
+  const isAdvance = tenant?.firstRentStatus === "ADVANCE_PAID";
+  return jd.getFullYear() * 12 + jd.getMonth() + (isAdvance ? 0 : 1);
+}
+
+function getJoiningPaymentLabel(tenant) {
+  if (!tenant) return "";
+  return tenant.firstRentStatus === "ADVANCE_PAID"
+    ? "Paid in advance at joining"
+    : "Not paid in advance";
+}
+
+function getFirstCycleStart(tenant) {
+  const joinDate = new Date(tenant.joiningDate);
+  return joinDate;
+}
 
 
-const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+// const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
 
 const clampDate = (y, m, day) => {
   const d = Math.min(day, daysInMonth(y, m));
@@ -1532,196 +1936,101 @@ const clampDate = (y, m, day) => {
 
   // Single source of truth for a month cell
 const getMonthCell = (tenant, y, m) => {
-  // Find record for this cell month
-  const rec = (tenant.rents || []).find((r) => {
+  if (!tenant?.joiningDate) return { label: "", amountText: "" };
+
+  const joinDate = new Date(tenant.joiningDate);
+  const cellYM = y * 12 + m;
+
+  // 🔑 first bill month (from DB, set at admission)
+let firstBillYM;
+if (tenant.firstRentMonth) {
+  const pm = parseMonthKey(tenant.firstRentMonth);
+  if (!pm) return { label: "", amountText: "" };
+  firstBillYM = pm.y * 12 + pm.m;
+} else {
+  const isAdvance = tenant.firstRentStatus === "ADVANCE_PAID";
+  firstBillYM = joinDate.getFullYear() * 12 + joinDate.getMonth() + (isAdvance ? 0 : 1);
+}
+
+
+  // ⛔ before rent starts
+  if (cellYM < firstBillYM) {
+    return { label: "", amountText: "" };
+  }
+
+  // 🔁 cycle index
+  const cycleIndex = cellYM - firstBillYM;
+  const isAdvancePaymentMonth =
+    tenant.firstRentStatus === "ADVANCE_PAID" && cellYM === firstBillYM;
+
+  const baseStart = getFirstCycleStart(tenant);
+  const periodStart = new Date(baseStart);
+  periodStart.setMonth(periodStart.getMonth() + cycleIndex);
+
+  const periodEnd = new Date(periodStart);
+  periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+  // 🔎 payment record for this month
+  const rentRec = (tenant.rents || []).find((r) => {
     const ym = getYMFromRecord(r);
     return ym && ym.y === y && ym.m === m;
   });
 
-  const now = new Date();
-  const curY = now.getFullYear();
-  const curM = now.getMonth();
+  const expected = expectFromTenant(tenant, roomsData);
+  const paidAmount = rentRec ? Number(rentRec.rentAmount || 0) : 0;
+  const outstanding = Math.max(0, Number(expected || 0) - Number(paidAmount || 0));
 
-  const cellKey = y * 12 + m;
-  const curKey = curY * 12 + curM;
+  let label;
+  let dateStr = "";
+  const today = new Date();
+  const isPast = today >= periodEnd;
 
-  // ✅ Billing day = joining date day (19, 5, etc.)
-  const join = tenant?.joiningDate ? new Date(tenant.joiningDate) : null;
-  const billingDay = join ? join.getDate() : 1;
-
-  // helpers (can keep here or move outside)
-  const fmtDM = (d) =>
-    d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
-
-  const clampDueDate = (yy, mm, dueDay) => {
-    const lastDay = new Date(yy, mm + 1, 0).getDate();
-    return new Date(yy, mm, Math.min(dueDay, lastDay));
-  };
-
-  // ✅ Due date string for this cell month (ex: 12 Jan)
-  const dueDate = clampDueDate(y, m, billingDay);
-  const dueDateStr = fmtDM(dueDate);
-
-  // ✅ "Cycle end" for current month = currentMonth + billingDay (clamped)
-  const curCycleEnd = clampDate(curY, curM, billingDay);
-
-  // ✅ Past logic (your existing)
-  const isPast =
-    cellKey < curKey ? true : cellKey > curKey ? false : now >= curCycleEnd;
-
-  const isCurrent = cellKey === curKey;
-  const isFuture = cellKey > curKey;
-
-  // ✅ rent starts from next month after joining (not in same joining month)
-  const rentStart = join
-    ? new Date(join.getFullYear(), join.getMonth() + 1, 1)
-    : null;
-  const cellStart = new Date(y, m, 1);
-  const beforeRentStart = rentStart ? cellStart < rentStart : false;
-
-  // extras
-  const extra =
-    toNum(rec?.extraAmount) +
-    toNum(rec?.extra) +
-    toNum(rec?.lateFee) +
-    toNum(rec?.maintenance) +
-    toNum(rec?.adjustment) +
-    toNum(rec?.electricityExtra);
-
-  const expectedBase =
-    toNum(rec?.expectedRent) ||
-    toNum(rec?.monthRent) ||
-    toNum(rec?.rentExpected) ||
-    toNum(rec?.baseRent) ||
-    toNum(rec?.price) ||
-    expectFromTenant(tenant, roomsData);
-
-  const expected = beforeRentStart ? 0 : expectedBase + extra;
-
-  const amountPaid = toNum(rec?.rentAmount);
-  const outstanding = beforeRentStart ? 0 : Math.max(0, expected - amountPaid);
-
-  // ✅ keep paid date as-is; if missing, we'll fallback to dueDateStr for Due/Upcoming
-  let dateStr = rec?.date
-    ? new Date(rec?.paymentDate || rec.date).toLocaleDateString("en-GB", {
+  if (paidAmount > 0 && expected > 0 && paidAmount < expected) {
+    label = "Pending";
+    // show payment date for partial payment if available
+    if (rentRec?.date) {
+      dateStr = new Date(rentRec.date).toLocaleDateString("en-GB", {
         day: "2-digit",
         month: "short",
-      })
-    : "";
-
-  // 0) Before rent start => blank
-  if (beforeRentStart) {
-    return {
-      label: "",
-      cls: "",
-      dateStr: "",
-      extra: 0,
-      amountPaid: 0,
-      expected: 0,
-      outstanding: 0,
-      isPast,
-      isCurrent,
-      isFuture,
-      beforeRentStart: true,
-    };
-  }
-
-  // 1) No record
-  if (!rec) {
-    if (isPast) {
-      return {
-        label: "Due",
-        cls: "",
-        dateStr: dueDateStr, // ✅ show due date
-        extra,
-        amountPaid: 0,
-        expected,
-        outstanding: expected,
-        isPast,
-        isCurrent,
-        isFuture,
-        beforeRentStart: false,
-      };
+      });
+    } else {
+      dateStr = periodStart.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+      });
     }
-    return {
-      label: "Upcoming",
-      cls: "",
-      dateStr: dueDateStr, // ✅ show upcoming due date
-      extra,
-      amountPaid: 0,
-      expected,
-      outstanding: expected,
-      isPast,
-      isCurrent,
-      isFuture,
-      beforeRentStart: false,
-    };
-  }
-
-  // 2) Record exists but nothing paid
-  if (amountPaid <= 0) {
-    if (isPast) {
-      return {
-        label: "Due",
-        cls: "",
-        dateStr: dateStr || dueDateStr, // ✅ fallback to due date if payment date missing
-        extra,
-        amountPaid,
-        expected,
-        outstanding,
-        isPast,
-        isCurrent,
-        isFuture,
-        beforeRentStart: false,
-      };
+  } else if (paidAmount >= expected && expected > 0) {
+    label = "Paid";
+    if (rentRec?.date) {
+      dateStr = new Date(rentRec.date).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+      });
     }
-    return {
-      label: "Upcoming",
-      cls: "",
-      dateStr: dateStr || dueDateStr, // ✅ fallback
-      extra,
-      amountPaid,
-      expected,
-      outstanding,
-      isPast,
-      isCurrent,
-      isFuture,
-      beforeRentStart: false,
-    };
+  } else {
+    // If due date (cycle end) has passed, mark as Due
+    label = isPast ? "Due" : "Upcoming";
+    // show due date (cycle end) in the badge
+    dateStr = periodEnd.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+    });
   }
 
-  // 3) Partial
-  if (outstanding > 0) {
-    return {
-      label: "Pend",
-      cls: "",
-      dateStr: dateStr || dueDateStr, // optional fallback (safe)
-      extra,
-      amountPaid,
-      expected,
-      outstanding,
-      isPast,
-      isCurrent,
-      isFuture,
-      beforeRentStart: false,
-    };
-  }
-
-  // 4) Paid
   return {
-    label: "Paid",
-    cls: "",
-    dateStr: dateStr || dueDateStr, // optional fallback
-    extra,
-    amountPaid,
+    label,
+    headerDate: `${pad2(periodEnd.getDate())} ${periodEnd.toLocaleString("en-US", { month: "short" })}`,
+    rangeText: `${fmtDM(periodStart)} - ${fmtDM(periodEnd)}`,
+    amountText: `₹${expected.toLocaleString("en-IN")}`,
+    dateStr,
+    amountPaid: paidAmount,
     expected,
-    outstanding: 0,
+    outstanding,
     isPast,
-    isCurrent,
-    isFuture,
-    beforeRentStart: false,
+    isAdvancePaymentMonth,
   };
 };
+
 
 const getTenantDueTotal = (tenant, monthsArr) => {
   return (monthsArr || []).reduce((sum, m) => {
@@ -1732,7 +2041,7 @@ const getTenantDueTotal = (tenant, monthsArr) => {
 
     // ✅ ONLY past months can be "Due"
     const isRealDue =
-      c.isPast && (c.label === "Due" || c.label === "Pend");
+      c.isPast && (c.label === "Due" || c.label === "Pending");
 
     return sum + (isRealDue ? Number(c.outstanding || 0) : 0);
   }, 0);
@@ -1750,16 +2059,16 @@ const getRentStatusLabelForSort = (tenant) => {
 
   useEffect(() => {
     axios
-      .get(apiUrl)
+      .get(`${apiUrl}forms`)
       .then((response) => {
-        setFormData(response.data);
+        setFormData(Array.isArray(response.data) ? response.data : []);
         setLoading(false);
       })
       .catch(() => {
         setError("Failed to fetch data");
         setLoading(false);
       });
-  }, []);
+  }, [apiUrl]);
 
   useEffect(() => {
     axios
@@ -1785,7 +2094,7 @@ const getRentStatusLabelForSort = (tenant) => {
   // }, []);
   // useEffect(() => {
   //   axios
-  //     .get(" http://localhost:8000/api/rooms")
+  //     .get("   http://localhost:8000/api/rooms")
   //     .then((response) => setRoomsData(response.data))
   //     .catch((err) => console.error("Failed to fetch rooms:", err));
   // }, []);
@@ -1797,6 +2106,65 @@ const getRentStatusLabelForSort = (tenant) => {
       .catch((err) => console.error("Failed to fetch rooms:", err));
   }, []);
 
+  const renderTenantPhoto = (tenant) => {
+    const photoUrl = getTenantPhotoUrl(tenant);
+    if (!photoUrl) {
+      return (
+        <div
+          style={{
+            width: 75,
+            height: 70,
+            borderRadius: 6,
+            background: "#eee",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 10,
+            color: "#777",
+            border: "1px solid #ccc",
+            flexShrink: 0,
+          }}
+        >
+          N/A
+        </div>
+      );
+    }
+
+    const photoDoc = getTenantPhotoDoc(tenant);
+    const t = normalizePhotoTransform(photoDoc);
+    const rotate = clampRotate(t.rotate || 0);
+    const scaleX = t.flipX ? -1 : 1;
+    const scaleY = t.flipY ? -1 : 1;
+
+    return (
+      <div className="tenant-photo-wrap">
+        <div className="tenant-photo-frame">
+          <img
+            src={photoUrl}
+            alt="photo"
+            crossOrigin="anonymous"
+            className="tenant-photo-img"
+            style={{
+              transform: `rotate(${rotate}deg) scale(${scaleX}, ${scaleY})`,
+            }}
+          />
+          <button
+            type="button"
+            className="photo-edit-btn"
+            title="Edit photo"
+            onClick={(e) => {
+              e.stopPropagation();
+              setPhotoEditTenant(tenant);
+            }}
+          >
+            <FaEdit style={{color:"#aa0e03cc"}}/>
+          </button>
+        </div>
+
+      </div>
+    );
+  };
+
   const handleAddTenant = async () => {
     try {
       const selectedRoom = roomsData.find(
@@ -1807,9 +2175,20 @@ const getRentStatusLabelForSort = (tenant) => {
       );
       const baseRent = selectedBed?.price || 0;
 
+      const joinDate = new Date(newTenant.joiningDate);
+      const firstRentStatus =
+        firstRentStatusSelection || newTenant.firstRentStatus || "NOT_PAID";
+      const firstRentMonth =
+        firstRentStatus === "ADVANCE_PAID"
+          ? fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth())
+          : fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth() + 1);
+
+      console.log("firstRentStatus (legacy submit):", firstRentStatus);
       const tenantToSave = sanitizeTenantPayload({
         ...newTenant,
         baseRent,
+        firstRentStatus,
+        firstRentMonth,
       });
 
       await axios.post(`${apiUrl}forms`, tenantToSave);
@@ -1823,6 +2202,11 @@ const getRentStatusLabelForSort = (tenant) => {
         roomNo: "",
         depositAmount: "",
         address: "",
+        pincode: "",
+        city: "",
+        state: "",
+        houseNo: "",
+        nearbyPlace: "",
         phoneNo: "",
         relativeAddress1: "",
         relativeAddress2: "",
@@ -1833,7 +2217,10 @@ const getRentStatusLabelForSort = (tenant) => {
         dob: "",
         baseRent: "",
         rentAmount: "",
+        firstRentStatus: "NOT_PAID",
+        firstRentMonth: "",
       });
+      setFirstRentStatusSelection("NOT_PAID");
 
       // const response = await axios.get(`${apiUrl}`);
       // setFormData(response.data);
@@ -1850,6 +2237,7 @@ const getRentStatusLabelForSort = (tenant) => {
       }
     }
   };
+
 
 const occupiedBedsSet = new Set(
   formData
@@ -1980,47 +2368,44 @@ const futureOnLeaveTenants = useMemo(() => {
       }))
     );
   }, [roomsData]);
-const calculateDue = (rents = [], joiningDateStr, tenant, roomsData) => {
-  if (!joiningDateStr) return 0;
+const getBillingMonthsUpToNow = (tenant) => {
+  if (!tenant?.joiningDate) return [];
 
-  // 1️⃣ Always use UPDATED RENT
-  const updatedRent = expectFromTenant(tenant, roomsData);
-
+  const firstBillYM = getFirstBillYM(tenant);
   const now = new Date();
-  const currentYear = now.getFullYear();
+  const lastYM = now.getFullYear() * 12 + now.getMonth();
 
-  const joinDate = new Date(joiningDateStr);
-  const rentStart = new Date(
-    joinDate.getFullYear(),
-    joinDate.getMonth() + 1,
-    1
-  );
-
-  const startOfYear = new Date(currentYear, 0, 1);
-  const startDate = rentStart > startOfYear ? rentStart : startOfYear;
-
-  const paidMonths = new Set(
-    (rents || [])
-      .filter((r) => Number(r.rentAmount) > 0)
-      .map(getYMFromRecord)
-      .filter(Boolean)
-      .map(({ m, y }) => `${m}-${y}`)
-  );
-
-  let tempDate = new Date(startDate);
-  let dueCount = 0;
-
-  while (tempDate <= now && tempDate.getFullYear() === currentYear) {
-    const key = `${tempDate.getMonth()}-${tempDate.getFullYear()}`;
-
-    if (!paidMonths.has(key)) {
-      dueCount++;
-    }
-    tempDate.setMonth(tempDate.getMonth() + 1);
+  const months = [];
+  for (let ym = firstBillYM; ym <= lastYM; ym++) {
+    const y = Math.floor(ym / 12);
+    const m = ym % 12;
+    months.push({ y, m });
   }
+  return months;
+};
 
-  // 2️⃣ Due amount = updatedRent × dueCount
-  return updatedRent * dueCount;
+const calculateDue = (rents = [], joiningDateStr, tenant, roomsData) => {
+  if (!tenant?.joiningDate) return 0;
+
+  const months = getBillingMonthsUpToNow(tenant);
+  return months.reduce((sum, m) => {
+    const c = getMonthCell(tenant, m.y, m.m);
+    const isRealDue =
+      c?.isPast && (c.label === "Due" || c.label === "Pending");
+    return sum + (isRealDue ? Number(c.outstanding || 0) : 0);
+  }, 0);
+};
+const toInt = (v) => {
+  const s = String(v ?? "");
+  const m = s.match(/\d+/); // takes first number from "301", "301 (Floor 3)" etc
+  const n = m ? parseInt(m[0], 10) : NaN;
+  return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+};
+
+const compareRoomBed = (a, b) => {
+  const r = toInt(a.roomNo) - toInt(b.roomNo);
+  if (r !== 0) return r;
+  return toInt(a.bedNo) - toInt(b.bedNo);
 };
 
   // Tenants to show in the main table (hide those who have left)
@@ -2046,70 +2431,83 @@ const calculateDue = (rents = [], joiningDateStr, tenant, roomsData) => {
   });
 
   // 2) Sort according to sortConfig
-  const sorted = [...base];
+ // 2) Sort according to sortConfig
+const sorted = [...base];
 
-  if (sortConfig.column) {
-    sorted.sort((a, b) => {
-      const dir = sortConfig.direction === "asc" ? 1 : -1;
+if (sortConfig.column) {
+  sorted.sort((a, b) => {
+    const dir = sortConfig.direction === "asc" ? 1 : -1;
 
-      // 🔹 Sr: use srNo numeric
-      if (sortConfig.column === "sr") {
-        const aSr = Number(a.srNo || 0);
-        const bSr = Number(b.srNo || 0);
-        return (aSr - bSr) * dir;
-      }
+    // 🔹 Sr: use srNo numeric
+    if (sortConfig.column === "sr") {
+      const aSr = Number(a.srNo || 0);
+      const bSr = Number(b.srNo || 0);
+      return (aSr - bSr) * dir;
+    }
 
-      // 🔹 Name: A → Z / Z → A
-      if (sortConfig.column === "name") {
-        return (
-          (a.name || "").localeCompare(b.name || "", undefined, {
-            sensitivity: "base",
-          }) * dir
-        );
-      }
+    // 🔹 Name: A → Z / Z → A
+    if (sortConfig.column === "name") {
+      return (
+        (a.name || "").localeCompare(b.name || "", undefined, {
+          sensitivity: "base",
+        }) * dir
+      );
+    }
 
-      // 🔹 Due: numeric due amount (uses your calculateDue helper)
-      if (sortConfig.column === "due") {
-        const aDue = calculateDue(a.rents, a.joiningDate);
-        const bDue = calculateDue(b.rents, b.joiningDate);
-        return (aDue - bDue) * dir;
-      }
+    // 🔹 Due: numeric due amount
+    if (sortConfig.column === "due") {
+      // ✅ IMPORTANT: pass tenant + roomsData (matches your calculateDue usage)
+      const aDue = calculateDue(a.rents, a.joiningDate, a, roomsData);
+      const bDue = calculateDue(b.rents, b.joiningDate, b, roomsData);
+      return (aDue - bDue) * dir;
+    }
 
-      // 🔹 Rent status: Pending/Due first OR Paid first
-      if (sortConfig.column === "status") {
-        const aLabel = getRentStatusLabelForSort(a); // "Paid" / "Pend" / "Due"
-        const bLabel = getRentStatusLabelForSort(b);
+    // 🔹 Rent status: Pending/Due first OR Paid first
+    if (sortConfig.column === "status") {
+      const aLabel = getRentStatusLabelForSort(a); // "Paid" / "Pend" / "Due"
+      const bLabel = getRentStatusLabelForSort(b);
 
-        const rank = (label, direction) => {
-          const s = String(label).toLowerCase();
-          const isPending = s.startsWith("pend") || s.startsWith("due");
-          const isPaid = s.startsWith("paid");
+      const rank = (label, direction) => {
+        const s = String(label).toLowerCase();
+        const isPending = s.startsWith("pending") || s.startsWith("due");
+        const isPaid = s.startsWith("paid");
 
-          if (direction === "asc") {
-            // 1st click: Pending/Due at top
-            if (isPending) return 0;
-            if (isPaid) return 1;
-            return 2;
-          } else {
-            // 2nd click: Paid at top
-            if (isPaid) return 0;
-            if (isPending) return 1;
-            return 2;
-          }
-        };
+        if (direction === "asc") {
+          // 1st click: Pending/Due at top
+          if (isPending) return 0;
+          if (isPaid) return 1;
+          return 2;
+        } else {
+          // 2nd click: Paid at top
+          if (isPaid) return 0;
+          if (isPending) return 1;
+          return 2;
+        }
+      };
 
-        const aRank = rank(aLabel, sortConfig.direction);
-        const bRank = rank(bLabel, sortConfig.direction);
-        return aRank - bRank;
-      }
+      const aRank = rank(aLabel, sortConfig.direction);
+      const bRank = rank(bLabel, sortConfig.direction);
+      return aRank - bRank;
+    }
 
-      return 0;
-    });
-  }
+    return 0;
+  });
+} else {
+  // ✅ DEFAULT FLOW when no sorting selected: 301,302,303... then 401,402...
+  sorted.sort((a, b) => {
+    const toInt = (v) => {
+      const m = String(v ?? "").match(/\d+/);
+      const n = m ? parseInt(m[0], 10) : NaN;
+      return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY;
+    };
+    const r = toInt(a.roomNo) - toInt(b.roomNo);
+    if (r !== 0) return r;
+    return toInt(a.bedNo) - toInt(b.bedNo);
+  });
+}
 
-  return sorted;
-}, [formData, leaveDates, searchText, selectedYear, sortConfig, calculateDue]);
-
+return sorted;
+  }, [formData, leaveDates, searchText, selectedYear, sortConfig, roomsData]);
 
   // Vacant slots = slots that are not currently occupied (by a visible, non-leaved tenant)
   const extraVacantSlots = useMemo(() => {
@@ -2125,21 +2523,95 @@ const calculateDue = (rents = [], joiningDateStr, tenant, roomsData) => {
 
     const search = (searchText || "").toLowerCase();
 
-    return (slots || []).filter((slot) => {
-      const key = `${slot.roomNo}-${slot.bedNo}`;
-      if (activeKeys.has(key)) return false; // occupied
+   return (slots || [])
+  .filter((slot) => {
+    const key = `${slot.roomNo}-${slot.bedNo}`;
+    if (activeKeys.has(key)) return false;
 
-      const matchesSearch =
-        !search ||
-        String(slot.bedNo).toLowerCase().includes(search) ||
-        String(slot.roomNo).toLowerCase().includes(search);
+    const matchesSearch =
+      !search ||
+      String(slot.bedNo).toLowerCase().includes(search) ||
+      String(slot.roomNo).toLowerCase().includes(search);
 
-      // year filter applies only to tenants; for slots, show them unless user picked a specific year
-      const matchesYear = selectedYear === "All Records";
+    const matchesYear = selectedYear === "All Records";
+    return matchesSearch && matchesYear;
+  })
+  .sort(compareRoomBed); // ✅ vacant flow
 
-      return matchesSearch && matchesYear;
-    });
   }, [slots, formData, leaveDates, searchText, selectedYear]);
+
+  // Build combined rows (occupied + vacant) in room-wise flow when no sorting selected
+  const combinedRows = useMemo(() => {
+    if (sortConfig.column) return null;
+
+    const byRoom = new Map();
+    const addRoomBucket = (roomNo) => {
+      const key = String(roomNo ?? "");
+      if (!byRoom.has(key)) byRoom.set(key, { tenants: [], vacants: [] });
+      return byRoom.get(key);
+    };
+
+    (visibleTenants || []).forEach((t) => {
+      const bucket = addRoomBucket(t.roomNo);
+      bucket.tenants.push(t);
+    });
+
+    (extraVacantSlots || []).forEach((s) => {
+      const bucket = addRoomBucket(s.roomNo);
+      bucket.vacants.push(s);
+    });
+
+    const roomKeys = Array.from(byRoom.keys()).sort((a, b) => {
+      const ra = toInt(a);
+      const rb = toInt(b);
+      return ra - rb;
+    });
+
+    const rows = [];
+    roomKeys.forEach((roomKey) => {
+      const bucket = byRoom.get(roomKey);
+      if (!bucket) return;
+      bucket.tenants.sort(compareRoomBed);
+      bucket.vacants.sort(compareRoomBed);
+
+      bucket.tenants.forEach((t) => rows.push({ type: "tenant", tenant: t }));
+      bucket.vacants.forEach((s) => rows.push({ type: "vacant", slot: s }));
+    });
+
+    return rows;
+  }, [visibleTenants, extraVacantSlots, sortConfig]);
+
+
+   const groupedRooms = useMemo(() => {
+    const roomMap = new Map();
+
+    (visibleTenants || []).forEach((t) => {
+      const roomNo = String(t.roomNo ?? "");
+      if (!roomMap.has(roomNo)) {
+        roomMap.set(roomNo, { roomNo, occupied: [], vacant: [] });
+      }
+      roomMap.get(roomNo).occupied.push(t);
+    });
+
+    (extraVacantSlots || []).forEach((s) => {
+      const roomNo = String(s.roomNo ?? "");
+      if (!roomMap.has(roomNo)) {
+        roomMap.set(roomNo, { roomNo, occupied: [], vacant: [] });
+      }
+      roomMap.get(roomNo).vacant.push(s);
+    });
+
+    const rooms = Array.from(roomMap.values()).sort(
+      (a, b) => toInt(a.roomNo) - toInt(b.roomNo)
+    );
+
+    rooms.forEach((r) => {
+      r.occupied.sort(compareRoomBed);
+      r.vacant.sort(compareRoomBed);
+    });
+
+    return rooms;
+  }, [visibleTenants, extraVacantSlots]);
   // All vacant slots (for shifting), not filtered by search/year
   const allVacantSlots = useMemo(() => {
     const activeKeys = new Set(
@@ -2152,10 +2624,13 @@ const calculateDue = (rents = [], joiningDateStr, tenant, roomsData) => {
         .map((t) => `${t.roomNo}-${t.bedNo}`)
     );
 
-    return (slots || []).filter((slot) => {
-      const key = `${slot.roomNo}-${slot.bedNo}`;
-      return !activeKeys.has(key);
-    });
+ return (slots || [])
+  .filter((slot) => {
+    const key = `${slot.roomNo}-${slot.bedNo}`;
+    return !activeKeys.has(key);
+  })
+  .sort(compareRoomBed);
+
   }, [slots, formData, leaveDates]);
 
   // ADD THIS helper in NewComponant component (near other handlers)
@@ -2175,20 +2650,30 @@ setEditRentDate(new Date().toISOString().split("T")[0]);
     // Optional: clear or auto-suggest amount
     // setEditRentAmount(expectFromTenant(tenant, roomsData));
   };
-  const openAddForSlot = (roomNo, bedNo) => {
+  const openAddForSlot = (slotOrRoomNo, bedNoArg) => {
+    const slot =
+      slotOrRoomNo && typeof slotOrRoomNo === "object" ? slotOrRoomNo : null;
+    const roomNo = slot ? slot.roomNo : slotOrRoomNo;
+    const bedNo = slot ? slot.bedNo : bedNoArg;
+
     const room = roomsData.find((r) => String(r.roomNo) === String(roomNo));
     const bed = room?.beds?.find((b) => String(b.bedNo) === String(bedNo));
+    const price =
+      toNum(slot?.price) || toNum(bed?.price) || toNum(bed?.baseRent) || "";
 
     // Optionally fetch SrNo if you use it
     fetchSrNo?.();
 
     setNewTenant((prev) => ({
       ...prev,
-      roomNo: String(roomNo),
-      bedNo: String(bedNo),
-      floorNo: room?.floorNo ?? "",
-      baseRent: bed?.price ?? "",
-      rentAmount: bed?.price ?? "",
+      roomId: room?._id || prev.roomId || "",
+      roomNo: String(roomNo ?? ""),
+      category: room?.category || slot?.category || prev.category || "",
+      bedNo: String(bedNo ?? ""),
+      floorNo: room?.floorNo ?? slot?.floorNo ?? "",
+      bedPrice: price,
+      baseRent: price,
+      rentAmount: price,
       // clear inline “other bed” form fields if you use them
       newBedNo: "",
       newBedPrice: "",
@@ -2196,6 +2681,216 @@ setEditRentDate(new Date().toISOString().split("T")[0]);
     setShowAddModal(true);
   };
 
+
+
+
+
+  const openCurrentMonthEdit = (tenant) => {
+    if (!tenant?._id) return;
+    const now = new Date();
+    openEditForTenantMonth(tenant._id, now.getMonth(), now.getFullYear());
+  };
+
+  const openDueMonthsModal = (tenant) => {
+    if (!tenant) return;
+    const dueList = getAllPendingMonths(tenant);
+    setDueMonths(dueList);
+    setSelectedTenantName(tenant.name || "");
+    setShowDueModal(true);
+  };
+
+  const openShiftTenantModal = (tenant) => {
+    if (!tenant) return;
+    setShiftTenant(tenant);
+    setShiftTargetKey("");
+    setShowShiftModal(true);
+  };
+
+  const openDesktopTenantDetails = (tenant) => {
+    if (!tenant) return;
+    setSelectedTenant(tenant);
+    setShowDetailsModal(true);
+  };
+
+  const openTenantEditModal = (tenant) => {
+    if (!tenant) return;
+    const copy = { ...tenant };
+    if (!copy.firstRentStatus && copy.joiningDate) {
+      const joinDate = new Date(String(copy.joiningDate).split("T")[0]);
+      if (!Number.isNaN(joinDate.getTime())) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        joinDate.setHours(0, 0, 0, 0);
+        const diffDays = (today - joinDate) / (1000 * 60 * 60 * 24);
+        if (diffDays >= -30 && diffDays < 31) {
+          copy.firstRentStatus = "ADVANCE_PAID";
+          copy.firstRentPaidDate = copy.firstRentPaidDate || new Date().toISOString().slice(0, 10);
+        }
+      }
+    }
+    setEditTenantData(copy);
+    setShowEditModal(true);
+  };
+
+  const openTenantDeleteModal = (tenant) => {
+    if (!tenant?._id) return;
+    openDeleteConfirmation(tenant._id);
+  };
+
+  const openTenantDetails = (tenant) => {
+  if (!tenant) return;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(max-width: 768px)").matches
+    ) {
+      setMobileSelectedTenant(tenant);
+      setShowMobileTenantProfile(true);
+      return;
+    }
+    openDesktopTenantDetails(tenant);
+  };
+
+  const closeMobileTenantProfile = () => {
+    setShowMobileTenantProfile(false);
+    setMobileSelectedTenant(null);
+  };
+
+  const openMobileLeavedTenants = () => {
+    setShowMobileLeavedTenants(true);
+    setShowMobileVacantBeds(false);
+    setShowMobileTenantProfile(false);
+    setMobileSelectedTenant(null);
+  };
+
+  const closeMobileLeavedTenants = () => {
+    setShowMobileLeavedTenants(false);
+  };
+
+  const openMobileVacantBeds = () => {
+    setShowMobileVacantBeds(true);
+    setShowMobileLeavedTenants(false);
+    setShowMobileTenantProfile(false);
+    setMobileSelectedTenant(null);
+  };
+
+  const closeMobileVacantBeds = () => {
+    setShowMobileVacantBeds(false);
+  };
+
+  const getTenantPhotoMetaForMobile = (tenant) => {
+    const found = findTenantPhotoDoc(tenant);
+    return found?.doc
+      ? {
+          photoUrl: docHrefSafe(found.doc),
+          photoTransform: found.doc.transform,
+        }
+      : null;
+  };
+
+  const openPhotoEditor = (tenant) => {
+    const found = findTenantPhotoDoc(tenant);
+    if (!found?.doc) {
+      alert("No tenant photo found.");
+      return;
+    }
+
+    setPhotoEditTenant(tenant);
+    setPhotoEditDocIndex(found.index);
+    setPhotoEditTransform(normalizePhotoTransform(found.doc.transform));
+    setShowPhotoEditModal(true);
+  };
+
+  const savePhotoTransform = async () => {
+    if (!photoEditTenant || photoEditDocIndex == null) return;
+
+    const docs = Array.isArray(photoEditTenant.documents)
+      ? [...photoEditTenant.documents]
+      : [];
+
+    if (!docs[photoEditDocIndex]) {
+      alert("Photo document not found.");
+      return;
+    }
+
+    const normalized = normalizePhotoTransform(photoEditTransform);
+    docs[photoEditDocIndex] = {
+      ...docs[photoEditDocIndex],
+      transform: normalized,
+    };
+
+    try {
+      setSavingPhotoTransform(true);
+      await axios.put(`${apiUrl}forms/${photoEditTenant._id}`, {
+        documents: docs,
+      });
+
+      setFormData((prev) =>
+        prev.map((t) =>
+          t._id === photoEditTenant._id ? { ...t, documents: docs } : t
+        )
+      );
+
+      setShowPhotoEditModal(false);
+      setPhotoEditTenant(null);
+      setPhotoEditDocIndex(null);
+    } catch (err) {
+      console.error("Failed to save photo transform:", err);
+      alert("Failed to save photo changes.");
+    } finally {
+      setSavingPhotoTransform(false);
+    }
+  };
+// ✅ ADD THIS (near top inside component)
+const EMPTY_TENANT = {
+  srNo: "",
+  name: "",
+  phoneNo: "",
+  address: "",
+  pincode: "",
+  city: "",
+  state: "",
+  houseNo: "",
+  nearbyPlace: "",
+  joiningDate: "",
+  depositAmount: "",
+
+  roomId: "",
+  roomNo: "",
+  category: "",
+  floorNo: "",
+
+  bedNo: "",
+  bedPrice: "",
+  baseRent: "",
+  rentAmount: "",
+
+  __priceMode: "current",
+  __newBedPriceEdit: "",
+  __priceMsg: "",
+  __savingPrice: false,
+
+  newBedNo: "",
+  newBedPrice: "",
+  newBedCategory: "",
+  __bedMsg: "",
+  __savingBed: false,
+
+  relative1Relation: "Self",
+  relative1Name: "",
+  relative1Phone: "",
+  relative2Relation: "Self",
+  relative2Name: "",
+  relative2Phone: "",
+
+  dob: "",
+  dateOfJoiningCollege: "",
+  companyAddress: "",
+  relativeAddress: "",
+  firstRentStatus: "NOT_PAID",
+firstRentMonth: "",
+
+};
   const handleDownloadExcel = () => {
     const sheetData = formData.map((item) => ({
       SrNo: item.srNo,
@@ -2288,7 +2983,58 @@ setEditRentDate(new Date().toISOString().split("T")[0]);
   // };
 
   
+const sectionHeadingMap = {
+  rent: "Bed-wise Rent and Deposit Tracker",
+  light: "Light Bill",
+  expenses: "Other Expenses",
+  staff: "Staff Expenses",
+  holiday: "Holiday Management",
+  canteen: "Canteen Portal",
+  "canteen attendance": "Meal Attendance",
+};
 
+const currentSectionHeading =
+  sectionHeadingMap[activeTab] || "Bed-wise Rent and Deposit Tracker";
+useEffect(() => {
+  if (location.state?.tab) {
+    setActiveTab(location.state.tab);
+  }
+}, [location.state?.tab]);
+
+const openNewComponantSection = (tab) => {
+  navigate("/NewComponant", { state: { tab } });
+};
+
+const handleMobileSectionSelect = (key) => {
+  setShowMobileSections(false);
+
+  if (key === "dashboard") {
+    navigate("/maindashboard");
+    return;
+  }
+
+  if (key === "rent") {
+    openNewComponantSection("rent");
+    return;
+  }
+
+  if (key === "light") {
+    openNewComponantSection("light");
+    return;
+  }
+
+  if (key === "other-expense") {
+    openNewComponantSection("expenses");
+    return;
+  }
+
+  if (key === "staff") {
+    openNewComponantSection("staff");
+    return;
+  }
+
+ 
+};
   const handleLeave = (tenant) => {
     setCurrentLeaveId(tenant._id);
     setCurrentLeaveName(tenant.name);
@@ -2364,38 +3110,27 @@ setEditRentDate(new Date().toISOString().split("T")[0]);
 
   //   return months;
   // };
-// Shows ALL pending months from the month AFTER joining up to the current month (across years)
-// Uses getYMFromRecord so it works with { month: "Sep-25" } OR { date: "..." }
-const getAllPendingMonths = (rents = [], joiningDateStr) => {
-  if (!joiningDateStr) return [];
+// Shows ALL pending/due months based on the new rent cycle logic (advance/normal)
+const getAllPendingMonths = (tenant) => {
+  if (!tenant?.joiningDate) return [];
 
-  const join = new Date(joiningDateStr);
-  // start billing from the month AFTER joining
-  const start = new Date(join.getFullYear(), join.getMonth() + 1, 1);
-
-  const today = new Date();
-  const end = new Date(today.getFullYear(), today.getMonth(), 1); // current month start
-
-  // Build a set of paid month keys "m-y" (m is 0..11)
-  const paidSet = new Set(
-    (Array.isArray(rents) ? rents : [])
-      .filter(r => Number(r?.rentAmount) > 0)
-      .map(getYMFromRecord)
-      .filter(Boolean)
-      .map(({ m, y }) => `${m}-${y}`)
-  );
-
+  const months = getBillingMonthsUpToNow(tenant);
   const out = [];
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    const m = cursor.getMonth();
-    const y = cursor.getFullYear();
-    const key = `${m}-${y}`;
-    if (!paidSet.has(key)) {
-      out.push(cursor.toLocaleString("default", { month: "long", year: "numeric" }));
+
+  months.forEach(({ y, m }) => {
+    const c = getMonthCell(tenant, y, m);
+    const isRealDue =
+      c?.isPast && (c.label === "Due" || c.label === "Pending");
+    if (isRealDue) {
+      out.push(
+        new Date(y, m, 1).toLocaleString("default", {
+          month: "long",
+          year: "numeric",
+        })
+      );
     }
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
+  });
+
   return out;
 };
 
@@ -2463,8 +3198,8 @@ const getAllPendingMonths = (rents = [], joiningDateStr) => {
     alert("Failed to undo leave.");
   }
 };
-const handleDownloadForm = async (tenant) => {
-  try {
+  const handleDownloadForm = async (tenant) => {
+    try {
     const id = tenant?._id;
     if (!id) {
       alert("Tenant ID missing.");
@@ -2545,11 +3280,232 @@ const handleDownloadForm = async (tenant) => {
   }
 };
 
+  const closeEditTenantModal = () => {
+    setShowEditModal(false);
+    setEditSelfAadharFile(null);
+    setEditParentAadharFile(null);
+    setEditPhotoFile(null);
+    setEditDocMsg("");
+  };
+
+  const handleShareEditTenantLink = async () => {
+    try {
+      if (!editTenantData?._id) {
+        alert("Tenant ID missing.");
+        return;
+      }
+      if (creatingEditInvite) return;
+      setCreatingEditInvite(true);
+
+      const toNumLocal = (v) => {
+        if (v === "" || v == null) return undefined;
+        const n = Number(String(v).replace(/[,₹\s]/g, ""));
+        return Number.isFinite(n) ? n : undefined;
+      };
+
+      const joinDate =
+        editTenantData.joiningDate?.split("T")[0] ||
+        editTenantData.joiningDate ||
+        undefined;
+
+      const inferredCategory =
+        editTenantData.category ||
+        roomsData.find((r) => String(r.roomNo) === String(editTenantData.roomNo))
+          ?.category ||
+        undefined;
+
+      const payload = {
+        name: editTenantData.name || undefined,
+        phoneNo: editTenantData.phoneNo || undefined,
+        pincode: editTenantData.pincode || undefined,
+        city: editTenantData.city || undefined,
+        state: editTenantData.state || undefined,
+        houseNo: editTenantData.houseNo || undefined,
+        nearbyPlace: editTenantData.nearbyPlace || undefined,
+        roomNo: editTenantData.roomNo || undefined,
+        bedNo: editTenantData.bedNo || undefined,
+        joiningDate: joinDate,
+        baseRent: toNumLocal(editTenantData.baseRent),
+        rentAmount: toNumLocal(editTenantData.rentAmount ?? editTenantData.baseRent),
+        depositAmount: toNumLocal(editTenantData.depositAmount),
+        category: inferredCategory,
+        firstRentStatus: editTenantData.firstRentStatus || undefined,
+        firstRentMonth: editTenantData.firstRentMonth || undefined,
+      };
+
+      const res = await axios.post(
+        `${apiUrl}invites/for-form/${editTenantData._id}`,
+        payload,
+        { headers: { "X-Origin": window.location.origin } }
+      );
+
+      const url = res.data?.url;
+      if (!url) {
+        alert("Invite created but URL missing.");
+        setCreatingEditInvite(false);
+        return;
+      }
+
+      const shareData = {
+        title: "Tenant Form (One-Time)",
+        text: "Please fill this form:",
+        url,
+      };
+
+      if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(url);
+        alert("One-time link copied to clipboard.");
+      }
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        (typeof e?.response?.data === "string" ? e.response.data : "") ||
+        e.message;
+      console.error("EDIT INVITE ERROR =>", e?.response?.data || e);
+      alert(`Could not create invite link.\n\n${msg}`);
+    } finally {
+      setCreatingEditInvite(false);
+    }
+  };
+
 
 
 
   const handleTenantUpdate = async () => {
     try {
+      setEditDocMsg("");
+      const hasEditDocs =
+        !!editSelfAadharFile || !!editParentAadharFile || !!editPhotoFile;
+
+      if (hasEditDocs) {
+        const rentAmountNum = Number(
+          editTenantData.rentAmount ?? editTenantData.baseRent ?? 0
+        );
+        if (!Number.isFinite(rentAmountNum) || rentAmountNum <= 0) {
+          setEditDocMsg("Rent Amount is required (must be a valid number).");
+          return;
+        }
+        if (!editTenantData.joiningDate) {
+          setEditDocMsg("Joining Date is required.");
+          return;
+        }
+
+        const joinDate = new Date(editTenantData.joiningDate);
+        const firstRentStatus = String(
+          editTenantData.firstRentStatus || "NOT_PAID"
+        ).trim();
+        const firstRentMonth =
+          editTenantData.firstRentMonth ||
+          (firstRentStatus === "ADVANCE_PAID"
+            ? fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth())
+            : fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth() + 1));
+
+        const fd = new FormData();
+        fd.append("formId", editTenantData._id);
+        fd.append("rentAmount", String(rentAmountNum));
+        fd.append(
+          "depositAmount",
+          String(Number(editTenantData.depositAmount ?? 0))
+        );
+        fd.append("paymentMode", "Cash");
+        fd.append("month", firstRentMonth);
+        fd.append("firstRentStatus", firstRentStatus);
+        fd.append("firstRentMonth", firstRentMonth);
+
+        fd.append("name", editTenantData.name || "");
+        fd.append("phoneNo", editTenantData.phoneNo || "");
+        fd.append("address", editTenantData.address || "");
+        if (editTenantData.pincode) fd.append("pincode", editTenantData.pincode);
+        if (editTenantData.city) fd.append("city", editTenantData.city);
+        if (editTenantData.state) fd.append("state", editTenantData.state);
+        if (editTenantData.houseNo) fd.append("houseNo", editTenantData.houseNo);
+        if (editTenantData.nearbyPlace) fd.append("nearbyPlace", editTenantData.nearbyPlace);
+        fd.append(
+          "joiningDate",
+          editTenantData.joiningDate?.split("T")[0] ||
+            editTenantData.joiningDate ||
+            ""
+        );
+        fd.append("roomNo", editTenantData.roomNo || "");
+        fd.append("bedNo", editTenantData.bedNo || "");
+        fd.append("floorNo", editTenantData.floorNo || "");
+        fd.append(
+          "baseRent",
+          String(
+            Number(editTenantData.baseRent ?? rentAmountNum ?? 0) || rentAmountNum
+          )
+        );
+        fd.append("companyAddress", editTenantData.companyAddress || "");
+        fd.append(
+          "dateOfJoiningCollege",
+          editTenantData.dateOfJoiningCollege?.split("T")[0] ||
+            editTenantData.dateOfJoiningCollege ||
+            ""
+        );
+        fd.append(
+          "dob",
+          editTenantData.dob?.split("T")[0] || editTenantData.dob || ""
+        );
+        fd.append("category", editTenantData.category || "");
+
+        fd.append("relative1Relation", editTenantData.relative1Relation || "");
+        fd.append("relative1Name", editTenantData.relative1Name || "");
+        fd.append("relative1Phone", editTenantData.relative1Phone || "");
+        fd.append("relative2Relation", editTenantData.relative2Relation || "");
+        fd.append("relative2Name", editTenantData.relative2Name || "");
+        fd.append("relative2Phone", editTenantData.relative2Phone || "");
+
+        if (editSelfAadharFile && !isAllowedImageFile(editSelfAadharFile)) {
+          setEditDocMsg("Self Aadhaar Card must be JPG, JPEG, or PNG.");
+          return;
+        }
+        if (editParentAadharFile && !isAllowedImageFile(editParentAadharFile)) {
+          setEditDocMsg("Parent Aadhaar Card must be JPG, JPEG, or PNG.");
+          return;
+        }
+        if (editPhotoFile && !isAllowedImageFile(editPhotoFile)) {
+          setEditDocMsg("Tenant Photograph must be JPG, JPEG, or PNG.");
+          return;
+        }
+
+        if (editSelfAadharFile) {
+          const f = await compressForUpload(editSelfAadharFile);
+          fd.append("documents", f);
+          fd.append("relations", "Self Aadhaar Card");
+        }
+        if (editParentAadharFile) {
+          const f = await compressForUpload(editParentAadharFile);
+          fd.append("documents", f);
+          fd.append("relations", "Parent Aadhaar Card");
+        }
+        if (editPhotoFile) {
+          const f = await compressForUpload(editPhotoFile);
+          fd.append("documents", f);
+          fd.append("relations", "Tenant Photo");
+        }
+
+        const API_ROOT = String(apiUrl).replace(/\/+$/, "");
+        const FORMS_WITH_DOCS_URL = API_ROOT.endsWith("/api")
+          ? `${API_ROOT}/forms-with-docs`
+          : `${API_ROOT}/api/forms-with-docs`;
+
+        const res = await axios.post(FORMS_WITH_DOCS_URL, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        alert("Tenant updated successfully!");
+        const updated = res.data?.form || editTenantData;
+        setFormData((prev) =>
+          prev.map((t) => (t._id === editTenantData._id ? updated : t))
+        );
+
+        closeEditTenantModal();
+        return;
+      }
+
       const response = await axios.put(
         `${apiUrl}update/${editTenantData._id}`,
         editTenantData
@@ -2561,7 +3517,7 @@ const handleDownloadForm = async (tenant) => {
         prev.map((t) => (t._id === editTenantData._id ? response.data : t))
       );
 
-      setShowEditModal(false);
+      closeEditTenantModal();
     } catch (err) {
       console.error("Update failed:", err);
       alert("Failed to update tenant.");
@@ -2673,32 +3629,30 @@ const handleDownloadForm = async (tenant) => {
 const handleSave = async () => {
   if (!editingTenant) return;
 
-  // must have month/year
   if (!(editMonthYM?.y >= 1900) || !(editMonthYM?.m >= 0)) {
     alert("Please pick a rent month before saving.");
     return;
   }
 
-  // ✅ use selected date (fallback to today only if empty)
   const paymentISO =
     editRentDate && String(editRentDate).trim()
       ? editRentDate
       : new Date().toISOString().split("T")[0];
 
   try {
-    const monthKey = fmtMonthKey(editMonthYM.y, editMonthYM.m); // "Sep-25"
+    const monthKey = fmtMonthKey(editMonthYM.y, editMonthYM.m);
 
     const payload = {
       rentAmount: Number(editRentAmount) || 0,
-      date: paymentISO,               // ✅ store selected payment date
-      paymentDate: paymentISO,        // ✅ (optional but helps if you read paymentDate)
-      month: monthKey,                // "Sep-25"
+      date: paymentISO,
+      paymentDate: paymentISO,
+      month: monthKey,
       paymentMode: editPaymentMode || "Cash",
+      note: editNote || "", // ✅ NEW (optional)
     };
 
     await axios.put(`${apiUrl}form/${editingTenant._id}`, payload);
 
-    // local update
     setFormData((prev) =>
       prev.map((t) =>
         t._id === editingTenant._id
@@ -2708,14 +3662,16 @@ const handleSave = async () => {
                 y: editMonthYM.y,
                 m: editMonthYM.m,
                 amount: Number(editRentAmount) || 0,
-                date: paymentISO,      // ✅ use selected date here also
+                date: paymentISO,
                 mode: editPaymentMode || "Cash",
+                note: editNote || "", // ✅ NEW
               }),
             }
           : t
       )
     );
 
+    await refreshTenants();
     setEditingTenant(null);
   } catch (error) {
     console.error(error);
@@ -2723,79 +3679,61 @@ const handleSave = async () => {
   }
 };
 
+
   const navigate = useNavigate();
   const handleNavigation = (path) => {
     navigate(path);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem("authToken");
+    navigate("/");
+  };
+
  const [pendingRents, setPendingRents] = useState(0);
 
 useEffect(() => {
-  if (!formData || !formData.length) return;
-
-  // 🔥 Billing month = previous month of today
-  const today = new Date();
-  let billYear = today.getFullYear();
-  let billMonth = today.getMonth() - 1; // previous month
-
-  if (billMonth < 0) {
-    billMonth = 11;      // December
-    billYear -= 1;       // previous year
+  if (!formData || !formData.length) {
+    setPendingTenants([]);
+    setPendingRents(0);
+    return;
   }
 
-  const list = formData.filter((t) => {
-    if (!t) return false;
-    if (t.leaveDate) return false;          // already left
-    if (!t.bedNo) return false;             // no bed assigned
+  const fmt = (y, m) =>
+    new Date(y, m, 1).toLocaleString("en-IN", { month: "short", year: "numeric" });
 
-    const rents = t.rents || [];
-    const rentDue = Number(t.rentDue || 0);
+  const list = (formData || [])
+    .filter((t) => !t.leaveDate) // ignore left tenants
+    .map((t) => {
+      // ✅ your existing due calc (same as table logic)
+      const due = calculateDue(t.rents, t.joiningDate, t, roomsData);
+      if (!due || due <= 0) return null;
 
-    // RULE 1: any due amount => pending
-    if (rentDue > 0) return true;
+      // build "Not paid for ..." based on your month-cells
+      const dueMonths = getBillingMonthsUpToNow(t)
+        .filter(({ y, m }) => {
+          const c = getMonthCell(t, y, m);
+          const isRealDue = c?.isPast && (c.label === "Due" || c.label === "Pending");
+          return isRealDue && Number(c.outstanding || 0) > 0;
+        })
+        .map(({ y, m }) => fmt(y, m));
 
-    // RULE 2: check if this tenant has paid for BILLING MONTH
-    const paidForBillingMonth = rents.some((r) => {
-      if (!r) return false;
+      return {
+        tenant: t,
+        dueAmount: due,
+        reason:
+          dueMonths.length > 0
+            ? `Not paid for ${dueMonths.join(", ")}`
+            : "Rent pending",
+      };
+    })
+    .filter(Boolean)
+    .sort(compareRoomBed);
 
-      // Prefer the real stored date
-      if (r.date) {
-        const d = new Date(r.date);
-        if (!isNaN(d)) {
-          return (
-            d.getFullYear() === billYear &&
-            d.getMonth() === billMonth &&
-            Number(r.rentAmount) > 0
-          );
-        }
-      }
-
-      // Fallback: if you also store "Dec-25" etc in r.month
-      if (r.month) {
-        try {
-          const [mon, yy] = String(r.month).split("-");
-          const year =
-            yy && yy.length === 2 ? Number("20" + yy) : Number(yy);
-          const month = new Date(`${mon} 1, ${year}`).getMonth();
-          return (
-            year === billYear &&
-            month === billMonth &&
-            Number(r.rentAmount) > 0
-          );
-        } catch (e) {
-          return false;
-        }
-      }
-
-      return false;
-    });
-
-    // If NOT paid for billing month → pending
-    return !paidForBillingMonth;
-  });
-
+  setPendingTenants(list);
   setPendingRents(list.length);
-}, [formData]);
+}, [formData, roomsData]);
+
 
   if (loading) return <div className="text-center mt-5">Loading...</div>;
   if (error) return <div className="text-center text-danger mt-5">{error}</div>;
@@ -2811,16 +3749,6 @@ useEffect(() => {
 //     })
 //   : "";
 // Cancel a scheduled leave (keeps tenant active)
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2864,254 +3792,97 @@ const isTodayOrFuture = (iso) => {
   return (
     // <div className="container-fluid py-4" style={{ fontFamily: 'Inter, sans-serif' }}>
     <div
-      className="container-fluid px-4 py-3"
+      className="container-fluid  py-3"
       style={{ fontFamily: "Poppins, sans-serif" }}
     >
-      <div className="row">
-      <div className="col-md-10 col-10 col-sm-10 col-lg-10 col-xl-10">  <h3 className="fw-bold mb-4 ms-5">Rent & Deposite Tracker</h3></div>
-
-      <div className="col-md-2 col-2 col-sm-2 col-lg-2 col-xl-2">
-        {/* <NotificationBell apiUrl={apiUrl} onApproved={handleApprovedFromBell} /> */}
-        {/* <NotificationBell
-  apiUrl={apiUrl}
-  onApproved={handleApprovedFromBell}
-  onLeaveApproved={({ tenantId, leaveDateISO }) => {
-    setLeaveDates(prev => ({ ...prev, [tenantId]: (leaveDateISO || new Date().toISOString()).slice(0,10) }));
-    refreshTenants(); // you already have this
-  }}
-/>
-
-<LeaveNotificationBell apiUrl=" http://localhost:8000/api/" /> */}
-<NotificationBell
-  apiUrl={apiUrl}
-  onApproved={handleApprovedFromBell}
-  onLeaveApproved={({ tenantId, leaveDateISO }) => {
-    setLeaveDates(prev => ({
-      ...prev,
-      [tenantId]: (leaveDateISO || new Date().toISOString()).slice(0, 10)
-    }));
-    refreshTenants();
-  }}
-/>
-
-     </div>
-      </div>
+     
     
-       {/* Language selector (sticky and simple) */}
-      {/* <div className="d-flex align-items-center gap-2 mb-3">
-        <span className="text-muted me-2">Language:</span>
-        <div className="btn-group">
+      
+
+{/* ///////////////////// */}
+     
+{/* /////////////////// */}
+
+
+
+
+
+{showVacantModal && (
+  <div
+    className="modal d-block"
+    tabIndex="-1"
+    style={{
+      background: "rgba(0,0,0,0.5)",
+      position: "fixed",
+      inset: 0,
+      zIndex: 9999,
+    }}
+  >
+    <div className="modal-dialog modal-lg modal-dialog-centered">
+      <div className="modal-content">
+        <div className="modal-header">
+          <h5 className="modal-title">Vacant Beds</h5>
           <button
-            className={`btn btn-sm ${
-              lang === "en" ? "btn-primary" : "btn-outline-primary"
-            }`}
-            onClick={() => setLang("en")}
+            type="button"
+            className="modal-x-btn"
+            onClick={() => setShowVacantModal(false)}
+            aria-label="Close"
           >
-            English
-          </button>
-          <button
-            className={`btn btn-sm ${
-              lang === "hi" ? "btn-primary" : "btn-outline-primary"
-            }`}
-            onClick={() => setLang("hi")}
-          >
-            हिन्दी
-          </button>
-          <button
-            className={`btn btn-sm ${
-              lang === "mr" ? "btn-primary" : "btn-outline-primary"
-            }`}
-            onClick={() => setLang("mr")}
-          >
-            मराठी
+            ×
           </button>
         </div>
-      </div> */}
 
-
-      <div className="d-flex align-items-center mb-4 flex-wrap">
-        <select
-          className="form-select me-2"
-          style={{ width: "150px" }}
-          value={selectedYear}
-          onChange={(e) => setSelectedYear(e.target.value)}
-        >
-          {years.map((year) => (
-            <option key={year} value={year}>
-              {year}
-            </option>
-          ))}
-        </select>
-
-        <div
-          style={{ position: "relative", maxWidth: "300px" }}
-          className="me-2"
-        >
-          <FaSearch
-            style={{
-              position: "absolute",
-              left: "10px",
-              top: "50%",
-              transform: "translateY(-50%)",
-              color: "#aaa",
-              pointerEvents: "none",
-              zIndex: 1,
-              marginLeft: 2,
-            }}
-          />
-          <input
-            type="text"
-            placeholder="  Search by Name"
-            className="form-control ps-4 "
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-          />
+        <div className="modal-body">
+          {vacantBedsList.length === 0 ? (
+            <p>No vacant beds found.</p>
+          ) : (
+            <table className="table table-bordered">
+              <thead>
+                <tr>
+                  <th>Room No</th>
+                  <th>Bed No</th>
+                  <th>Floor No</th>
+                  <th>Category</th>
+                  <th>Action</th>
+                  <th>Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {vacantBedsList.map((b, i) => (
+                  <tr key={i}>
+                    <td>{b.roomNo}</td>
+                    <td>{b.bedNo}</td>
+                    <td>{b.floorNo}</td>
+                    <td>{b.category}</td>
+                    <td>
+                      <button
+                        className="btn btn-sm"
+                        style={{ backgroundColor: "#3db7b1", color: "white" }}
+                        onClick={() => {
+                          setShowVacantModal(false);
+                          openAddForSlot(b);
+                        }}
+                      >
+                        <FaPlus className="me-1" /> Add Tenant
+                      </button>
+                    </td>
+                    <td>₹{Number(b.price || 0).toLocaleString("en-IN")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
-       
-        <button
-          className="btn me-2"
-          style={{ backgroundColor: "#5f7dfc", color: "white" }}
-          onClick={() => navigate("/roommanager")}
-        >
-          <FaPlus className="me-1" /> Manage Rooms
-        </button>
-
-        <button
-          className="btn me-2"
-          style={{ backgroundColor: "#5f7dfc", color: "white" }}
-          onClick={openAddModal}
-        >
-          <FaPlus className="me-1" /> Add Tenant
-        </button>
-
-        {/* <button
-          className="btn me-2"
-          style={activeTab === "light" ? style.colorA : style.colorB}
-          onClick={() => {
-            setActiveTab("light");
-            navigate("/lightbillotherexpenses", { state: { tab: "light" } });
-          }}
-        >
-          <FaBolt className="me-1" />
-          Light Bill
-        </button> */}
-
-        {/* <button
-          className="btn me-2"
-          style={activeTab === "other" ? style.colorA : style.colorB}
-          onClick={() => {
-            setActiveTab("other");
-            navigate("/lightbillotherexpenses", { state: { tab: "other" } });
-          }}
-        >
-          <FaReceipt className="me-1" />
-          Other Expenses
-        </button> */}
-
-        <button
-          className="btn me-2"
-          style={style.successButton}
-          onClick={handleDownloadExcel}
-        >
-          <FaDownload className="me-1" />
-          Download Excel
-        </button>
-
-        {/* <button
-          className="btn me-2"
-          style={activeTab === "light" ? style.colorA : style.colorB}
-          onClick={() => setShowAddModal(true)}
-        >
-          <FaPlus className="me-1" />
-          Add {activeTab === "light" ? "Light Bill" : "Other Expense"}
-        </button> */}
-
-        <button
-          className="btn me-2"
-          style={{ backgroundColor: "#5f7dfc", color: "white" }}
-          onClick={() => handleNavigation("/maindashboard")}
-        >
-          <FaArrowLeft className="me-1" />
-          Back
-        </button>
-{/* <NotificationBell apiUrl={apiUrl} onApproved={handleApprovedFromBell} /> */}
-
-
-
-        {/* <button className="btn btn-outline-dark">
-    Logout
-  </button> */}
-
-      </div>
-<div className="row g-3 mb-4 summary-row">
-
-  {/* Total Beds */}
-  <div className="col-md-3 col-sm-6">
-    <div className="summary-card blue">
-      <div className="summary-left">
-        <div className="summary-icon">🛏️</div>
-        <div className="summary-text">
-          <div className="summary-title">Total Beds</div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={() => setShowVacantModal(false)}>
+            Close
+          </button>
         </div>
-      </div>
-      <div className="summary-number">
-        {roomsData.reduce((sum, room) => sum + (room.beds?.length || 0), 0)}
       </div>
     </div>
   </div>
-
-  {/* Occupied */}
-  <div className="col-md-3 col-sm-6">
-    <div className="summary-card green">
-      <div className="summary-left">
-        <div className="summary-icon">🛌</div>
-        <div className="summary-text">
-          <div className="summary-title">Occupied</div>
-        </div>
-      </div>
-      <div className="summary-number">
-        {formData.filter((d) => !d.leaveDate).length}
-      </div>
-    </div>
-  </div>
-
-  {/* Pending Rents */}
-  <div className="col-md-3 col-sm-6">
-    <div className="summary-card red">
-      <div className="summary-left">
-        <div className="summary-icon">⏳</div>
-        <div className="summary-text">
-          <div className="summary-title">Pending Rents</div>
-        </div>
-      </div>
-      <div className="summary-number">{pendingRents}</div>
-    </div>
-  </div>
-
-  {/* Deposits */}
-  <div className="col-md-3 col-sm-6">
-    <div className="summary-card purple">
-      <div className="summary-left">
-        <div className="summary-icon">💰</div>
-        <div className="summary-text">
-          <div className="summary-title">Deposits</div>
-        </div>
-      </div>
-      <div className="summary-number">
-        {formData.filter((d) => Number(d.depositAmount) > 0).length}
-      </div>
-    </div>
-  </div>
-
-</div>
-
-
-
-
-
-
-
+)}
 
 
 
@@ -3133,8 +3904,32 @@ const isTodayOrFuture = (iso) => {
           <div className="border rounded p-3"><strong>Deposits</strong><h4>{formData.filter(d => Number(d.depositAmount) > 0).length}</h4></div>
         </div>
       </div> */}
- <div className="card shadow-sm">
+ <div className="card ">
   <div className="card-body">
+
+    {/* ⭐ Staff & Other Expenses Button */}
+  {/* ----------------- NEW BUTTON ROW ----------------- */}
+      <MobileSectionSidebar
+        open={showMobileSections}
+        items={sectionItems}
+        title="Sections"
+        onSelect={handleMobileSectionSelect}
+        onClose={() => setShowMobileSections(false)}
+        onLogout={handleLogout}
+      />
+
+   <div className="mobile-section-trigger-wrap">
+  <button
+    type="button"
+    className="mobile-section-trigger"
+    onClick={() => setShowMobileSections(true)}
+  >
+    <FaBars />
+    {/* <span>Sections</span> */}
+  </button>
+
+  <h3 className="mobile-dynamic-heading">{currentSectionHeading}</h3>
+</div>
 
     {/* ⭐ Staff & Other Expenses Button */}
   {/* ----------------- NEW BUTTON ROW ----------------- */}
@@ -3179,13 +3974,21 @@ const isTodayOrFuture = (iso) => {
 
 
 <div className="expense-tabs-wrapper mb-4">
+  <button
+    type="button"
+    className="tab-pill tab-pill-back"
+    onClick={() => handleNavigation("/maindashboard")}
+    title="Back"
+  >
+    ← Back
+  </button>
 
   <button
-    className={`tab-pill ${activeTab === "rent" ? "active" : ""}`}
-    onClick={() => setActiveTab("rent")}
-  >
-    🚗 Rent
-  </button>
+  className={`tab-pill ${activeTab === "rent" ? "active" : ""}`}
+  onClick={() => setActiveTab("rent")}
+>
+  💰 Rent
+</button>
 
   <button
     className={`tab-pill ${activeTab === "light" ? "active" : ""}`}
@@ -3229,7 +4032,7 @@ const isTodayOrFuture = (iso) => {
     </div> */}
 
     {/* FULL LIGHT BILL UI INSIDE CARD */}
-    <div className="card shadow-sm p-3 mb-4 lightbill-card">
+    <div className="card  p-3 mb-4 lightbill-card">
       <LightBill embedded={true} />
     </div>
   </>
@@ -3251,7 +4054,7 @@ const isTodayOrFuture = (iso) => {
 </div> */}
 
 
-    <div className="card shadow-sm p-3 mb-4 lightbill-card">
+    <div className="card  p-3 mb-4 lightbill-card">
       <OtherExpense embedded={true} />
     </div>
   </>
@@ -3264,7 +4067,7 @@ const isTodayOrFuture = (iso) => {
       </button>
     </div> */}
 
-    <div className="card shadow-sm p-3 mb-4 lightbill-card">
+    <div className="card  p-3 mb-4 lightbill-card">
       <StaffExpenses
         embedded={true}
         // openAddModal={openStaffModal}
@@ -3301,19 +4104,143 @@ const isTodayOrFuture = (iso) => {
 
 
 
-     {activeTab === "rent" && (
+   {activeTab === "rent" && (
   <div className="table-responsive rent-table-wrapper">
 
-<div className="section-title mb-3">
-  <span className="section-icon">
+<div className="section-title mb-3 section-text1">
+  <span className="section-icon section-text1">
     <FaThLarge />
   </span>
-  <span className="section-text">
-    Bed-wise Rent and Deposit Tracker
+  <span className="section-text section-text1 ">
+    Bed-wise Rent and Deposit Tracker 
   </span>
 </div>
+<RentHeaderBar
+  title="Rent & Deposit Tracker"
+  notificationSlot={
+    <NotificationBell
+      apiUrl={apiUrl}
+      onApproved={handleApprovedFromBell}
+      onLeaveApproved={({ tenantId, leaveDateISO }) => {
+        setLeaveDates((prev) => ({
+          ...prev,
+          [tenantId]: (leaveDateISO || new Date().toISOString()).slice(0, 10),
+        }));
+        refreshTenants();
+      }}
+    />
+  }
+  selectedYear={selectedYear}
+  years={years}
+  searchText={searchText}
+  onYearChange={handleRentYearChange}
+  onSearchChange={handleRentSearchChange}
+  onManageRooms={() => navigate("/roommanager")}
+  onAddTenant={openAddModal}
+  onDownloadExcel={handleDownloadExcel}
+  onBack={() => handleNavigation("/maindashboard")}
+/>
 
-  <div className="d-flex align-items-center justify-content-center">
+{/* Rent-only summary cards */}
+<RentSummaryCards
+  totalBeds={roomsData.reduce((sum, room) => sum + (room.beds?.length || 0), 0)}
+  occupiedBeds={formData.filter((d) => !hasLeaveDatePassed(d?.leaveDate)).length}
+  vacantBeds={vacantCount}
+  pendingRents={pendingRents}
+  depositCount={formData.filter((d) => Number(d.depositAmount) > 0).length}
+  onVacantClick={() => setShowVacantModal(true)}
+  onPendingClick={() => setShowPendingModal(true)}
+/>
+
+  {showMobileVacantBeds ? (
+    <VacantBedScreen
+      beds={vacantBedsList}
+      onAddTenant={openAddForSlot}
+      onBack={closeMobileVacantBeds}
+    />
+  ) : showMobileLeavedTenants ? (
+    <LeavedTenantScreen
+      tenants={filteredDeletedData}
+      onOpenHistory={showRentHistory}
+      onUndo={handleUndoClick}
+      onDownload={handleDownloadForm}
+      onBack={closeMobileLeavedTenants}
+    />
+  ) : showMobileTenantProfile && mobileSelectedTenant ? (
+    <RentTenantProfileView
+      tenant={mobileSelectedTenant}
+      visibleMonths={visibleMonths}
+      getTenantPhotoMeta={getTenantPhotoMetaForMobile}
+      photoTransformStyle={photoTransformStyle}
+      roomColorStyleMap={roomColorStyleMap}
+      getMonthCell={getMonthCell}
+      getCycleRangeStr={getCycleRangeStr}
+      onPrevMonths={goLeft}
+      onNextMonths={goRight}
+      canPrevMonths={canLeft}
+      canNextMonths={canRight}
+      onBack={closeMobileTenantProfile}
+      onOpenDetails={openDesktopTenantDetails}
+      onOpenAdmissionForm={openAdmissionForm}
+      onEditPhoto={openPhotoEditor}
+      onOpenHistory={showRentHistory}
+      onEditCurrentMonth={openCurrentMonthEdit}
+      onEditTenant={openTenantEditModal}
+      onDeleteTenant={openTenantDeleteModal}
+      onEditMonth={(tenant, month) =>
+        month ? openEditForTenantMonth(tenant._id, month.m, month.y) : null
+      }
+      onShiftTenant={openShiftTenantModal}
+      onLeave={handleLeave}
+      // onHoliday={handleHoliday}
+      onOpenLeavedTenants={openMobileLeavedTenants}
+      onOpenVacantBeds={openMobileVacantBeds}
+      onManageRooms={() => navigate("/roommanager")}
+      onAddTenant={openAddModal}
+      onDownloadExcel={handleDownloadExcel}
+    />
+  ) : (
+    <>
+      <RentTenantListView
+        visibleTenants={visibleTenants}
+        visibleMonths={visibleMonths}
+        groupedRooms={groupedRooms}
+        roomsData={roomsData}
+        selectedYear={selectedYear}
+        years={years}
+        searchText={searchText}
+        onYearChange={handleRentYearChange}
+        onSearchChange={handleRentSearchChange}
+        getTenantPhotoMeta={getTenantPhotoMetaForMobile}
+        photoTransformStyle={photoTransformStyle}
+        roomColorStyleMap={roomColorStyleMap}
+        getMonthCell={getMonthCell}
+        getCycleRangeStr={getCycleRangeStr}
+        onPrevMonths={goLeft}
+        onNextMonths={goRight}
+        canPrevMonths={canLeft}
+        canNextMonths={canRight}
+        onOpenTenant={openTenantDetails}
+        onOpenHistory={showRentHistory}
+        onEditMonth={(tenant, month) =>
+          month ? openEditForTenantMonth(tenant._id, month.m, month.y) : null
+        }
+        onShiftTenant={openShiftTenantModal}
+        onOpenDueMonths={openDueMonthsModal}
+        onOpenAdmissionForm={openAdmissionForm}
+        onEditPhoto={openPhotoEditor}
+        onManageRooms={() => navigate("/roommanager")}
+        onAddTenant={openAddModal}
+        onDownloadExcel={handleDownloadExcel}
+        onOpenLeavedTenants={openMobileLeavedTenants}
+        onOpenVacantBeds={openMobileVacantBeds}
+        onAddTenantForSlot={openAddForSlot}
+        onMarkLeave={handleLeave}
+      />
+    </>
+  )}
+
+  <div className="rent-table-desktop d-flex align-items-center justify-content-center">
     <button
       type="button"
       className="btn btn-sm btn-outline-secondary me-2"
@@ -3345,7 +4272,7 @@ const isTodayOrFuture = (iso) => {
     </button>
   </div>
   <div className="rent-table-wrapper">
-            <table className="table table-bordered align-middle">
+            <table className="table table-bordered align-middle renttable">
 
           <thead>
   <tr className="fw-semibold text-secondary">
@@ -3359,7 +4286,7 @@ const isTodayOrFuture = (iso) => {
 
       onClick={() => handleSort("sr")}
     >
-      Sr {renderSortIcon("sr")}
+      Sr{renderSortIcon("sr")}
     </th>
 
     <th
@@ -3394,8 +4321,23 @@ const isTodayOrFuture = (iso) => {
 
 
               <tbody>
-                {/* Occupied rows */}
-                {visibleTenants.map((tenant, rowIdx) => {
+                {/* Occupied + Vacant rows (room-wise flow) */}
+                {combinedRows
+                  ? combinedRows.map((row, rowIdx) => {
+                      const rowNumber = rowIdx + 1;
+                      const currentRoomNo =
+                        row.type === "tenant" ? row.tenant?.roomNo : row.slot?.roomNo;
+                      const nextRow = combinedRows[rowIdx + 1];
+                      const nextRoomNo = nextRow
+                        ? nextRow.type === "tenant"
+                          ? nextRow.tenant?.roomNo
+                          : nextRow.slot?.roomNo
+                        : null;
+                      const isRoomEnd =
+                        String(nextRoomNo ?? "") !== String(currentRoomNo ?? "");
+                      const rowClassName = isRoomEnd ? "room-separator" : undefined;
+                      if (row.type === "tenant") {
+                        const tenant = row.tenant;
                  const dueAmount = calculateDue(
   tenant.rents,
   tenant.joiningDate,
@@ -3405,79 +4347,102 @@ const isTodayOrFuture = (iso) => {
 );
 
                   return (
-                    <tr key={tenant._id}>
+                    <tr key={tenant._id} className={rowClassName}>
                       {/* Sr */}
                    <td className="text-muted text-center">
-  {rowIdx + 1}
+  {rowNumber}
 </td>
 
 
                       {/* Name + meta */}
-                    <td>
+  {/* Name + meta */}
+              <td>
   <div className="tenant-cell">
-  {/* Shift Button (keep same) */}
-  <button
-    className="btn btn-sm shift-btn mb-1"
-    onClick={(e) => {
-      e.stopPropagation();
-      setShiftTenant(tenant);
-      setShiftTargetKey("");
-      setShowShiftModal(true);
-    }}
-  >
-    <FaExchangeAlt className="me-1" />
-    Shift Bed
-  </button>
+    {/* Shift Button */}
+    <button
+      className="btn btn-sm shift-btn mb-1"
+      onClick={(e) => {
+        e.stopPropagation();
+        setShiftTenant(tenant);
+        setShiftTargetKey("");
+        setShowShiftModal(true);
+      }}
+    >
+      <FaExchangeAlt className="me-1" />
+      Shift Bed
+    </button>
 
-  {/* CLICKABLE AREA */}
-  <div
-    className="tenant-open"
-    role="button"
-    tabIndex={0}
-    onClick={() => openAdmissionForm(tenant)}
-    onKeyDown={(e) => e.key === "Enter" && openAdmissionForm(tenant)}
-    title="Open Admission Form"
-  >
-    {/* Tenant Name */}
-    <div className="tenant-name">{tenant.name}</div>
+    {/* CLICKABLE AREA */}
+    <div
+      className="tenant-open"
+      role="button"
+      tabIndex={0}
+      onClick={() => openAdmissionForm(tenant)}
+      onKeyDown={(e) => e.key === "Enter" && openAdmissionForm(tenant)}
+      title="Open Admission Form"
+      style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}
+    >
+      {/* PHOTO (only tenant photo) */}
+      {renderTenantPhoto(tenant)}
 
-    {/* Deposit */}
-    <div className="tenant-meta">
-      Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
+      {/* TEXT INFO */}
+      <div>
+        <div className="tenant-name">{tenant.name}</div>
+<div className="tenant-meta"> Joining Date:
+          {tenant.joiningDate
+            ? new Date(tenant.joiningDate).toLocaleDateString("en-GB")
+            : "—"}
+        </div>
+        <div className="tenant-meta">
+          Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
+        </div>
+
+        <div className="tenant-meta">{tenant.phoneNo}</div>
+        {tenant.firstRentStatus === "ADVANCE_PAID" ? (
+          <div className="mt-1">
+            <span className="badge bg-info text-dark">Advance paid</span>
+          </div>
+        ) : null}
+        
+        <span className="room-pill">
+  {tenant.roomNo || "—"}
+  {((tenant.bedNo || tenant.bed?.bedNo) && ` - ${tenant.bedNo || tenant.bed?.bedNo}`) || ""}
+</span>
+
+      </div>
     </div>
-
-    {/* Phone */}
-    <div className="tenant-meta">{tenant.phoneNo}</div>
-
-    {/* Room badge */}
-    <span className="room-pill">{tenant.roomNo || "—"}</span>
   </div>
-</div>
-
 </td>
+
+
 
 
                       {/* Month cells */}
 {/* Month cells */}
-{visibleMonths.map((m, i) => {
+                 {visibleMonths.map((m, i) => {
   const c = getMonthCell(tenant, m.y, m.m);
   const extraNum = Number(c.extra || 0);
 
-  // hide months before joining month
-  const joinDate = new Date(tenant.joiningDate);
-  const joinYM = joinDate.getFullYear() * 12 + joinDate.getMonth();
-  const cellYM = m.y * 12 + m.m;
+  // ✅ show rent starting from NEXT month (first due month)
+ const firstBillYM = getFirstBillYM(tenant);
+const cellYM = m.y * 12 + m.m;
 
-  if (cellYM < joinYM) {
-    return (
-      <td
-        key={`${tenant._id}-${m.y}-${m.m}-${i}`}
-        className="text-center text-muted"
-      >
-        —
-      </td>
-    );
-  }
+if (cellYM < firstBillYM) {
+  return (
+    <td
+      key={`${tenant._id}-${m.y}-${m.m}-${i}`}
+      className="text-center text-muted"
+    >
+      —
+    </td>
+  );
+}
+
+
+
+  // ✅ cycle range like: 15 Jan - 15 Feb
+const cycleIndex = cellYM - firstBillYM;
+const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
 
   return (
     <td key={`${tenant._id}-${m.y}-${m.m}-${i}`} className="text-center">
@@ -3486,10 +4451,10 @@ const isTodayOrFuture = (iso) => {
         onClick={() => openEditForTenantMonth(tenant._id, m.m, m.y)}
         title="Click to edit this tenant's rent"
       >
-        {/* ✅ Status badge inline */}
+        {/* ✅ Status badge inline (Paid date inside badge) */}
         {c.label ? (
           <span
-            className="badge rounded-pill px-3 py-2"
+            className="badge rounded-pill px-3 py-2 d-inline-flex flex-column align-items-center"
             style={{
               fontSize: 12,
               fontWeight: 800,
@@ -3500,22 +4465,40 @@ const isTodayOrFuture = (iso) => {
                   ? "#dc3545"
                   : c.label === "Upcoming"
                   ? "#ffb703"
-                  : c.label === "Pend"
+                  : c.label === "Pending"
                   ? "#ffc107"
                   : "#e9ecef",
               color: c.label === "Paid" || c.label === "Due" ? "#fff" : "#111",
               boxShadow: "0 6px 14px rgba(0,0,0,0.12)",
+              lineHeight: 1.05,
             }}
           >
-            {c.label}
+            <span>{c.label}</span>
+
+            {/* ✅ Paid date INSIDE green badge */}
+          {/* ✅ Date INSIDE badge for Paid / Due / Upcoming */}
+{(c.label === "Paid" || c.label === "Due" || c.label === "Upcoming") &&
+  c.dateStr && (
+    <span
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        opacity: 0.95,
+        marginTop: 2,
+      }}
+    >
+      {c.dateStr}
+    </span>
+  )}
+
           </span>
         ) : (
           <span className="text-muted">—</span>
         )}
 
-        {/* Date */}
+        {/* ✅ Cycle range below badge (15 Jan - 15 Feb) */}
         <div className="small text-muted mt-1" style={{ lineHeight: 1 }}>
-          {c.dateStr}
+          {cycleRangeStr}
         </div>
 
         {/* 1) PAID */}
@@ -3526,7 +4509,7 @@ const isTodayOrFuture = (iso) => {
         )}
 
         {/* 2) PEND (partial / balance) */}
-        {c.label === "Pend" && (
+        {c.label === "Pending" && (
           <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
             ₹{Number(c.amountPaid || 0).toLocaleString("en-IN")}
             <span className="text-muted" style={{ fontWeight: 600 }}>
@@ -3536,7 +4519,7 @@ const isTodayOrFuture = (iso) => {
 
             {Number(c.outstanding || 0) > 0 && (
               <div
-                className={c.isPast ? "text-danger" : "text-warning"}
+                className={c.isPast ? "text-danger" : ""}
                 style={{
                   lineHeight: 1,
                   marginTop: 2,
@@ -3553,20 +4536,26 @@ const isTodayOrFuture = (iso) => {
         {/* 3) UPCOMING */}
         {c.label === "Upcoming" && (
           <div
-            className="small mt-1 fw-semibold text-warning"
+            className="small mt-1 fw-semibold "
             style={{ lineHeight: 1, fontWeight: 800 }}
           >
-            ₹{Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString("en-IN")}
+            ₹
+            {Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString(
+              "en-IN"
+            )}
           </div>
         )}
 
         {/* 4) DUE (past only) ✅ Always red */}
         {c.label === "Due" && (
           <div
-            className="small mt-1 fw-semibold text-danger"
+            className="small mt-1 fw-semibold "
             style={{ lineHeight: 1, fontWeight: 800 }}
           >
-            ₹{Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString("en-IN")}
+            ₹
+            {Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString(
+              "en-IN"
+            )}
           </div>
         )}
 
@@ -3581,6 +4570,16 @@ const isTodayOrFuture = (iso) => {
             {extraNum > 0
               ? `+₹${extraNum.toLocaleString("en-IN")}`
               : `-₹${Math.abs(extraNum).toLocaleString("en-IN")}`}
+
+            {/* 📝 NOTE */}
+            {c.note && (
+              <div
+                className="small text-muted mt-1"
+                style={{ lineHeight: 1.1, fontStyle: "italic" }}
+              >
+                📝 {c.note}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -3597,7 +4596,7 @@ const isTodayOrFuture = (iso) => {
     color: dueAmount > 0 ? "red" : "inherit",
   }}
   onClick={() => {
-    const dueList = getAllPendingMonths(tenant.rents, tenant.joiningDate);
+    const dueList = getAllPendingMonths(tenant);
     setDueMonths(dueList);
     setSelectedTenantName(tenant.name);
     setShowDueModal(true);
@@ -3642,7 +4641,7 @@ const isTodayOrFuture = (iso) => {
    
    onClick={() => {
   if (dueAmount === 0) return;
-  const dueList = getAllPendingMonths(tenant.rents, tenant.joiningDate);
+  const dueList = getAllPendingMonths(tenant);
   setDueMonths(dueList);
   setSelectedTenantName(tenant.name);
   setShowDueModal(true);
@@ -3659,6 +4658,10 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
     className="action-btn action-edit"
     onClick={() => {
       setEditTenantData(tenant);
+      setEditSelfAadharFile(null);
+      setEditParentAadharFile(null);
+      setEditPhotoFile(null);
+      setEditDocMsg("");
       setShowEditModal(true);
     }}
   >
@@ -3733,18 +4736,17 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       </td>
                     </tr>
                   );
-                })}
+                    }
 
-                {/* Vacant rows */}
-                {extraVacantSlots.map((slot, i) => {
-                  const rowNumber = visibleTenants.length + i + 1;
-                  const key = `${slot.roomNo}-${slot.bedNo}`;
-                  return (
-                    <tr key={`vacant-${key}`}>
+                      if (row.type === "vacant") {
+                        const slot = row.slot;
+                        const key = `${slot.roomNo}-${slot.bedNo}`;
+                        return (
+                          <tr key={`vacant-${key}`} className={rowClassName}>
                       <td className="text-muted">{rowNumber}</td>
                       <td>
                         <div>
-                          <div className="fw-semibold text-muted">Vacant</div>
+                          <div className="fw-semibold text-danger " >Empty</div>
                           <div className="text-muted small">
                             Room {slot.roomNo} • Bed {slot.bedNo}{" "}
                             {slot.category ? `• ${slot.category}` : ""}
@@ -3795,23 +4797,307 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                         <button
                           className="btn btn-sm"
                           style={{ backgroundColor: "#3db7b1", color: "white" }}
-                          onClick={() =>
-                            openAddForSlot(slot.roomNo, slot.bedNo)
-                          }
+                          onClick={() => openAddForSlot(slot)}
                         >
                           <FaPlus className="me-1" /> Add Tenant
                         </button>
                       </td>
                     </tr>
-                  );
-                })}
+                        );
+                      }
+                      return null;
+                    })
+                  : visibleTenants.map((tenant, rowIdx) => {
+                      const dueAmount = calculateDue(
+                        tenant.rents,
+                        tenant.joiningDate,
+                        tenant,
+                        roomsData
+                      );
+
+                      return (
+                        <tr key={tenant._id}>
+                          {/* Sr */}
+                          <td className="text-muted text-center">
+                            {rowIdx + 1}
+                          </td>
+
+                          {/* Name + meta */}
+                          <td>
+                            <div className="tenant-cell">
+                              {/* Shift Button */}
+                              <button
+                                className="btn btn-sm shift-btn mb-1"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShiftTenant(tenant);
+                                  setShiftTargetKey("");
+                                  setShowShiftModal(true);
+                                }}
+                              >
+                                <FaExchangeAlt className="me-1" />
+                                Shift Bed
+                              </button>
+
+                              {/* CLICKABLE AREA */}
+                              <div
+                                className="tenant-open"
+                                role="button"
+                                tabIndex={0}
+                                onClick={() => openAdmissionForm(tenant)}
+                                onKeyDown={(e) => e.key === "Enter" && openAdmissionForm(tenant)}
+                                title="Open Admission Form"
+                                style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}
+                              >
+                                  {/* PHOTO (only tenant photo) */}
+                                  {renderTenantPhoto(tenant)}
+
+                                {/* TEXT INFO */}
+                                <div>
+                                  <div className="tenant-name">{tenant.name}</div>
+
+                                  <div className="tenant-meta">
+                                    Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
+                                  </div>
+
+                                  <div className="tenant-meta">{tenant.phoneNo}</div>
+                                  {tenant.firstRentStatus === "ADVANCE_PAID" ? (
+                                    <div className="mt-1">
+                                      <span className="badge bg-info text-dark">Advance paid</span>
+                                    </div>
+                                  ) : null}
+
+                                  <span className="room-pill">
+                                    {tenant.roomNo || "—"}
+                                    {((tenant.bedNo || tenant.bed?.bedNo) && ` - ${tenant.bedNo || tenant.bed?.bedNo}`) || ""}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Month cells */}
+                          {visibleMonths.map((m, i) => {
+                            const c = getMonthCell(tenant, m.y, m.m);
+                            const extraNum = Number(c.extra || 0);
+
+                            const firstBillYM = getFirstBillYM(tenant);
+                            const cellYM = m.y * 12 + m.m;
+
+                            if (cellYM < firstBillYM) {
+                              return (
+                                <td
+                                  key={`${tenant._id}-${m.y}-${m.m}-${i}`}
+                                  className="text-center text-muted"
+                                >
+                                  —
+                                </td>
+                              );
+                            }
+
+                            const cycleIndex = cellYM - firstBillYM;
+                            const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
+
+                            return (
+                              <td key={`${tenant._id}-${m.y}-${m.m}-${i}`} className="text-center">
+                                <div
+                                  style={{ cursor: "pointer" }}
+                                  onClick={() => openEditForTenantMonth(tenant._id, m.m, m.y)}
+                                  title="Click to edit this tenant's rent"
+                                >
+                                  {c.label ? (
+                                    <span
+                                      className="badge rounded-pill px-3 py-2 d-inline-flex flex-column align-items-center"
+                                      style={{
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        backgroundColor:
+                                          c.label === "Paid"
+                                            ? "#198754"
+                                            : c.label === "Due"
+                                            ? "#dc3545"
+                                            : c.label === "Upcoming"
+                                            ? "#ffb703"
+                                            : c.label === "Pending"
+                                            ? "#ffc107"
+                                            : "#e9ecef",
+                                        color: c.label === "Paid" || c.label === "Due" ? "#fff" : "#111",
+                                        boxShadow: "0 6px 14px rgba(0,0,0,0.12)",
+                                        lineHeight: 1.05,
+                                      }}
+                                    >
+                                      <span>{c.label}</span>
+                                      {(c.label === "Paid" || c.label === "Due" || c.label === "Upcoming") &&
+                                        c.dateStr && (
+                                          <span
+                                            style={{
+                                              fontSize: 11,
+                                              fontWeight: 700,
+                                              opacity: 0.95,
+                                              marginTop: 2,
+                                            }}
+                                          >
+                                            {c.dateStr}
+                                          </span>
+                                        )}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted">—</span>
+                                  )}
+
+                                  <div className="small text-muted mt-1" style={{ lineHeight: 1 }}>
+                                    {cycleRangeStr}
+                                  </div>
+
+                                  {c.label === "Paid" && (
+                                    <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
+                                      ₹{Number(c.amountPaid || 0).toLocaleString("en-IN")}
+                                    </div>
+                                  )}
+
+                                  {c.label === "Pending" && (
+                                    <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
+                                      ₹{Number(c.amountPaid || 0).toLocaleString("en-IN")}
+                                      <span className="text-muted" style={{ fontWeight: 600 }}>
+                                        {" "}
+                                        / ₹{Number(c.expected || 0).toLocaleString("en-IN")}
+                                      </span>
+
+                                      {Number(c.outstanding || 0) > 0 && (
+                                        <div
+                                          className={c.isPast ? "text-danger" : ""}
+                                          style={{
+                                            lineHeight: 1,
+                                            marginTop: 2,
+                                            fontWeight: 700,
+                                          }}
+                                        >
+                                          {c.isPast ? "Due" : "Balance"}: ₹
+                                          {Number(c.outstanding || 0).toLocaleString("en-IN")}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  {c.label === "Upcoming" && (
+                                    <div
+                                      className="small mt-1 fw-semibold "
+                                      style={{ lineHeight: 1, fontWeight: 800 }}
+                                    >
+                                      ₹
+                                      {Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString("en-IN")}
+                                    </div>
+                                  )}
+
+                                  {c.label === "Due" && (
+                                    <div
+                                      className="small mt-1 fw-semibold "
+                                      style={{ lineHeight: 1, fontWeight: 800 }}
+                                    >
+                                      ₹
+                                      {Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString("en-IN")}
+                                    </div>
+                                  )}
+
+                                  {extraNum !== 0 && (
+                                    <div
+                                      className="small mt-1 fw-semibold"
+                                      style={{
+                                        color: extraNum > 0 ? "#d63384" : "#198754",
+                                      }}
+                                    >
+                                      {extraNum > 0
+                                        ? `+₹${extraNum.toLocaleString("en-IN")}`
+                                        : `-₹${Math.abs(extraNum).toLocaleString("en-IN")}`}
+
+                                      {c.note && (
+                                        <div
+                                          className="small text-muted mt-1"
+                                          style={{ lineHeight: 1.1, fontStyle: "italic" }}
+                                        >
+                                          📝 {c.note}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            );
+                          })}
+
+                          <td
+                            style={{
+                              cursor: "pointer",
+                              color: dueAmount > 0 ? "red" : "inherit",
+                            }}
+                            onClick={() => {
+                              const dueList = getAllPendingMonths(tenant);
+                              setDueMonths(dueList);
+                              setSelectedTenantName(tenant.name);
+                              setShowDueModal(true);
+                            }}
+                          >
+                            ₹{dueAmount.toLocaleString("en-IN")}
+                          </td>
+
+                          <td>
+                            <button
+                              className="action-btn action-edit"
+                              onClick={() => {
+                                setEditTenantData(tenant);
+                                setEditSelfAadharFile(null);
+                                setEditParentAadharFile(null);
+                                setEditPhotoFile(null);
+                                setEditDocMsg("");
+                                setShowEditModal(true);
+                              }}
+                            >
+                              <FaEdit />
+                            </button>
+
+                            <button
+                              className="action-btn action-leave"
+                              onClick={() => handleLeave(tenant)}
+                            >
+                              <FaSignOutAlt />
+                            </button>
+
+                            {leaveDates[tenant._id] && isTodayOrFuture(leaveDates[tenant._id]) && (
+                              <button
+                                className="btn btn-sm btn-warning me-2"
+                                onClick={() => handleCancelLeave(tenant._id)}
+                                title={`Cancel scheduled leave (${new Date(leaveDates[tenant._id]).toLocaleDateString("en-GB")})`}
+                              >
+                                <FaUndo />
+                              </button>
+                            )}
+
+                            {leaveDates[tenant._id] && (
+                              <div
+                                className="text-danger mt-1"
+                                style={{ fontSize: 12 }}
+                              >
+                                Leave on{" "}
+                                {new Date(
+                                  leaveDates[tenant._id]
+                                ).toLocaleDateString("en-GB", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                })}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
               </tbody>
             </table>
 </div>
             {/* Leaved Tenants Section (unchanged) */}
   {filteredDeletedData.length > 0 && (
-  <div className="mt-5">
-    <h5 style={{ fontWeight: "bold" }}>Leaved Tenants</h5>
+  <div className="mt-5 leaved-tenants-section">
+    <h5 style={{ fontWeight: "bold" }} className="leavedtenant" >Leaved Tenants</h5>
 
     <table className="table table-bordered">
       <thead>
@@ -3907,6 +5193,9 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 
         </div>
       </div>
+
+
+     
 {showFormModal && (
   <>
     {/* BACKDROP (BEHIND modal) */}
@@ -3933,11 +5222,15 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
             <h5 className="modal-title">
               Admission Form — {formTenant?.name || ""}
             </h5>
-            <button
-              type="button"
-              className="btn-close"
-              onClick={() => setShowFormModal(false)}
-            />
+   <button
+  type="button"
+  className="btn-close p-0"
+  onClick={() => setShowFormModal(false)}
+>
+  x
+</button>
+
+
           </div>
 
           <div className="modal-body">
@@ -3948,7 +5241,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
     </div>
   </>
 )}
-
+ {/* add tenant modal */}
      {showAddModal && (
   <div
     className="modal d-block"
@@ -3962,7 +5255,9 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
           <button
             type="button"
             className="btn-close p-0"
-            onClick={() => setShowAddModal(false)}
+            // onClick={() => setShowAddModal(false)}
+           onClick={closeAddTenantModal}
+
           >
             x
           </button>
@@ -3995,7 +5290,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                 />
               </div>
 
-              {/* Phone + Address */}
+              {/* Phone */}
               <div className="col-12 col-md-6">
                 <label className="form-label">
                   Phone No <span className="text-danger">*</span>
@@ -4037,8 +5332,52 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                 />
               </div>
 
-                <div className="col-12 col-md-6">
-                <label className="form-label">Address</label>
+              {/* Address Section */}
+              <div className="col-12 col-md-6">
+                <label className="form-label">Pincode</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={newTenant.pincode || ""}
+                  onChange={(e) =>
+                    setNewTenant({
+                      ...newTenant,
+                      pincode: e.target.value,
+                    })
+                  }
+                  placeholder="6-digit pincode"
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">City</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={newTenant.city || ""}
+                  onChange={(e) =>
+                    setNewTenant({
+                      ...newTenant,
+                      city: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">State</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={newTenant.state || ""}
+                  onChange={(e) =>
+                    setNewTenant({
+                      ...newTenant,
+                      state: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">Local Address</label>
                 <input
                   type="text"
                   className="form-control"
@@ -4049,11 +5388,56 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       address: e.target.value,
                     })
                   }
-                  placeholder="House, Street, City"
+                  placeholder="House, Street, Area"
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">House No</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={newTenant.houseNo || ""}
+                  onChange={(e) =>
+                    setNewTenant({
+                      ...newTenant,
+                      houseNo: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">Nearby Place</label>
+                <input
+                  type="text"
+                  className="form-control"
+                  value={newTenant.nearbyPlace || ""}
+                  onChange={(e) =>
+                    setNewTenant({
+                      ...newTenant,
+                      nearbyPlace: e.target.value,
+                    })
+                  }
                 />
               </div>
 
-
+    {/* Deposit + DOJ */}
+              <div className="col-12 col-md-6">
+                <label className="form-label">
+                  Deposit Amount <span className="text-danger">*</span>
+                </label>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={newTenant.depositAmount || ""}
+                  onChange={(e) =>
+                    setNewTenant({
+                      ...newTenant,
+                      depositAmount: e.target.value,
+                    })
+                  }
+                  min="0"
+                />
+              </div>
 
              {/* Room + Bed */}
 <div className="col-12 col-md-6">
@@ -4099,6 +5483,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
   </select>
 </div>
 
+{/* Bed No */}
 <div className="col-12 col-md-6">
   <label className="form-label">
     Bed No <span className="text-danger">*</span>
@@ -4111,12 +5496,19 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
     onChange={(e) => {
       const bedNo = e.target.value;
 
+      // OTHER (add new bed...)
       if (bedNo === "__other__") {
         setNewTenant((prev) => ({
           ...prev,
           bedNo: "__other__",
+          bedPrice: "",           // ✅ NEW
           baseRent: "",
           rentAmount: "",
+          __priceMode: "current", // ✅ NEW
+          __newBedPriceEdit: "",  // ✅ NEW
+          __priceMsg: "",         // ✅ NEW
+          __savingPrice: false,   // ✅ NEW
+
           newBedNo: prev.newBedNo || "",
           newBedPrice: prev.newBedPrice || "",
           newBedCategory: prev.newBedCategory || "",
@@ -4126,14 +5518,28 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
         return;
       }
 
-      const selectedRoom = roomsData.find((r) => String(r._id) === String(newTenant.roomId));
-      const selectedBed = selectedRoom?.beds?.find((b) => String(b.bedNo) === String(bedNo));
+      const selectedRoom = roomsData.find(
+        (r) => String(r._id) === String(newTenant.roomId)
+      );
+      const selectedBed = selectedRoom?.beds?.find(
+        (b) => String(b.bedNo) === String(bedNo)
+      );
+
+      const price = selectedBed?.price ?? "";
 
       setNewTenant((prev) => ({
         ...prev,
         bedNo,
-        baseRent: selectedBed?.price ?? "",
-        rentAmount: selectedBed?.price ?? "",
+
+        bedPrice: price,         // ✅ NEW (store separately)
+        baseRent: price,
+        rentAmount: price,       // tenant rent defaults to bed price
+
+        __priceMode: "current",  // ✅ NEW
+        __newBedPriceEdit: "",   // ✅ NEW
+        __priceMsg: "",          // ✅ NEW
+        __savingPrice: false,    // ✅ NEW
+
         newBedNo: "",
         newBedPrice: "",
         newBedCategory: "",
@@ -4148,21 +5554,194 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 
     {roomsData
       .find((r) => String(r._id) === String(newTenant.roomId))
-     ?.beds?.filter((bed) => {
-  const selectedRoom = roomsData.find((r) => String(r._id) === String(newTenant.roomId));
-  return !occupiedBeds.has(occKey(selectedRoom?.roomNo, bed.bedNo));
-})
-
-
+      ?.beds?.filter((bed) => {
+        const selectedRoom = roomsData.find(
+          (r) => String(r._id) === String(newTenant.roomId)
+        );
+        return !occupiedBeds.has(occKey(selectedRoom?.roomNo, bed.bedNo));
+      })
       .map((bed) => (
-        <option key={`bed-${newTenant.roomId}-${bed.bedNo}`} value={bed.bedNo}>
-          {bed.bedNo} - {bed.bedCategory || "—"} - ₹{bed.price ?? "—"}
+        <option
+          key={`bed-${newTenant.roomId}-${bed.bedNo}`}
+          value={bed.bedNo}
+        >
+          {/* ✅ NO PRICE HERE */}
+          {bed.bedNo} - {bed.bedCategory || "—"}
         </option>
       ))}
 
-    {!!newTenant.roomId && <option value="__other__">Other (add new bed…)</option>}
+    {!!newTenant.roomId && (
+      <option value="__other__">Other (add new bed…)</option>
+    )}
   </select>
 </div>
+
+{/* ✅ NEW: Bed Price field (separate + update option) */}
+<div className="col-12 col-md-12">
+  <label className="form-label">
+    Bed Price (Monthly Rent) <span className="text-danger">*</span>
+  </label>
+
+  {/* ✅ make select + input in same row */}
+  <div className="row g-2 align-items-start">
+    {/* LEFT: select */}
+    <div className="col-12 col-md-6">
+      <select
+        className="form-select"
+        value={newTenant.__priceMode || "current"}
+        disabled={
+          !newTenant.roomId ||
+          !newTenant.bedNo ||
+          newTenant.bedNo === "__other__"
+        }
+        onChange={(e) => {
+          const mode = e.target.value;
+          setNewTenant((prev) => ({
+            ...prev,
+            __priceMode: mode,
+            __priceMsg: "",
+            __newBedPriceEdit:
+              mode === "update"
+                ? String(prev.bedPrice ?? prev.rentAmount ?? "")
+                : "",
+          }));
+        }}
+      >
+        <option value="current">
+          ₹{Number(newTenant.bedPrice || 0).toLocaleString("en-IN")} (current)
+        </option>
+        <option value="update">Update bed price…</option>
+      </select>
+    </div>
+
+    {/* RIGHT: input */}
+    <div className="col-12 col-md-6">
+      {(newTenant.__priceMode || "current") === "current" ? (
+        <input
+          type="number"
+          className="form-control mt-0"
+          value={newTenant.bedPrice ?? ""}
+          readOnly 
+        />
+      ) : (
+        <input
+          type="number"
+          className="form-control mt-0"
+          value={newTenant.__newBedPriceEdit ?? ""}
+          onChange={(e) =>
+            setNewTenant((prev) => ({
+              ...prev,
+              __newBedPriceEdit: e.target.value,
+              __priceMsg: "",
+            }))
+          }
+          min="0"
+          placeholder="Enter new bed price"
+        />
+      )}
+    </div>
+
+    {/* Buttons + message BELOW (full width) only in update mode */}
+    {newTenant.__priceMode === "update" && (
+      <div className="col-12">
+        <div className="d-flex gap-2 mt-2 flex-wrap">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={
+              newTenant.__savingPrice ||
+              !newTenant.roomId ||
+              !newTenant.bedNo ||
+              newTenant.bedNo === "__other__" ||
+              Number(newTenant.__newBedPriceEdit) < 0 ||
+              Number.isNaN(Number(newTenant.__newBedPriceEdit))
+            }
+            onClick={async () => {
+              try {
+                const roomId = newTenant.roomId;
+                const bedNo = newTenant.bedNo;
+                const priceNum = Number(newTenant.__newBedPriceEdit);
+
+                setNewTenant((prev) => ({
+                  ...prev,
+                  __savingPrice: true,
+                  __priceMsg: "",
+                }));
+
+                await axios.patch(`${ROOMS_API}/${roomId}/bed/${bedNo}`, {
+                  price: priceNum,
+                });
+
+                setRoomsData((prev) =>
+                  prev.map((r) => {
+                    if (String(r._id) !== String(roomId)) return r;
+                    return {
+                      ...r,
+                      beds: (r.beds || []).map((b) =>
+                        String(b.bedNo) === String(bedNo)
+                          ? { ...b, price: priceNum }
+                          : b
+                      ),
+                    };
+                  })
+                );
+
+                setNewTenant((prev) => ({
+                  ...prev,
+                  bedPrice: priceNum,
+                  baseRent: priceNum,
+                  rentAmount: priceNum,
+                  __priceMode: "current",
+                  __savingPrice: false,
+                  __priceMsg: "✔ Bed price updated",
+                }));
+              } catch (err) {
+                console.error(err);
+                setNewTenant((prev) => ({
+                  ...prev,
+                  __savingPrice: false,
+                  __priceMsg:
+                    err.response?.data?.message || "Could not update bed price.",
+                }));
+              }
+            }}
+          >
+            {newTenant.__savingPrice ? "Saving…" : "Save Price"}
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={() =>
+              setNewTenant((prev) => ({
+                ...prev,
+                __priceMode: "current",
+                __newBedPriceEdit: "",
+                __priceMsg: "",
+                __savingPrice: false,
+              }))
+            }
+          >
+            Cancel
+          </button>
+        </div>
+
+        {newTenant.__priceMsg ? (
+          <small
+            className={`d-block mt-2 ${
+              newTenant.__priceMsg.startsWith("✔")
+                ? "text-success"
+                : "text-danger"
+            }`}
+          >
+            {newTenant.__priceMsg}
+          </small>
+        ) : null}
+      </div>
+    )}
+  </div>
+</div>
+
 
 {/* Inline "Other" Bed */}
 {newTenant.bedNo === "__other__" && (
@@ -4224,7 +5803,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
           />
           {newTenant.newBedPrice !== "" &&
             newTenant.newBedPrice != null &&
-            (Number(newTenant.newBedPrice) < 0 || Number.isNaN(Number(newTenant.newBedPrice))) && (
+            (Number(newTenant.newBedPrice) < 0 ||
+              Number.isNaN(Number(newTenant.newBedPrice))) && (
               <small className="text-danger">Enter a non-negative number</small>
             )}
         </div>
@@ -4232,7 +5812,13 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 
       {newTenant.__bedMsg ? (
         <div className="mt-2">
-          <small className={newTenant.__bedMsg.startsWith("✔") ? "text-success" : "text-danger"}>
+          <small
+            className={
+              newTenant.__bedMsg.startsWith("✔")
+                ? "text-success"
+                : "text-danger"
+            }
+          >
             {newTenant.__bedMsg}
           </small>
         </div>
@@ -4247,7 +5833,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
             !(newTenant.newBedNo || "").trim() ||
             (newTenant.newBedPrice !== "" &&
               newTenant.newBedPrice != null &&
-              (Number(newTenant.newBedPrice) < 0 || Number.isNaN(Number(newTenant.newBedPrice))))
+              (Number(newTenant.newBedPrice) < 0 ||
+                Number.isNaN(Number(newTenant.newBedPrice))))
           }
           onClick={async () => {
             const roomId = newTenant.roomId;
@@ -4258,14 +5845,17 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
             const priceProvided = priceStr !== "" && priceStr != null;
             const priceNum = priceProvided ? Number(priceStr) : null;
 
-            const roomIdx = roomsData.findIndex((r) => String(r._id) === String(roomId));
+            const roomIdx = roomsData.findIndex(
+              (r) => String(r._id) === String(roomId)
+            );
             if (roomIdx === -1) {
               setNewTenant((prev) => ({ ...prev, __bedMsg: "Room not found." }));
               return;
             }
 
             const exists = roomsData[roomIdx].beds?.some(
-              (b) => String(b.bedNo).trim().toLowerCase() === bedNoToAdd.toLowerCase()
+              (b) =>
+                String(b.bedNo).trim().toLowerCase() === bedNoToAdd.toLowerCase()
             );
             if (exists) {
               setNewTenant((prev) => ({
@@ -4276,21 +5866,27 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
             }
 
             try {
-              setNewTenant((prev) => ({ ...prev, __savingBed: true, __bedMsg: "" }));
+              setNewTenant((prev) => ({
+                ...prev,
+                __savingBed: true,
+                __bedMsg: "",
+              }));
 
               const payload = { bedNo: bedNoToAdd, bedCategory: bedCategoryToAdd };
               if (priceProvided) payload.price = priceNum;
 
-              // ✅ correct endpoint (RoomManager style)
               await axios.post(`${ROOMS_API}/${roomId}/bed`, payload);
 
-              // update local roomsData
               setRoomsData((prev) => {
                 const copy = [...prev];
                 const r = { ...copy[roomIdx] };
                 r.beds = [
                   ...(r.beds || []),
-                  { bedNo: bedNoToAdd, bedCategory: bedCategoryToAdd, ...(priceProvided ? { price: priceNum } : {}) },
+                  {
+                    bedNo: bedNoToAdd,
+                    bedCategory: bedCategoryToAdd,
+                    ...(priceProvided ? { price: priceNum } : {}),
+                  },
                 ];
                 copy[roomIdx] = r;
                 return copy;
@@ -4299,8 +5895,14 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
               setNewTenant((prev) => ({
                 ...prev,
                 bedNo: bedNoToAdd,
+                bedPrice: priceProvided ? priceNum : "", // ✅ NEW
                 baseRent: priceProvided ? priceNum : "",
                 rentAmount: priceProvided ? priceNum : "",
+                __priceMode: "current",                  // ✅ NEW
+                __newBedPriceEdit: "",                   // ✅ NEW
+                __priceMsg: "",                          // ✅ NEW
+                __savingPrice: false,                    // ✅ NEW
+
                 newBedNo: "",
                 newBedPrice: "",
                 newBedCategory: "",
@@ -4327,6 +5929,12 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
             setNewTenant((prev) => ({
               ...prev,
               bedNo: "",
+              bedPrice: "",          // ✅ NEW
+              __priceMode: "current",// ✅ NEW
+              __newBedPriceEdit: "", // ✅ NEW
+              __priceMsg: "",        // ✅ NEW
+              __savingPrice: false,  // ✅ NEW
+
               newBedNo: "",
               newBedPrice: "",
               newBedCategory: "",
@@ -4337,10 +5945,62 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
         >
           Cancel
         </button>
+
+
+        
       </div>
+
     </div>
   </div>
 )}
+<div className="col-12 col-md-6">
+  <label className="form-label fw-semibold">
+    Rent at Joining
+  </label>
+
+  <select
+    className="form-select"
+    value={firstRentStatusSelection}
+    onChange={(e) => {
+      const value = e.target.value;
+      setFirstRentStatusSelection(value);
+      setNewTenant((prev) => ({
+        ...prev,
+        firstRentStatus: value,
+        firstRentPaidDate:
+          value === "ADVANCE_PAID"
+            ? new Date().toISOString().slice(0, 10)
+            : "",
+      }));
+    }}
+  >
+    <option value="NOT_PAID">
+      Not Paid (Normal cycle)
+    </option>
+    <option value="ADVANCE_PAID">
+      Paid at Joining (Advance)
+    </option>
+  </select>
+
+  <small className="text-muted mt-1 d-block">
+    • Normal cycle → rent appears in next month<br />
+    • Paid at joining → rent recorded in joining month
+  </small>
+</div>
+ <div className="col-12 col-md-6">
+                <label className="form-label">
+                  Date of Birth <span className="text-muted">(optional)</span>
+                </label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={newTenant.dob || ""}
+                  onChange={(e) =>
+                    setNewTenant({ ...newTenant, dob: e.target.value })
+                  }
+                />
+              </div>
+
 
               {/* Base Rent + Rent Amount */}
               {/* <div className="col-12 col-md-6">
@@ -4372,24 +6032,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                 />
               </div> */}
 
-              {/* Deposit + DOJ */}
-              <div className="col-12 col-md-6">
-                <label className="form-label">
-                  Deposit Amount <span className="text-danger">*</span>
-                </label>
-                <input
-                  type="number"
-                  className="form-control"
-                  value={newTenant.depositAmount || ""}
-                  onChange={(e) =>
-                    setNewTenant({
-                      ...newTenant,
-                      depositAmount: e.target.value,
-                    })
-                  }
-                  min="0"
-                />
-              </div>
+          
 
               {/* Relatives */}
               <div className="col-12 col-md-6">
@@ -4515,19 +6158,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 
 
 
-              <div className="col-12 col-md-6">
-                <label className="form-label">
-                  Date of Birth <span className="text-muted">(optional)</span>
-                </label>
-                <input
-                  type="date"
-                  className="form-control"
-                  value={newTenant.dob || ""}
-                  onChange={(e) =>
-                    setNewTenant({ ...newTenant, dob: e.target.value })
-                  }
-                />
-              </div>
+             
 
               {/* Relative Address + Company */}
               <div className="col-12 col-md-6">
@@ -4601,12 +6232,15 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       <input
                         type="file"
                         className="form-control form-control-sm"
-                        accept="image/*,application/pdf"
+                        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                         onChange={(e) => {
                           const file = e.target.files?.[0] || null;
-                          setSelfAadharFile(file);
+                          handleStrictImageSelection(file, setSelfAadharFile, setDocMsg, "Self Aadhaar Card");
                         }}
                       />
+                      <small className="text-muted d-block mt-1">
+                        JPG, JPEG, or PNG only.
+                      </small>
                       {selfAadharFile && (
                         <small className="text-muted d-block mt-1">
                           Selected: {selfAadharFile.name}
@@ -4624,12 +6258,15 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       <input
                         type="file"
                         className="form-control form-control-sm"
-                        accept="image/*,application/pdf"
+                        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                         onChange={(e) => {
                           const file = e.target.files?.[0] || null;
-                          setParentAadharFile(file);
+                          handleStrictImageSelection(file, setParentAadharFile, setDocMsg, "Parent Aadhaar Card");
                         }}
                       />
+                      <small className="text-muted d-block mt-1">
+                        JPG, JPEG, or PNG only.
+                      </small>
                       {parentAadharFile && (
                         <small className="text-muted d-block mt-1">
                           Selected: {parentAadharFile.name}
@@ -4647,13 +6284,16 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       <input
                         type="file"
                         className="form-control form-control-sm"
-                        accept="image/*"
+                        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                         capture="user" // 📷 On mobile this opens camera
                         onChange={(e) => {
                           const file = e.target.files?.[0] || null;
-                          setPhotoFile(file);
+                          handleStrictImageSelection(file, setPhotoFile, setDocMsg, "Tenant Photograph");
                         }}
                       />
+                      <small className="text-muted d-block mt-1">
+                        JPG, JPEG, or PNG only.
+                      </small>
                       {photoFile && (
                         <small className="text-muted d-block mt-1">
                           Selected: {photoFile.name}
@@ -4688,90 +6328,115 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
           </button> 
           */}
 
-          <button
-            type="button"
-            className="btn btn-outline-dark"
-onClick={async () => {
-  try {
-    const INVITES_URL = `${String(apiUrl).replace(/\/+$/, "")}/invites`;
+         <button
+  type="button"
+  className="btn btn-outline-dark"
+  disabled={creatingInvite || submittingAdd}   // ✅ lock
+  onClick={async () => {
+    if (creatingInvite || submittingAdd) return; // ✅ guard
 
-    // values first
-    const category = String(newTenant.category || "").trim();
-    const roomNo = String(newTenant.roomNo || "").trim();
-    const bedNo = String(newTenant.bedNo || "").trim();
+    try {
+      setCreatingInvite(true);
 
-    const phone10 = String(newTenant.phoneNo || "")
-      .replace(/\D/g, "")
-      .slice(0, 10);
+      const INVITES_URL = `${String(apiUrl).replace(/\/+$/, "")}/invites`;
 
-    // ✅ define FIRST (no TDZ error)
-    const invitePayload = {
-      category,
-      roomNo,
-      bedNo,
-      name: String(newTenant.name || "").trim() || undefined,
-      phoneNo: phone10 || undefined,
-      joiningDate: newTenant.joiningDate || undefined,
-      rentAmount: toNum(newTenant.rentAmount ?? newTenant.baseRent),
-      depositAmount: toNum(newTenant.depositAmount),
-    };
+      const roomFromId = roomsData.find(
+        (r) => String(r._id) === String(newTenant.roomId)
+      );
+      const roomFromNo = roomsData.find(
+        (r) => String(r.roomNo) === String(newTenant.roomNo)
+      );
+      const pickedRoom = roomFromId || roomFromNo;
 
-    // ✅ validations AFTER invitePayload exists
-    if (!invitePayload.category) {
-      alert("Category missing. Select Room again (category auto-fills from room).");
-      return;
+      const category = String(
+        newTenant.category || pickedRoom?.category || ""
+      ).trim();
+      const roomNo = String(newTenant.roomNo || pickedRoom?.roomNo || "").trim();
+      const bedNo = String(newTenant.bedNo || "").trim();
+
+      const phone10 = String(newTenant.phoneNo || "")
+        .replace(/\D/g, "")
+        .slice(0, 10);
+
+      const joinDate = newTenant.joiningDate ? new Date(newTenant.joiningDate) : null;
+      const firstRentStatus =
+        firstRentStatusSelection || newTenant.firstRentStatus || "NOT_PAID";
+      const firstRentMonth =
+        joinDate
+          ? (firstRentStatus === "ADVANCE_PAID"
+              ? fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth())
+              : fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth() + 1))
+          : undefined;
+
+      const invitePayload = {
+        category,
+        roomNo,
+        bedNo,
+        name: String(newTenant.name || "").trim() || undefined,
+        phoneNo: phone10 || undefined,
+        pincode: String(newTenant.pincode || "").trim() || undefined,
+        city: String(newTenant.city || "").trim() || undefined,
+        state: String(newTenant.state || "").trim() || undefined,
+        houseNo: String(newTenant.houseNo || "").trim() || undefined,
+        nearbyPlace: String(newTenant.nearbyPlace || "").trim() || undefined,
+        joiningDate: newTenant.joiningDate || undefined,
+        rentAmount: toNum(newTenant.rentAmount ?? newTenant.baseRent),
+        depositAmount: toNum(newTenant.depositAmount),
+        firstRentStatus,
+        firstRentMonth,
+      };
+
+      // ✅ validations
+      if (!invitePayload.category) { alert("Category missing. Select Room again."); setCreatingInvite(false); return; }
+      if (!invitePayload.roomNo) { alert("Room No missing. Please select a Room."); setCreatingInvite(false); return; }
+      if (!invitePayload.bedNo || invitePayload.bedNo === "__other__") { alert("Select valid Bed."); setCreatingInvite(false); return; }
+      if (invitePayload.phoneNo && invitePayload.phoneNo.length !== 10) { alert("Phone number must be 10 digits."); setCreatingInvite(false); return; }
+
+      // ✅ IMPORTANT: idempotency key (prevents duplicates)
+      const idempotencyKey = `${invitePayload.roomNo}-${invitePayload.bedNo}-${invitePayload.phoneNo || "noPhone"}-${invitePayload.joiningDate || "noDate"}`;
+
+      const res = await axios.post(INVITES_URL, invitePayload, {
+        headers: {
+          "X-Origin": window.location.origin,
+          "X-Idempotency-Key": idempotencyKey, // ✅ backend should use this
+        },
+      });
+
+      const url = res.data?.url;
+      if (!url) {
+        alert("Invite created but URL missing.");
+        console.log("INVITE RESPONSE =>", res.data);
+        setCreatingInvite(false);
+        return;
+      }
+
+      const shareData = { title: "Tenant Form (One-Time)", text: "Please fill this form:", url };
+
+      if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(url);
+        alert("One-time link copied to clipboard.");
+      }
+
+      // ✅ close modal after successful share/copy
+      closeAddTenantModal();
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        (typeof e?.response?.data === "string" ? e.response.data : "") ||
+        e.message;
+
+      console.error("INVITE ERROR =>", e?.response?.data || e);
+      alert(`Could not create invite link.\n\n${msg}`);
+      setCreatingInvite(false); // ✅ unlock on error only
     }
-    if (!invitePayload.roomNo) {
-      alert("Room No missing. Please select a Room.");
-      return;
-    }
-    if (!invitePayload.bedNo || invitePayload.bedNo === "__other__") {
-      alert("Please select a valid Bed (not 'Other') before sharing link.");
-      return;
-    }
-    if (invitePayload.phoneNo && invitePayload.phoneNo.length !== 10) {
-      alert("Phone number must be 10 digits.");
-      return;
-    }
+  }}
+>
+  {creatingInvite ? "Creating…" : "Share Link"}
+</button>
 
-    console.log("INVITE PAYLOAD =>", invitePayload);
-
-    const res = await axios.post(INVITES_URL, invitePayload, {
-      headers: { "X-Origin": window.location.origin },
-    });
-
-    const url = res.data?.url;
-    if (!url) {
-      alert("Invite created but URL missing in response.");
-      console.log("INVITE RESPONSE =>", res.data);
-      return;
-    }
-
-    const shareData = { title: "Tenant Form (One-Time)", text: "Please fill this form:", url };
-
-    if (navigator.share && (!navigator.canShare || navigator.canShare(shareData))) {
-      await navigator.share(shareData);
-    } else {
-      await navigator.clipboard.writeText(url);
-      alert("One-time link copied to clipboard.");
-    }
-  } catch (e) {
-    const msg =
-      e?.response?.data?.message ||
-      e?.response?.data?.error ||
-      (typeof e?.response?.data === "string" ? e.response.data : "") ||
-      e.message;
-
-    console.error("INVITE ERROR =>", e?.response?.data || e);
-    alert(`Could not create invite link.\n\n${msg}`);
-  }
-}}
-
-
-
-          >
-            Share Link
-          </button>
 
           <div className="flex" />
 
@@ -4790,12 +6455,24 @@ onClick={async () => {
 
 <button
   className="btn"
-  onClick={handleAddTenantWithDocs}
-  disabled={invLoading || (invToken && !formId) || !!invError}
+  onClick={async () => {
+    if (submittingAdd || creatingInvite) return; // ✅ block
+    try {
+      setSubmittingAdd(true);
+      await handleAddTenantWithDocs();
+      // If save succeeded, keep locked OR close modal.
+      // If you close modal, lock reset happens anyway.
+    } catch (e) {
+      setSubmittingAdd(false); // ✅ unlock on error only
+      throw e;
+    }
+  }}
+  disabled={submittingAdd || creatingInvite || invLoading || (invToken && !formId) || !!invError}
   style={{ backgroundColor: "rgb(94, 182, 92)", color: "white" }}
 >
-  {invLoading ? "Loading…" : "Save"}
+  {submittingAdd ? "Saving…" : "Save"}
 </button>
+
 
 
 
@@ -5242,7 +6919,20 @@ onClick={async () => {
 
 {/* ===== ACTIONS SECTION ===== */}
 <div className="px-3 pb-3">
-  <hr />
+  
+        {/* ===== Header ===== */}
+        <div className="modal-header">
+
+
+          
+          <h5 className="modal-title">
+            Edit Tenant – {editTenantData.name}
+          </h5>
+          <button className="btn-close p-0" onClick={closeEditTenantModal}>
+            x
+          </button>
+        </div>
+
 
   <div className="d-flex flex-wrap gap-2 align-items-center">
     {/* Shift Room / Bed */}
@@ -5266,6 +6956,15 @@ onClick={async () => {
       }}
     >
       <FaEye /> View Details
+    </button>
+
+    {/* Share Link */}
+    <button
+      className="btn btn-outline-dark btn-sm"
+      disabled={creatingEditInvite}
+      onClick={handleShareEditTenantLink}
+    >
+      {creatingEditInvite ? "Creating…" : "Share Link"}
     </button>
 
     {/* Schedule Leave */}
@@ -5298,20 +6997,7 @@ onClick={async () => {
 </div>
 
 
-
-        {/* ===== Header ===== */}
-        <div className="modal-header">
-
-
-          
-          <h5 className="modal-title">
-            Edit Tenant – {editTenantData.name}
-          </h5>
-          <button className="btn-close p-0" onClick={() => setShowEditModal(false)}>
-            x
-          </button>
-        </div>
-
+<hr/>
         {/* ===== BODY ===== */}
         <div className="modal-body">
           <div className="container-fluid">
@@ -5343,12 +7029,62 @@ onClick={async () => {
 
               {/* ADDRESS */}
               <div className="col-12 col-md-6">
-                <label className="form-label">Address</label>
+                <label className="form-label">Pincode</label>
+                <input
+                  className="form-control"
+                  value={editTenantData.pincode || ""}
+                  onChange={(e) =>
+                    setEditTenantData({ ...editTenantData, pincode: e.target.value })
+                  }
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">City</label>
+                <input
+                  className="form-control"
+                  value={editTenantData.city || ""}
+                  onChange={(e) =>
+                    setEditTenantData({ ...editTenantData, city: e.target.value })
+                  }
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">State</label>
+                <input
+                  className="form-control"
+                  value={editTenantData.state || ""}
+                  onChange={(e) =>
+                    setEditTenantData({ ...editTenantData, state: e.target.value })
+                  }
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">Local Address</label>
                 <input
                   className="form-control"
                   value={editTenantData.address || ""}
                   onChange={(e) =>
                     setEditTenantData({ ...editTenantData, address: e.target.value })
+                  }
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">House No</label>
+                <input
+                  className="form-control"
+                  value={editTenantData.houseNo || ""}
+                  onChange={(e) =>
+                    setEditTenantData({ ...editTenantData, houseNo: e.target.value })
+                  }
+                />
+              </div>
+              <div className="col-12 col-md-6">
+                <label className="form-label">Nearby Place</label>
+                <input
+                  className="form-control"
+                  value={editTenantData.nearbyPlace || ""}
+                  onChange={(e) =>
+                    setEditTenantData({ ...editTenantData, nearbyPlace: e.target.value })
                   }
                 />
               </div>
@@ -5380,6 +7116,74 @@ onClick={async () => {
                   }
                 />
               </div>
+
+              {isEditRentAtJoiningVisible && (
+                <div className="col-12 col-md-6">
+                  <label className="form-label fw-semibold d-block">
+                    Rent at Joining
+                  </label>
+                  <div className="btn-group w-100" role="group" aria-label="Rent at Joining">
+                    <label className={`btn btn-outline-primary ${
+                      (editTenantData.firstRentStatus || "ADVANCE_PAID") ===
+                      "ADVANCE_PAID"
+                        ? "active"
+                        : ""
+                    }`}>
+                      <input
+                        type="radio"
+                        name="rentAtJoining"
+                        value="ADVANCE_PAID"
+                        checked={
+                          (editTenantData.firstRentStatus || "ADVANCE_PAID") ===
+                          "ADVANCE_PAID"
+                        }
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setEditTenantData((prev) => ({
+                            ...prev,
+                            firstRentStatus: value,
+                            firstRentPaidDate:
+                              value === "ADVANCE_PAID"
+                                ? new Date().toISOString().slice(0, 10)
+                                : "",
+                          }));
+                        }}
+                        className="btn-check"
+                      />
+                      Paid at Joining (Advance)
+                    </label>
+                    <label className={`btn btn-outline-primary ${
+                      (editTenantData.firstRentStatus || "ADVANCE_PAID") ===
+                      "NOT_PAID"
+                        ? "active"
+                        : ""
+                    }`}>
+                      <input
+                        type="radio"
+                        name="rentAtJoining"
+                        value="NOT_PAID"
+                        checked={
+                          (editTenantData.firstRentStatus || "ADVANCE_PAID") ===
+                          "NOT_PAID"
+                        }
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setEditTenantData((prev) => ({
+                            ...prev,
+                            firstRentStatus: value,
+                            firstRentPaidDate: "",
+                          }));
+                        }}
+                        className="btn-check"
+                      />
+                      Not Paid (Normal cycle)
+                    </label>
+                  </div>
+                  <small className="text-muted mt-1 d-block">
+                    • Visible only during the first month after joining.
+                  </small>
+                </div>
+              )}
 
               {/* DOB */}
               <div className="col-12 col-md-6">
@@ -5525,102 +7329,202 @@ onClick={async () => {
                 />
               </div>
 
-              {/* RELATIVE 1 */}
-              <div className="col-12 col-md-6">
-                <div className="p-3 border rounded">
-                  <h6>Relative 1</h6>
+              {/* RELATIVE 1 + RELATIVE 2 */}
+              <div className="col-12">
+                <div className="row g-3">
+                  <div className="col-12 col-md-6">
+                    <div className="p-3 border rounded h-100">
+                      <h6>Relative 1</h6>
 
-                  <label className="form-label">Relation</label>
-                  <select
-                    className="form-select mb-2"
-                    value={editTenantData.relative1Relation || "Self"}
-                    onChange={(e) =>
-                      setEditTenantData({
-                        ...editTenantData,
-                        relative1Relation: e.target.value,
-                      })
-                    }
-                  >
-                    {["Self", "Sister", "Brother", "Father", "Husband", "Mother"].map(
-                      (r) => (
-                        <option key={r}>{r}</option>
-                      )
-                    )}
-                  </select>
+                      <label className="form-label">Relation</label>
+                      <select
+                        className="form-select mb-2"
+                        value={editTenantData.relative1Relation || "Self"}
+                        onChange={(e) =>
+                          setEditTenantData({
+                            ...editTenantData,
+                            relative1Relation: e.target.value,
+                          })
+                        }
+                      >
+                        {["Self", "Sister", "Brother", "Father", "Husband", "Mother"].map(
+                          (r) => (
+                            <option key={r}>{r}</option>
+                          )
+                        )}
+                      </select>
 
-                  <label className="form-label">Name</label>
-                  <input
-                    className="form-control mb-2"
-                    value={editTenantData.relative1Name || ""}
-                    onChange={(e) =>
-                      setEditTenantData({
-                        ...editTenantData,
-                        relative1Name: e.target.value,
-                      })
-                    }
-                  />
+                      <label className="form-label">Name</label>
+                      <input
+                        className="form-control mb-2"
+                        value={editTenantData.relative1Name || ""}
+                        onChange={(e) =>
+                          setEditTenantData({
+                            ...editTenantData,
+                            relative1Name: e.target.value,
+                          })
+                        }
+                      />
 
-                  <label className="form-label">Phone</label>
-                  <input
-                    className="form-control"
-                    value={editTenantData.relative1Phone || ""}
-                    onChange={(e) =>
-                      setEditTenantData({
-                        ...editTenantData,
-                        relative1Phone: e.target.value,
-                      })
-                    }
-                  />
+                      <label className="form-label">Phone</label>
+                      <input
+                        className="form-control"
+                        value={editTenantData.relative1Phone || ""}
+                        onChange={(e) =>
+                          setEditTenantData({
+                            ...editTenantData,
+                            relative1Phone: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="col-12 col-md-6">
+                    <div className="p-3 border rounded h-100">
+                      <h6>Relative 2</h6>
+
+                      <label className="form-label">Relation</label>
+                      <select
+                        className="form-select mb-2"
+                        value={editTenantData.relative2Relation || "Self"}
+                        onChange={(e) =>
+                          setEditTenantData({
+                            ...editTenantData,
+                            relative2Relation: e.target.value,
+                          })
+                        }
+                      >
+                        {["Self", "Sister", "Brother", "Father", "Husband", "Mother"].map(
+                          (r) => (
+                            <option key={r}>{r}</option>
+                          )
+                        )}
+                      </select>
+
+                      <label className="form-label">Name</label>
+                      <input
+                        className="form-control mb-2"
+                        value={editTenantData.relative2Name || ""}
+                        onChange={(e) =>
+                          setEditTenantData({
+                            ...editTenantData,
+                            relative2Name: e.target.value,
+                          })
+                        }
+                      />
+
+                      <label className="form-label">Phone</label>
+                      <input
+                        className="form-control"
+                        value={editTenantData.relative2Phone || ""}
+                        onChange={(e) =>
+                          setEditTenantData({
+                            ...editTenantData,
+                            relative2Phone: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* RELATIVE 2 */}
-              <div className="col-12 col-md-6">
-                <div className="p-3 border rounded">
-                  <h6>Relative 2</h6>
+              {/* Upload Documents (Edit) */}
+              <div className="col-12 col-md-12">
+                <label className="form-label d-block mb-2">
+                  Upload Documents (Add More)
+                </label>
 
-                  <label className="form-label">Relation</label>
-                  <select
-                    className="form-select mb-2"
-                    value={editTenantData.relative2Relation || "Self"}
-                    onChange={(e) =>
-                      setEditTenantData({
-                        ...editTenantData,
-                        relative2Relation: e.target.value,
-                      })
-                    }
-                  >
-                    {["Self", "Sister", "Brother", "Father", "Husband", "Mother"].map(
-                      (r) => (
-                        <option key={r}>{r}</option>
-                      )
-                    )}
-                  </select>
+                <div className="row g-3">
+                  {/* Self Aadhaar */}
+                  <div className="col-12 col-md-4">
+                    <div className="border rounded p-3 h-100">
+                      <label className="form-label fw-semibold small">
+                        Self Aadhaar Card
+                      </label>
+                      <input
+                        type="file"
+                        className="form-control form-control-sm"
+                        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          handleStrictImageSelection(file, setEditSelfAadharFile, setEditDocMsg, "Self Aadhaar Card");
+                        }}
+                      />
+                      <small className="text-muted d-block mt-1">
+                        JPG, JPEG, or PNG only.
+                      </small>
+                      {editSelfAadharFile && (
+                        <small className="text-muted d-block mt-1">
+                          Selected: {editSelfAadharFile.name}
+                        </small>
+                      )}
+                    </div>
+                  </div>
 
-                  <label className="form-label">Name</label>
-                  <input
-                    className="form-control mb-2"
-                    value={editTenantData.relative2Name || ""}
-                    onChange={(e) =>
-                      setEditTenantData({
-                        ...editTenantData,
-                        relative2Name: e.target.value,
-                      })
-                    }
-                  />
+                  {/* Parent Aadhaar */}
+                  <div className="col-12 col-md-4">
+                    <div className="border rounded p-3 h-100">
+                      <label className="form-label fw-semibold small">
+                        Parent Aadhaar Card
+                      </label>
+                      <input
+                        type="file"
+                        className="form-control form-control-sm"
+                        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          handleStrictImageSelection(file, setEditParentAadharFile, setEditDocMsg, "Parent Aadhaar Card");
+                        }}
+                      />
+                      <small className="text-muted d-block mt-1">
+                        JPG, JPEG, or PNG only.
+                      </small>
+                      {editParentAadharFile && (
+                        <small className="text-muted d-block mt-1">
+                          Selected: {editParentAadharFile.name}
+                        </small>
+                      )}
+                    </div>
+                  </div>
 
-                  <label className="form-label">Phone</label>
-                  <input
-                    className="form-control"
-                    value={editTenantData.relative2Phone || ""}
-                    onChange={(e) =>
-                      setEditTenantData({
-                        ...editTenantData,
-                        relative2Phone: e.target.value,
-                      })
-                    }
-                  />
+                  {/* Tenant Photo */}
+                  <div className="col-12 col-md-4">
+                    <div className="border rounded p-3 h-100">
+                      <label className="form-label fw-semibold small">
+                        Tenant Photograph (Selfie)
+                      </label>
+                      <input
+                        type="file"
+                        className="form-control form-control-sm"
+                        accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                        capture="user"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] || null;
+                          handleStrictImageSelection(file, setEditPhotoFile, setEditDocMsg, "Tenant Photograph");
+                        }}
+                      />
+                      <small className="text-muted d-block mt-1">
+                        JPG, JPEG, or PNG only.
+                      </small>
+                      {editPhotoFile && (
+                        <small className="text-muted d-block mt-1">
+                          Selected: {editPhotoFile.name}
+                        </small>
+                      )}
+                      <small className="text-muted d-block mt-1">
+                        On mobile, this will open the camera.
+                      </small>
+                    </div>
+                  </div>
                 </div>
+
+                {editDocMsg && (
+                  <small className="d-block mt-2 text-danger">
+                    {editDocMsg}
+                  </small>
+                )}
               </div>
 
             </div>
@@ -5717,6 +7621,102 @@ onClick={async () => {
           </div>
         </div>
       )}
+
+
+
+
+{showPendingModal && (
+  <div
+    className="modal d-block"
+    tabIndex="-1"
+    style={{
+      background: "rgba(0,0,0,0.5)",
+      position: "fixed",
+      inset: 0,
+      zIndex: 9999,
+      overflowY: "auto",
+    }}
+  >
+    <div className="modal-dialog modal-lg modal-dialog-centered">
+      <div className="modal-content">
+        <div className="modal-header">
+          <h5 className="modal-title">Pending Rents ({pendingTenants.length})</h5>
+         <button
+  type="button"
+  className="modal-x-btn"
+  onClick={() => setShowPendingModal(false)}
+  aria-label="Close"
+>
+  ×
+</button>
+
+        </div>
+
+        <div className="modal-body">
+          {pendingTenants.length === 0 ? (
+            <div className="text-success">No pending rents 🎉</div>
+          ) : (
+            <div className="table-responsive ">
+              <table className="table table-bordered align-middle">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Room/Bed</th>
+                    <th>Month</th>
+                    <th>Due</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pendingTenants.map((p) => (
+                    <tr key={p.tenant?._id}>
+                      <td>{p.tenant?.name}</td>
+                      <td>
+                        {p.tenant?.roomNo} / {p.tenant?.bedNo}
+                      </td>
+                      <td>{p.reason}</td>
+                      <td className="fw-bold text-danger">
+                        {p.dueAmount != null
+                          ? `₹${Number(p.dueAmount).toLocaleString("en-IN")}`
+                          : "-"}
+                      </td>
+                      <td>
+                       <button
+  className="btn btn-sm btn-outline-primary"
+  onClick={() => {
+    setShowPendingModal(false);
+
+    // ✅ Open Edit Rent modal for that tenant & billing month
+    openEditForTenantMonth(p.tenant?._id, p.billMonth, p.billYear);
+  }}
+>
+  Edit Rent
+</button>
+
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {/* <div style={{ fontSize: 12, opacity: 0.7 }}>
+                Note: If Due shows “-”, it means rent is not paid for the billing month, but no explicit rentDue amount is stored.
+              </div> */}
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={() => setShowPendingModal(false)}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
+
 
       {showFModal && (
         <div
@@ -5842,7 +7842,19 @@ onClick={async () => {
                               month: "2-digit",
                               year: "numeric",
                             })
-                          : "—"}
+                          : "â€”"}
+                      </li>
+                      <li className="list-group-item">
+                        Joining Payment:{" "}
+                        <span
+                          className={`badge ${
+                            selectedTenant.firstRentStatus === "ADVANCE_PAID"
+                              ? "bg-success"
+                              : "bg-secondary"
+                          }`}
+                        >
+                          {getJoiningPaymentLabel(selectedTenant)}
+                        </span>
                       </li>
                       <li className="list-group-item">
                         Deposit: ₹
@@ -5885,85 +7897,64 @@ onClick={async () => {
 
                     {/* Documents Section */}
                     <h6>Uploaded Documents</h6>
-                    {selectedTenant.documents?.length > 0 ? (
-                      <ul className="list-group mb-3">
-                        {selectedTenant.documents.map((doc, i) => (
-                          <li
-                            key={i}
-                            className="list-group-item d-flex justify-content-between align-items-center"
-                          >
-                            <span>
-                              <strong>{doc.relation}</strong> — {doc.fileName}
-                            </span>
+                                    {selectedTenant.documents?.length > 0 ? (
+  <ul className="list-group mb-3">
+    {selectedTenant.documents.map((doc, i) => (
+      <li
+        key={i}
+        className="list-group-item d-flex justify-content-between align-items-center"
+      >
+        <span>
+          <strong>{doc.relation}</strong> — {doc.fileName}
+        </span>
 
-                            <div className="btn-group">
-                              {/* View Button */}
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-primary"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const url = getDocHref(doc);
-                                  if (!url || url === "#") {
-                                    alert(
-                                      "No file URL available for this document."
-                                    );
-                                    return;
-                                  }
-                                  window.open(
-                                    url,
-                                    "_blank",
-                                    "noopener,noreferrer"
-                                  );
-                                }}
-                              >
-                                View
-                              </button>
+        <div className="btn-group">
+          {/* View Button */}
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-primary"
+            onClick={(e) => {
+              e.stopPropagation();
+              const url = getDocHref(doc);
+              if (!url || url === "#") {
+                alert("No file URL available for this document.");
+                return;
+              }
+              window.open(url, "_blank", "noopener,noreferrer");
+            }}
+          >
+            View
+          </button>
 
-                              {/* Download Button */}
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-outline-success"
-                                onClick={async (e) => {
-                                  e.stopPropagation();
-                                  const url = getDocHref(doc);
-                                  if (!url || url === "#") {
-                                    alert(
-                                      "No file URL available for download."
-                                    );
-                                    return;
-                                  }
+          {/* ✅ Download Button (ImageKit-safe) */}
+          <button
+            type="button"
+            className="btn btn-sm btn-outline-success"
+            onClick={(e) => {
+              e.stopPropagation();
+              const url = getDocHref(doc);
+              if (!url || url === "#") {
+                alert("No file URL available for download.");
+                return;
+              }
 
-                                  try {
-                                    const response = await fetch(url, {
-                                      mode: "cors",
-                                    });
-                                    const blob = await response.blob();
-
-                                    const link = document.createElement("a");
-                                    link.href =
-                                      window.URL.createObjectURL(blob);
-                                    link.download =
-                                      doc.fileName || `document-${i + 1}`;
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    document.body.removeChild(link);
-                                    window.URL.revokeObjectURL(link.href);
-                                  } catch (err) {
-                                    console.error("Download failed", err);
-                                    alert("Download failed. Please try again.");
-                                  }
-                                }}
-                              >
-                                Download
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-muted">No documents uploaded</p>
-                    )}
+              // ✅ ImageKit download (works on localhost + live)
+              window.open(
+                `${url}${url.includes("?") ? "&" : "?"}ik-attachment=true`,
+                "_blank",
+                "noopener,noreferrer"
+              );
+            }}
+          >
+            Download
+          </button>
+        </div>
+      </li>
+    ))}
+  </ul>
+) : (
+  <p className="text-muted">No documents uploaded</p>
+)}
                   </div>
 
                   {/* Rent History Tab */}
@@ -5981,6 +7972,7 @@ onClick={async () => {
                           <tr>
                             <th>Month</th>
                             <th>Date</th>
+                            <th>Payment Type</th>
                             <th>Payment Mode</th>
                             <th>Amount</th>
                             <th>Status</th>
@@ -6018,6 +8010,22 @@ onClick={async () => {
             month: "long",
             year: "numeric",
           })}
+          {monthDate.getFullYear() * 12 + monthDate.getMonth() ===
+            getFirstBillYM(selectedTenant) && (
+            <div className="mt-1 d-md-none">
+              <span
+                className={`badge ${
+                  selectedTenant.firstRentStatus === "ADVANCE_PAID"
+                    ? "bg-info text-dark"
+                    : "bg-secondary"
+                }`}
+              >
+                {selectedTenant.firstRentStatus === "ADVANCE_PAID"
+                  ? "Advance paid"
+                  : "Not advance"}
+              </span>
+            </div>
+          )}
         </td>
 
         {/* Date */}
@@ -6025,6 +8033,30 @@ onClick={async () => {
           {rent
             ? new Date(rent.date || new Date(rent.y || 2000, rent.m || 0, 1))
                 .toLocaleDateString()
+            : "—"}
+          {monthDate.getFullYear() * 12 + monthDate.getMonth() ===
+            getFirstBillYM(selectedTenant) && (
+            <div className="mt-1">
+              <span
+                className={`badge ${
+                  selectedTenant.firstRentStatus === "ADVANCE_PAID"
+                    ? "bg-info text-dark"
+                    : "bg-secondary"
+                }`}
+              >
+                {selectedTenant.firstRentStatus === "ADVANCE_PAID"
+                  ? "Advance paid"
+                  : "Not advance"}
+              </span>
+            </div>
+          )}
+        </td>
+
+        {/* Payment Type */}
+        <td>
+          {monthDate.getFullYear() * 12 + monthDate.getMonth() ===
+          getFirstBillYM(selectedTenant)
+            ? getJoiningPaymentLabel(selectedTenant)
             : "—"}
         </td>
 
@@ -6103,6 +8135,17 @@ onClick={async () => {
                     onChange={(e) => setEditRentAmount(e.target.value)}
                   />
                 </div>
+                {/* <div className="mb-3">
+  <label className="form-label">Note (optional)</label>
+  <input
+    type="text"
+    className="form-control"
+    placeholder="Eg: Rent: 8000, Advance: 2000"
+    value={editNote}
+    onChange={(e) => setEditNote(e.target.value)}
+  />
+</div> */}
+
  <div className="mb-3">
                   <label className="form-label">Date</label>
                   <input
@@ -6339,6 +8382,122 @@ onClick={async () => {
           </div>
         </div>
       )}
+
+      {photoEditTenant && (
+        <div
+          className="modal d-block"
+          tabIndex="-1"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+        >
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  Edit Photo - {photoEditTenant.name}
+                </h5>
+                <button
+                  className="btn-close p-0"
+                  onClick={() => setPhotoEditTenant(null)}
+                >x</button>
+              </div>
+              <div className="modal-body">
+                {(() => {
+                  const latestTenant =
+                    formData.find((t) => t._id === photoEditTenant._id) ||
+                    photoEditTenant;
+                  const doc = getTenantPhotoDoc(latestTenant);
+                  const t = normalizePhotoTransform(doc);
+                  const rotate = clampRotate(t.rotate || 0);
+                  const scaleX = t.flipX ? -1 : 1;
+                  const scaleY = t.flipY ? -1 : 1;
+                  const photoUrl = getTenantPhotoUrl(latestTenant);
+                  return (
+                    <>
+                      <div className="photo-edit-preview">
+                        {photoUrl ? (
+                          <img
+                            src={photoUrl}
+                            alt="photo"
+                            crossOrigin="anonymous"
+                            className="photo-edit-img"
+                            style={{
+                              transform: `rotate(${rotate}deg) scale(${scaleX}, ${scaleY})`,
+                            }}
+                          />
+                        ) : (
+                          <div className="photo-edit-empty">No Photo</div>
+                        )}
+                      </div>
+                      <div className="photo-edit-actions">
+                        <button
+                          type="button"
+                          className="photo-action-btn"
+                          onClick={() =>
+                            updateTenantPhotoTransform(
+                              latestTenant,
+                              (cur) => ({ ...cur, rotate: (cur.rotate || 0) - 90 }),
+                              setFormData,
+                              setTenants,
+                              apiUrl
+                            )
+                          }
+                        >
+                          Rotate L
+                        </button>
+                        <button
+                          type="button"
+                          className="photo-action-btn"
+                          onClick={() =>
+                            updateTenantPhotoTransform(
+                              latestTenant,
+                              (cur) => ({ ...cur, rotate: (cur.rotate || 0) + 90 }),
+                              setFormData,
+                              setTenants,
+                              apiUrl
+                            )
+                          }
+                        >
+                          Rotate R
+                        </button>
+                        <button
+                          type="button"
+                          className="photo-action-btn"
+                          onClick={() =>
+                            updateTenantPhotoTransform(
+                              latestTenant,
+                              (cur) => ({ ...cur, flipX: !cur.flipX }),
+                              setFormData,
+                              setTenants,
+                              apiUrl
+                            )
+                          }
+                        >
+                          Flip H
+                        </button>
+                        <button
+                          type="button"
+                          className="photo-action-btn"
+                          onClick={() =>
+                            updateTenantPhotoTransform(
+                              latestTenant,
+                              () => ({ rotate: 0, flipX: false, flipY: false }),
+                              setFormData,
+                              setTenants,
+                              apiUrl
+                            )
+                          }
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
  {/* {showExpensesModal && (
   <div
     className="modal d-block"
@@ -6462,7 +8621,7 @@ onClick={async () => {
               expectFromTenant(tenant, roomsData),
             toNum: (v) => Number(String(v).replace(/[,₹\s]/g, "")) || 0,
           }}
-          onOpenEdit={openEditForTenantMonth} // <--- NEW
+         onOpenEditRent={openEditForTenantMonth}  // <--- NEW
         />
       </>
     </div>
