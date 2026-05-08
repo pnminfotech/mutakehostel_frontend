@@ -104,19 +104,19 @@ function LeavedTenantListView({
                   <span>History</span>
                 </button>
 
-                {undoAllowed ? (
-                  <button
-                    type="button"
-                    className="leaved-mobile-action undo"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onUndo?.(tenant._id);
-                    }}
-                  >
-                    <FaUndo />
-                    <span>Undo</span>
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  className="leaved-mobile-action undo"
+                  disabled={!undoAllowed}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (undoAllowed) onUndo?.(tenant._id);
+                  }}
+                  title={undoAllowed ? "Undo leave" : "Undo available for 30 days after leave date"}
+                >
+                  <FaUndo />
+                  <span>Undo</span>
+                </button>
 
                 <button
                   type="button"
@@ -126,8 +126,8 @@ function LeavedTenantListView({
                     onDownload?.(tenant);
                   }}
                 >
-              <FaDownload />
-                  {/* <span>Download</span> */}
+                  <FaDownload />
+                  <span>Download</span>
                 </button>
               </div>
 

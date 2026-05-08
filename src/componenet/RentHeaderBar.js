@@ -1,5 +1,5 @@
 import React from "react";
-import { FaPlus, FaDownload, FaArrowLeft, FaSearch } from "react-icons/fa";
+import { FaPlus, FaDownload, FaSearch, FaHistory } from "react-icons/fa";
 import "./RentTracker.css";
 
 function RentHeaderBar({
@@ -13,7 +13,8 @@ function RentHeaderBar({
   onManageRooms,
   onAddTenant,
   onDownloadExcel,
-  onBack,
+  onOpenHistory,
+  isHistoryView = false,
 }) {
   return (
     <div className="rent-header-card">
@@ -55,7 +56,7 @@ function RentHeaderBar({
           />
           <input
             type="text"
-            placeholder="  Search by Name"
+            placeholder="  Search room, bed, name, mobile..."
             className="form-control ps-4"
             value={searchText}
             onChange={onSearchChange}
@@ -88,13 +89,14 @@ function RentHeaderBar({
         </button>
 
         <button
-          className="btn me-2"
+          className="btn me-2 rent-toolbar-action"
           style={{ backgroundColor: "#5f7dfc", color: "white" }}
-          onClick={onBack}
+          onClick={onOpenHistory}
         >
-          <FaArrowLeft className="me-1" />
-          Back
+          <FaHistory className="me-1" />
+          {isHistoryView ? "Active Tenants" : "History"}
         </button>
+
       </div>
 
     </div>

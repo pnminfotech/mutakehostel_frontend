@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   FaBed,
   FaDownload,
@@ -85,6 +85,7 @@ function getDateText(cell) {
   const label = String(cell.label || "").toLowerCase();
   if (
     !label.startsWith("paid") &&
+    !label.startsWith("pend") &&
     !label.startsWith("due") &&
     !label.startsWith("upcoming")
   ) {
@@ -124,6 +125,7 @@ function RentMobileViewCardFeed({
 }) {
   const monthWindow = getMonthWindow(visibleMonths);
   const tenantList = flattenVisibleTenants(visibleTenants, groupedRooms);
+  const monthSwipeStartX = useRef(null);
   const [showFilterPanel, setShowFilterPanel] = useState(false);
   const [filterMode, setFilterMode] = useState(
     selectedYear !== "All Records" ? "year" : "name"
@@ -140,7 +142,7 @@ function RentMobileViewCardFeed({
     }
   }, [selectedYear, searchText]);
 
-  const filterModeLabel = filterMode === "year" ? "Year" : "Name";
+  const filterModeLabel = filterMode === "year" ? "Year" : "Search";
 
   const syncFilterMode = (nextMode) => {
     setFilterMode(nextMode);
@@ -157,6 +159,30 @@ function RentMobileViewCardFeed({
     onSearchChange?.("");
     onYearChange?.("All Records");
     setFilterMode("name");
+  };
+
+  const handleMonthTouchStart = (event) => {
+    monthSwipeStartX.current = event.touches?.[0]?.clientX ?? null;
+  };
+
+  const handleMonthTouchEnd = (event) => {
+    if (monthSwipeStartX.current == null) return;
+    const endX = event.changedTouches?.[0]?.clientX ?? monthSwipeStartX.current;
+    const deltaX = endX - monthSwipeStartX.current;
+    monthSwipeStartX.current = null;
+
+    if (Math.abs(deltaX) < 45) return;
+    event.stopPropagation();
+    if (deltaX < 0 && canNextMonths) onNextMonths?.(event);
+    if (deltaX > 0 && canPrevMonths) onPrevMonths?.(event);
+  };
+
+  const handleMonthWheel = (event) => {
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (Math.abs(delta) < 35) return;
+    event.stopPropagation();
+    if (delta > 0 && canNextMonths) onNextMonths?.(event);
+    if (delta < 0 && canPrevMonths) onPrevMonths?.(event);
   };
 
   return (
@@ -207,7 +233,7 @@ function RentMobileViewCardFeed({
                   className={`rent-mobile-mode-chip ${filterMode === "name" ? "active" : ""}`}
                   onClick={() => syncFilterMode("name")}
                 >
-                  Search by name
+                  Search
                 </button>
                 <button
                   type="button"
@@ -227,7 +253,7 @@ function RentMobileViewCardFeed({
                     className="rent-mobile-filter-input"
                     value={searchText}
                     onChange={(e) => onSearchChange?.(e.target.value)}
-                    placeholder="Type tenant name"
+                    placeholder="room 12, bed 3, name, mobile..."
                   />
                 </div>
               ) : (
@@ -281,7 +307,11 @@ function RentMobileViewCardFeed({
 
           {tenantList.length ? (
             <div className="rent-mobile-tenant-list">
-              {tenantList.map((tenant) => {
+              {tenantList.map((tenant, index) => {
+                const previousTenant = tenantList[index - 1];
+                const isNewRoom =
+                  index === 0 ||
+                  String(previousTenant?.roomNo ?? "") !== String(tenant?.roomNo ?? "");
                 const currentMonth = monthWindow[monthWindow.length - 1];
                 const currentCell = currentMonth
                   ? getMonthCell?.(tenant, currentMonth.y, currentMonth.m)
@@ -301,14 +331,19 @@ function RentMobileViewCardFeed({
                   };
 
                 return (
-                  <div
-                    key={tenant._id}
-                    className={`rent-mobile-tenant-card rent-mobile-tenant-card--${tone}`}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onOpenTenant?.(tenant)}
-                    onKeyDown={(e) => e.key === "Enter" && onOpenTenant?.(tenant)}
-                  >
+                  <React.Fragment key={tenant._id || `${tenant.roomNo}-${tenant.bedNo}-${index}`}>
+                    {isNewRoom ? (
+                      <div className="rent-mobile-room-separator">
+                        <span>Room {tenant.roomNo || "-"}</span>
+                      </div>
+                    ) : null}
+                    <div
+                      className={`rent-mobile-tenant-card rent-mobile-tenant-card--${tone}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onOpenTenant?.(tenant)}
+                      onKeyDown={(e) => e.key === "Enter" && onOpenTenant?.(tenant)}
+                    >
                     <div className="rent-mobile-tenant-head">
                       <div className="rent-mobile-tenant-avatar-wrap">
                         <div
@@ -395,7 +430,14 @@ function RentMobileViewCardFeed({
                     </div>
 
 
-                    <div className="rent-mobile-month-strip">
+                    <div className="rent-mobile-month-scroll-row">
+                    <div
+                      className={`rent-mobile-month-strip ${canPrevMonths ? "can-prev" : ""} ${canNextMonths ? "can-next" : ""}`}
+                      onTouchStart={handleMonthTouchStart}
+                      onTouchEnd={handleMonthTouchEnd}
+                      onWheel={handleMonthWheel}
+                      aria-label="Swipe horizontally to navigate months"
+                    >
                       {monthWindow.map((month) => {
                         const cell = month ? getMonthCell?.(tenant, month.y, month.m) : null;
                         const monthTone = getStatusTone(cell?.label || "Pending");
@@ -438,7 +480,9 @@ function RentMobileViewCardFeed({
                         );
                       })}
                     </div>
+                    </div>
                   </div>
+                </React.Fragment>
                 );
               })}
             </div>

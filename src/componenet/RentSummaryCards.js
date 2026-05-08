@@ -6,9 +6,10 @@ function RentSummaryCards({
   occupiedBeds,
   vacantBeds,
   pendingRents,
-  depositCount,
+  upcomingRents,
   onVacantClick,
   onPendingClick,
+  onUpcomingClick,
 }) {
   return (
     <div className="row g-3 mb-2 summary-row rent-summary-row">
@@ -73,14 +74,20 @@ function RentSummaryCards({
       </div>
 
       <div className="col-md-3 col-sm-6">
-        <div className="summary-card purple">
+        <div
+          className="summary-card purple"
+          role={onUpcomingClick ? "button" : undefined}
+          style={onUpcomingClick ? { cursor: "pointer" } : undefined}
+          onClick={onUpcomingClick}
+          title={onUpcomingClick ? "Click to view upcoming rents" : undefined}
+        >
           <div className="summary-left">
-            <div className="summary-icon">💰</div>
+            <div className="summary-icon">🗓️</div>
             <div className="summary-text">
-              <div className="summary-title">Deposits</div>
+              <div className="summary-title">Upcoming Rents</div>
             </div>
           </div>
-          <div className="summary-number">{depositCount}</div>
+          <div className="summary-number">{upcomingRents}</div>
         </div>
       </div>
     </div>

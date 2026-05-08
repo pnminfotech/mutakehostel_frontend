@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../api";
 import {
   FaArrowLeft,
   FaBed,
@@ -39,7 +40,7 @@ const getRoomColor = (room) => {
 
   return ROOM_COLORS[Math.abs(hash) % ROOM_COLORS.length];
 };
-const apiUrl = "   http://localhost:8000/api/rooms"; // change to your prod URL when needed
+const apiUrl = `${API_BASE}/rooms`;
 
 /* Editable default categories – used only for filter dropdown & optional limits */
 const DEFAULT_CATEGORIES = ["Category 1", "Category 2", "Category 3", "Other"];

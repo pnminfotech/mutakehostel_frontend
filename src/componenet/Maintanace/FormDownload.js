@@ -196,7 +196,7 @@
 // };
 
 // export default FormDownload;
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import "../Maintanace/FormDownload.css";
@@ -214,6 +214,8 @@ const FormDownload = ({ formData }) => {
 
   const [tenantDoc, setTenantDoc] = useState(null);
   const [photoDataUrl, setPhotoDataUrl] = useState("");
+  const [documentDataUrls, setDocumentDataUrls] = useState({});
+  const [showPhotoPreview, setShowPhotoPreview] = useState(false);
 
   // ---------------- Helpers ----------------
   const safe = (v) =>
@@ -267,6 +269,66 @@ const FormDownload = ({ formData }) => {
 
   // Prefer fetched doc if available
   const data = tenantDoc || formData;
+
+  const BASE_URL = "https://mutakegirlshostel-0ko7.onrender.com";
+
+  const allDocuments = useMemo(() => {
+    if (Array.isArray(data?.documents)) return data.documents;
+    if (Array.isArray(data?.docs)) return data.docs;
+    if (Array.isArray(data?.files)) return data.files;
+    return [];
+  }, [data?.documents, data?.docs, data?.files]);
+
+  const visibleDocuments = useMemo(
+    () =>
+      allDocuments.filter((doc) => {
+        const rel = String(
+          doc?.relation || doc?.docType || doc?.documentType || ""
+        )
+          .toLowerCase()
+          .trim();
+        return !["photo", "tenant photo", "profile photo"].includes(rel);
+      }),
+    [allDocuments]
+  );
+
+  const getDocUrl = useCallback((d) => {
+    const raw =
+      d?.url || d?.fileUrl || d?.path || d?.secure_url || d?.location || "";
+    if (!raw) return "";
+    if (String(raw).startsWith("http")) return raw;
+    return `${BASE_URL}/${String(raw).replace(/^\/+/, "")}`;
+  }, []);
+
+  const isImageDoc = useCallback((d) => {
+    const ct = String(d?.contentType || d?.type || d?.mime || "").toLowerCase();
+    const name = String(d?.fileName || d?.name || getDocUrl(d)).toLowerCase();
+    return ct.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(name);
+  }, [getDocUrl]);
+
+  const docLabel = (d, index) =>
+    d?.relation ||
+    d?.docType ||
+    d?.documentType ||
+    d?.fileName ||
+    d?.name ||
+    `Document ${index + 1}`;
+
+  const toDataUrl = useCallback(async (url) => {
+    try {
+      const res = await fetch(url, { mode: "cors" });
+      const blob = await res.blob();
+
+      const reader = new FileReader();
+      return await new Promise((resolve, reject) => {
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      return "";
+    }
+  }, []);
 
   // ---------------- Try to fetch full tenant doc (WITH and WITHOUT /api prefix) ----------------
   useEffect(() => {
@@ -467,72 +529,43 @@ const FormDownload = ({ formData }) => {
 
   // ---------------- PDF Download ----------------
   const handleDownload = async () => {
-    const formPage = document.getElementById("form-page");
-    const rulePage = document.getElementById("rule-page");
-
     const pdf = new jsPDF("p", "mm", "a4");
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = pdf.internal.pageSize.getHeight();
+    const pages = Array.from(document.querySelectorAll("[data-pdf-page='true']"));
 
-    const canvas1 = await html2canvas(formPage, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      backgroundColor: "#ffffff",
-    });
+    for (let i = 0; i < pages.length; i += 1) {
+      const canvas = await html2canvas(pages[i], {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: "#ffffff",
+      });
 
-    const imgData1 = canvas1.toDataURL("image/png");
-    const imgProps1 = pdf.getImageProperties(imgData1);
-    const imgWidth1 = pdfWidth;
-    const imgHeight1 = (imgProps1.height * imgWidth1) / imgProps1.width;
-    const yOffset1 = imgHeight1 < pdfHeight ? (pdfHeight - imgHeight1) / 2 : 0;
+      const imgData = canvas.toDataURL("image/png");
+      const imgProps = pdf.getImageProperties(imgData);
+      const imgWidth = pdfWidth;
+      const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
+      const yOffset = imgHeight < pdfHeight ? (pdfHeight - imgHeight) / 2 : 0;
 
-    pdf.addImage(
-      imgData1,
-      "PNG",
-      0,
-      yOffset1,
-      imgWidth1,
-      imgHeight1 > pdfHeight ? pdfHeight : imgHeight1
-    );
-
-    const canvas2 = await html2canvas(rulePage, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      backgroundColor: "#ffffff",
-    });
-
-    const imgData2 = canvas2.toDataURL("image/png");
-    const imgProps2 = pdf.getImageProperties(imgData2);
-    const imgWidth2 = pdfWidth;
-    const imgHeight2 = (imgProps2.height * imgWidth2) / imgProps2.width;
-    const yOffset2 = imgHeight2 < pdfHeight ? (pdfHeight - imgHeight2) / 2 : 0;
-
-    pdf.addPage();
-    pdf.addImage(
-      imgData2,
-      "PNG",
-      0,
-      yOffset2,
-      imgWidth2,
-      imgHeight2 > pdfHeight ? pdfHeight : imgHeight2
-    );
+      if (i > 0) pdf.addPage();
+      pdf.addImage(
+        imgData,
+        "PNG",
+        0,
+        yOffset,
+        imgWidth,
+        imgHeight > pdfHeight ? pdfHeight : imgHeight
+      );
+    }
 
     pdf.save(`Admission_Form_${data?.srNo || ""}.pdf`);
   };
 
   // ✅ STRICT PHOTO ONLY (NO OTHER DOC IMAGE)
   const photoUrl = useMemo(() => {
-    const docs = Array.isArray(data?.documents)
-      ? data.documents
-      : Array.isArray(data?.docs)
-      ? data.docs
-      : Array.isArray(data?.files)
-      ? data.files
-      : [];
+    const docs = allDocuments;
 
     const isImage = (d) => {
       const ct = String(d?.contentType || d?.type || d?.mime || "").toLowerCase();
@@ -540,7 +573,7 @@ const FormDownload = ({ formData }) => {
       return ct.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(name);
     };
 
-    const BASE_URL = "  http://localhost:8000"; // change to your backend URL
+    const BASE_URL = "https://mutakegirlshostel-0ko7.onrender.com"; // change to your backend URL
 
     const getUrl = (d) => {
       const raw =
@@ -567,7 +600,7 @@ const FormDownload = ({ formData }) => {
 
     // ❌ no fallback to anyImg (so other docs never show)
     return getUrl(preferred) || "";
-  }, [data?.documents, data?.docs, data?.files]);
+  }, [allDocuments]);
 
   useEffect(() => {
     let cancelled = false;
@@ -605,10 +638,31 @@ const FormDownload = ({ formData }) => {
     };
   }, [photoUrl]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      const next = {};
+      await Promise.all(
+        visibleDocuments.map(async (doc, index) => {
+          const url = getDocUrl(doc);
+          if (!url || !isImageDoc(doc)) return;
+          const durl = await toDataUrl(url);
+          if (durl) next[index] = durl;
+        })
+      );
+      if (!cancelled) setDocumentDataUrls(next);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleDocuments, getDocUrl, isImageDoc, toDataUrl]);
+
   // ---------------- UI ----------------
   return (
     <div>
-      <div id="form-page" className="form-container">
+      <div id="form-page" className="form-container" data-pdf-page="true">
         <header className="form-header">
           <img src={Img} alt="Logo" className="form-logo" />
           <div className="form-title">
@@ -621,7 +675,19 @@ const FormDownload = ({ formData }) => {
             </p>
           </div>
 
-          <div className="form-photo-box">
+          <div
+            className="form-photo-box"
+            role={photoDataUrl ? "button" : undefined}
+            tabIndex={photoDataUrl ? 0 : undefined}
+            title={photoDataUrl ? "View larger photo" : undefined}
+            onClick={() => photoDataUrl && setShowPhotoPreview(true)}
+            onKeyDown={(e) => {
+              if (photoDataUrl && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                setShowPhotoPreview(true);
+              }
+            }}
+          >
             {photoDataUrl ? (
               <img src={photoDataUrl} alt="Occupant" className="form-photo" />
             ) : (
@@ -715,13 +781,74 @@ const FormDownload = ({ formData }) => {
         <h6>Regards MUTKE HOSTEL</h6>
       </div>
 
-      <div id="rule-page" className="form-container">
+      <div id="rule-page" className="form-container" data-pdf-page="true">
         <img src={RuleImg} alt="rules" style={{ width: "100%" }} />
       </div>
 
+      <div id="tenant-documents-page" className="form-container" data-pdf-page="true">
+        <h5 className="form-documents-title">Uploaded Documents</h5>
+        {visibleDocuments.length > 0 ? (
+          <div className="form-documents-grid">
+            {visibleDocuments.map((doc, index) => {
+              const url = getDocUrl(doc);
+              const imgSrc = documentDataUrls[index] || (isImageDoc(doc) ? url : "");
+              return (
+                <div className="form-document-card" key={`${docLabel(doc, index)}-${index}`}>
+                  <div className="form-document-label">
+                    {index + 1}. {docLabel(doc, index)}
+                  </div>
+                  <div className="form-document-name">
+                    {doc.fileName || doc.name || doc.contentType || "Uploaded document"}
+                  </div>
+                  {imgSrc ? (
+                    <img
+                      src={imgSrc}
+                      alt={docLabel(doc, index)}
+                      className="form-document-image"
+                    />
+                  ) : url ? (
+                    <div className="form-document-link">
+                      <div>Document link:</div>
+                      <div>{url}</div>
+                    </div>
+                  ) : (
+                    <div className="form-document-empty">No document preview available</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="form-document-empty">No documents uploaded</div>
+        )}
+      </div>
       <button onClick={handleDownload} className="download-button">
         Download as PDF
       </button>
+      {showPhotoPreview && photoDataUrl && (
+        <div
+          className="form-photo-preview-backdrop"
+          onClick={() => setShowPhotoPreview(false)}
+        >
+          <div
+            className="form-photo-preview-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="form-photo-preview-close"
+              onClick={() => setShowPhotoPreview(false)}
+            >
+              x
+            </button>
+            <img
+              src={photoDataUrl}
+              alt="Tenant"
+              className="form-photo-preview-image"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

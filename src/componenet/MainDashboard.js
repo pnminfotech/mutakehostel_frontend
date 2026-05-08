@@ -618,16 +618,16 @@ const MainDashboard = () => {
   // ---------------------------------------------------------
   useEffect(() => {
     Promise.all([
-      fetch(" http://localhost:8000/api/").then((res) =>
+      fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/").then((res) =>
         res.json()
       ),
-      fetch(" http://localhost:8000/api/light-bill/all").then(
+      fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/light-bill/all").then(
         (res) => res.json()
       ),
-      fetch(" http://localhost:8000/api/other-expense/all").then(
+      fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/other-expense/all").then(
         (res) => res.json()
       ),
-      fetch(" http://localhost:8000/api/rooms").then((res) =>
+      fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/rooms").then((res) =>
         res.json()
       ),
     ]).then(([tenants, lightBills, otherExpenses, rooms]) => {

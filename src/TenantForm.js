@@ -1,14 +1,15 @@
 // TenantForm.js
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
+import { API_BASE } from "./api";
+
 const TenantForm = ({ mode }) => {
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(
-        '   http://localhost:8000/api/forms',
-        formData
-      );
+      await axios.post(`${API_BASE}/forms`, formData);
       alert('Form submitted successfully');
 
       if (mode === 'tenant') {

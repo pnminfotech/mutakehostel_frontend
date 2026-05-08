@@ -121,12 +121,107 @@
   overflow: hidden;
 }
 
+.form-photo-box[role="button"] {
+  cursor: zoom-in;
+}
+
 .form-photo {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
+.form-photo-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.form-photo-preview-dialog {
+  position: relative;
+  max-width: min(92vw, 720px);
+  max-height: 88vh;
+  padding: 14px;
+  background: #fff;
+  border-radius: 6px;
+}
+
+.form-photo-preview-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 4px;
+  background: #333;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.form-photo-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: 82vh;
+  object-fit: contain;
+}
+
+.form-documents-title {
+  margin: 0 0 12px;
+  text-align: center;
+  font-size: 16px;
+}
+
+.form-documents-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.form-document-card {
+  border: 1px solid #ffc0cb;
+  background: #fff;
+  padding: 10px;
+  min-height: 180px;
+  break-inside: avoid;
+}
+
+.form-document-label {
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.form-document-name {
+  color: #555;
+  font-size: 11px;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+
+.form-document-image {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  border: 1px solid #eee;
+  background: #fafafa;
+}
+
+.form-document-link,
+.form-document-empty {
+  border: 1px dashed #ccc;
+  color: #555;
+  font-size: 11px;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
 
 
 

@@ -7,7 +7,7 @@ const adminAuthHeader = () => {
   return token ? { Authorization: `Bearer ${token}` } : {};
 };
 
-export default function LeaveNotificationBell({ apiUrl = "   http://localhost:8000/api/" }) {
+export default function LeaveNotificationBell({ apiUrl = "   https://mutakegirlshostel-0ko7.onrender.com/api/" }) {
   const [items, setItems] = React.useState([]);
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);

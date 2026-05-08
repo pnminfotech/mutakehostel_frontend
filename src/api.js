@@ -2,7 +2,7 @@
 // import axios from "axios";
 
 // export const api = axios.create({
-//   baseURL: "   http://localhost:8000", // <-- your backend URL
+//   baseURL: "   https://mutakegirlshostel-0ko7.onrender.com", // <-- your backend URL
 // });
 
 
@@ -10,7 +10,13 @@
 // src/api.js
 import axios from "axios";
 
-export const API_BASE = process.env.REACT_APP_API_BASE || "   http://localhost:8000/api";
+export const API_BASE = (
+  process.env.REACT_APP_API_BASE ||
+  process.env.REACT_APP_API_URL ||
+  "https://mutakegirlshostel-0ko7.onrender.com/api"
+).trim().replace(/\/+$/, "");
+
+export const API_ORIGIN = API_BASE.replace(/\/api$/, "");
 
 export const api = axios.create({
   baseURL: API_BASE,

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import {
   FaArrowLeft,
   FaBell,
@@ -80,6 +80,7 @@ function getDateText(cell) {
   const label = String(cell.label || "").toLowerCase();
   if (
     !label.startsWith("paid") &&
+    !label.startsWith("pend") &&
     !label.startsWith("due") &&
     !label.startsWith("upcoming")
   ) {
@@ -118,6 +119,7 @@ function RentTenantProfileViewCard({
   onAddTenant,
   onDownloadExcel,
 }) {
+  const monthSwipeStartX = useRef(null);
   if (!tenant) return null;
 
   const photoMeta = getTenantPhotoMeta ? getTenantPhotoMeta(tenant) : null;
@@ -135,6 +137,28 @@ function RentTenantProfileViewCard({
     : null;
   const statusLabel = activeCell?.label || "Pending";
   const statusTone = getStatusTone(statusLabel);
+
+  const handleMonthTouchStart = (event) => {
+    monthSwipeStartX.current = event.touches?.[0]?.clientX ?? null;
+  };
+
+  const handleMonthTouchEnd = (event) => {
+    if (monthSwipeStartX.current == null) return;
+    const endX = event.changedTouches?.[0]?.clientX ?? monthSwipeStartX.current;
+    const deltaX = endX - monthSwipeStartX.current;
+    monthSwipeStartX.current = null;
+
+    if (Math.abs(deltaX) < 45) return;
+    if (deltaX < 0 && canNextMonths) onNextMonths?.(event);
+    if (deltaX > 0 && canPrevMonths) onPrevMonths?.(event);
+  };
+
+  const handleMonthWheel = (event) => {
+    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
+    if (Math.abs(delta) < 35) return;
+    if (delta > 0 && canNextMonths) onNextMonths?.(event);
+    if (delta < 0 && canPrevMonths) onPrevMonths?.(event);
+  };
 
   return (
     <div className="rent-mobile-profile-screen">
@@ -246,7 +270,13 @@ function RentTenantProfileViewCard({
             <span className={`rent-status-pill ${statusTone}`}>{statusLabel}</span>
           </div>
 
-          <div className="rent-mobile-profile-months rent-mobile-month-strip">
+          <div
+            className={`rent-mobile-profile-months rent-mobile-month-strip ${canPrevMonths ? "can-prev" : ""} ${canNextMonths ? "can-next" : ""}`}
+            onTouchStart={handleMonthTouchStart}
+            onTouchEnd={handleMonthTouchEnd}
+            onWheel={handleMonthWheel}
+            aria-label="Swipe horizontally to navigate months"
+          >
             {monthWindow.map((month) => {
               const cell = month ? getMonthCell?.(tenant, month.y, month.m) : null;
               const monthTone = getStatusTone(cell?.label || "Pending");

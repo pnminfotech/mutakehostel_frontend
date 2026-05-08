@@ -3,8 +3,9 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import "../form.css";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../api";
 
-const API = " http://localhost:8000/api";
+const API = API_BASE;
 const API_ROOT = String(API).replace(/\/+$/, "");
 
 function TenantIntake() {
@@ -47,12 +48,13 @@ function TenantIntake() {
   const [inviteToken, setInviteToken] = useState(null);
   const [inviteError, setInviteError] = useState("");
   const [formId, setFormId] = useState(null);
+  const [lockedFieldMap, setLockedFieldMap] = useState({});
 
   const [submitting, setSubmitting] = useState(false);
 
   const params = new URLSearchParams(window.location.search);
   const isTenant = params.get("tenant") === "true";
-  const isLocked = params.get("lock") === "1" || params.get("lock") === "true";
+  const isSharedLink = isTenant || Boolean(params.get("inv"));
 
   const navigate = useNavigate();
 
@@ -87,23 +89,93 @@ function TenantIntake() {
     return true;
   };
 
+  const mergeLockedFields = (source, previous = {}) => {
+    const next = { ...previous };
+
+    Object.entries(source || {}).forEach(([key, value]) => {
+      if (key === "srNo") return;
+      if (value === "" || value == null) return;
+      next[key] = true;
+    });
+
+    return next;
+  };
+
+  const mergeNonEmptyFields = (source, previous = {}) => {
+    const next = { ...previous };
+
+    Object.entries(source || {}).forEach(([key, value]) => {
+      if (value === "" || value == null) return;
+      next[key] = value;
+    });
+
+    return next;
+  };
+
+  const tenantEditableFields = new Set([
+    "relativeAddress",
+    "relative1Relation",
+    "relative1Name",
+    "relative1Phone",
+    "relative2Relation",
+    "relative2Name",
+    "relative2Phone",
+  ]);
+
+  const sharedAdminLockedFields = new Set([
+    "category",
+    "name",
+    "phoneNo",
+    "joiningDate",
+    "roomNo",
+    "bedNo",
+    "baseRent",
+    "rentAmount",
+    "depositAmount",
+  ]);
+
+  const isFieldLocked = (name) =>
+    !tenantEditableFields.has(name) &&
+    ((isSharedLink && sharedAdminLockedFields.has(name)) || Boolean(lockedFieldMap[name]));
+
   /* ===========================
      Prefill From Query Params
   ============================ */
   useEffect(() => {
-    setFormData((prev) => ({
-      ...prev,
+    const queryPrefill = {
       ...(params.has("category") ? { category: params.get("category") } : {}),
       ...(params.has("name") ? { name: params.get("name") } : {}),
       ...(params.has("phoneNo")
         ? { phoneNo: params.get("phoneNo").replace(/\D/g, "").slice(0, 10) }
         : {}),
+      ...(params.has("address") ? { address: params.get("address") } : {}),
+      ...(params.has("pincode") ? { pincode: params.get("pincode") } : {}),
+      ...(params.has("city") ? { city: params.get("city") } : {}),
+      ...(params.has("state") ? { state: params.get("state") } : {}),
+      ...(params.has("houseNo") ? { houseNo: params.get("houseNo") } : {}),
+      ...(params.has("nearbyPlace") ? { nearbyPlace: params.get("nearbyPlace") } : {}),
+      ...(params.has("relativeAddress") ? { relativeAddress: params.get("relativeAddress") } : {}),
+      ...(params.has("relative1Relation") ? { relative1Relation: params.get("relative1Relation") } : {}),
+      ...(params.has("relative1Name") ? { relative1Name: params.get("relative1Name") } : {}),
+      ...(params.has("relative1Phone") ? { relative1Phone: params.get("relative1Phone") } : {}),
+      ...(params.has("relative2Relation") ? { relative2Relation: params.get("relative2Relation") } : {}),
+      ...(params.has("relative2Name") ? { relative2Name: params.get("relative2Name") } : {}),
+      ...(params.has("relative2Phone") ? { relative2Phone: params.get("relative2Phone") } : {}),
+      ...(params.has("companyAddress") ? { companyAddress: params.get("companyAddress") } : {}),
+      ...(params.has("dateOfJoiningCollege")
+        ? { dateOfJoiningCollege: params.get("dateOfJoiningCollege") }
+        : {}),
+      ...(params.has("dob") ? { dob: params.get("dob") } : {}),
       ...(params.has("roomNo") ? { roomNo: params.get("roomNo") } : {}),
       ...(params.has("bedNo") ? { bedNo: params.get("bedNo") } : {}),
       ...(params.has("baseRent") ? { baseRent: params.get("baseRent") } : {}),
       ...(params.has("rentAmount") ? { rentAmount: params.get("rentAmount") } : {}),
       ...(params.has("depositAmount") ? { depositAmount: params.get("depositAmount") } : {}),
-    }));
+      ...(params.has("joiningDate") ? { joiningDate: params.get("joiningDate") } : {}),
+    };
+
+    setFormData((prev) => ({ ...prev, ...queryPrefill }));
+    setLockedFieldMap((prev) => mergeLockedFields(queryPrefill, prev));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -177,6 +249,7 @@ function TenantIntake() {
             ...prev,
             ...pre,
           }));
+          setLockedFieldMap((prev) => mergeLockedFields(pre, prev));
         }
 
         // If backend sends existing form data too (optional)
@@ -189,6 +262,23 @@ function TenantIntake() {
             ...prev,
             ...existing,
           }));
+        }
+
+        if (fid) {
+          try {
+            const formRes = await axios.get(`${API_ROOT}/form/${fid}`);
+            const draft = { ...(formRes.data || {}) };
+            delete draft._id;
+            delete draft.__v;
+            if ((draft.rentAmount === "" || draft.rentAmount == null) && draft.baseRent != null) {
+              draft.rentAmount = draft.baseRent;
+            }
+
+            setFormData((prev) => mergeNonEmptyFields(draft, prev));
+            setLockedFieldMap((prev) => mergeLockedFields(draft, prev));
+          } catch (formErr) {
+            console.warn("Could not fetch linked form data:", formErr);
+          }
         }
       } catch (err) {
         const code = err?.response?.status;
@@ -227,26 +317,10 @@ function TenantIntake() {
   /* ===========================
      Input Handlers
   ============================ */
-  const lockedFields = [
-    "category",
-    "name",
-    "phoneNo",
-    "roomNo",
-    "bedNo",
-    "baseRent",
-    "rentAmount",
-    "depositAmount",
-    "joiningDate",
-  ];
-
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    // ✅ tenants should never change these
-    if (isTenant && lockedFields.includes(name)) return;
-
-    // ✅ lock only if field already has value
-    if (isLocked && lockedFields.includes(name) && String(formData[name] || "").trim() !== "") {
+    if (isFieldLocked(name)) {
       return;
     }
 
@@ -260,7 +334,7 @@ function TenantIntake() {
   };
 
   const handleRentAmountChange = (e) => {
-    if (isTenant || isLocked) return;
+    if (isFieldLocked("rentAmount")) return;
     const v = e.target.value;
     if (v === "" || /^\d+(\.\d{0,2})?$/.test(v)) {
       setFormData((prev) => ({ ...prev, rentAmount: v }));
@@ -326,23 +400,6 @@ function TenantIntake() {
   }
 
   /* ===========================
-     ✅ UPDATE ONLY (NO CREATE)
-     Uses your existing route: PUT /api/update/:id (updateProfile)
-  ============================ */
-  async function submitUpdateOnly(payload) {
-    if (!formId) throw new Error("Missing formId. Invite must be linked to a draft form.");
-
-    // Safety: never allow these to be updated from tenant intake
-    delete payload.srNo;
-    delete payload.category;
-    delete payload.roomNo;
-    delete payload.bedNo;
-
-    // ✅ IMPORTANT: use your existing backend update route
-    return await axios.put(`${API}/update/${formId}`, payload);
-  }
-
-  /* ===========================
      SUBMIT FORM
   ============================ */
   const handleSubmit = async (e) => {
@@ -360,6 +417,35 @@ function TenantIntake() {
       if (!formId) {
         alert("formId missing. Admin invite must create & link a draft form.");
         return;
+      }
+
+      let resolvedRentAmount = String(formData.rentAmount ?? "").trim();
+      if (!resolvedRentAmount && String(formData.baseRent ?? "").trim()) {
+        resolvedRentAmount = String(formData.baseRent).trim();
+      }
+
+      if (!resolvedRentAmount) {
+        try {
+          const formRes = await axios.get(`${API_ROOT}/form/${formId}`);
+          const linkedForm = formRes.data || {};
+          resolvedRentAmount =
+            String(linkedForm.rentAmount ?? "").trim() ||
+            String(linkedForm.baseRent ?? "").trim();
+
+          if (resolvedRentAmount) {
+            setFormData((prev) => ({
+              ...prev,
+              rentAmount: resolvedRentAmount,
+              ...(String(prev.baseRent ?? "").trim()
+                ? {}
+                : linkedForm.baseRent != null
+                ? { baseRent: String(linkedForm.baseRent) }
+                : {}),
+            }));
+          }
+        } catch (err) {
+          console.warn("Could not re-fetch linked form before submit:", err);
+        }
       }
 
       const requiredFields = [
@@ -380,7 +466,6 @@ function TenantIntake() {
         ["dateOfJoiningCollege", "Date of Joining College/Office"],
         ["roomNo", "Room No"],
         ["bedNo", "Bed No"],
-        ["rentAmount", "Rent Amount"],
         ["depositAmount", "Deposit Amount"],
       ];
 
@@ -390,13 +475,17 @@ function TenantIntake() {
         }
       }
 
-      if (formData.phoneNo && !/^\d{10}$/.test(formData.phoneNo))
+      if (!String(resolvedRentAmount || "").trim()) {
+        return alert("Rent Amount is required");
+      }
+
+      if (!isFieldLocked("phoneNo") && formData.phoneNo && !/^\d{10}$/.test(formData.phoneNo))
         return alert("Enter valid 10-digit phone number.");
 
-      if (formData.relative1Phone && !/^\d{10}$/.test(formData.relative1Phone))
+      if (!isFieldLocked("relative1Phone") && formData.relative1Phone && !/^\d{10}$/.test(formData.relative1Phone))
         return alert("Relative 1 phone must be 10 digits.");
 
-      if (formData.relative2Phone && !/^\d{10}$/.test(formData.relative2Phone))
+      if (!isFieldLocked("relative2Phone") && formData.relative2Phone && !/^\d{10}$/.test(formData.relative2Phone))
         return alert("Relative 2 phone must be 10 digits.");
 
       if (
@@ -420,6 +509,7 @@ function TenantIntake() {
 
       const raw = {
         ...formData,
+        rentAmount: resolvedRentAmount,
         relativeAddress1: formData.relativeAddress,
         documents,
         source: "public-intake",
@@ -482,49 +572,62 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
         </div>
 
         {/* NAME */}
-        <div className="form-group">
-          <label>Name</label>
-          <input
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            className="form-input"
-            readOnly={isTenant || isLocked}
-            required
-          />
-        </div>
+      <div className="form-group">
+        <label>Name</label>
+        <input
+          name="name"
+          value={formData.name}
+          onChange={handleChange}
+          className="form-input"
+          readOnly={isFieldLocked("name")}
+          required
+        />
+      </div>
 
         {/* PHONE */}
         <div className="form-group">
           <label>Phone No</label>
-          <input
-            name="phoneNo"
-            value={formData.phoneNo}
-            onChange={handleChange}
-            className="form-input"
-            readOnly={isTenant || isLocked}
-            required
-          />
-        </div>
+        <input
+          name="phoneNo"
+          value={formData.phoneNo}
+          onChange={handleChange}
+          className="form-input"
+          readOnly={isFieldLocked("phoneNo")}
+          required
+        />
+      </div>
 
         {/* ADDRESS */}
         <div className="form-group">
           <label>Pincode</label>
+        <input
+          name="pincode"
+          value={formData.pincode}
+          onChange={handleChange}
+          className="form-input"
+          readOnly={isFieldLocked("pincode")}
+          placeholder="6-digit pincode"
+        />
+      </div>
+        <div className="form-group">
+          <label>City</label>
           <input
-            name="pincode"
-            value={formData.pincode}
+            name="city"
+            value={formData.city}
             onChange={handleChange}
             className="form-input"
-            placeholder="6-digit pincode"
+            readOnly={isFieldLocked("city")}
           />
         </div>
         <div className="form-group">
-          <label>City</label>
-          <input name="city" value={formData.city} onChange={handleChange} className="form-input" />
-        </div>
-        <div className="form-group">
           <label>State</label>
-          <input name="state" value={formData.state} onChange={handleChange} className="form-input" />
+          <input
+            name="state"
+            value={formData.state}
+            onChange={handleChange}
+            className="form-input"
+            readOnly={isFieldLocked("state")}
+          />
         </div>
         <div className="form-group">
           <label>Local Address</label>
@@ -533,12 +636,19 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
             value={formData.address}
             onChange={handleChange}
             className="form-input"
+            readOnly={isFieldLocked("address")}
             required
           />
         </div>
         <div className="form-group">
           <label>House No</label>
-          <input name="houseNo" value={formData.houseNo} onChange={handleChange} className="form-input" />
+          <input
+            name="houseNo"
+            value={formData.houseNo}
+            onChange={handleChange}
+            className="form-input"
+            readOnly={isFieldLocked("houseNo")}
+          />
         </div>
         <div className="form-group">
           <label>Nearby Place</label>
@@ -547,6 +657,7 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
             value={formData.nearbyPlace}
             onChange={handleChange}
             className="form-input"
+            readOnly={isFieldLocked("nearbyPlace")}
           />
         </div>
 
@@ -559,7 +670,7 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
             value={formData.joiningDate}
             onChange={handleChange}
             className="form-input"
-            readOnly={isTenant || isLocked}
+            readOnly={isFieldLocked("joiningDate")}
             required
           />
         </div>
@@ -567,43 +678,109 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
         {/* DOB */}
         <div className="form-group">
           <label>DOB</label>
-          <input type="date" name="dob" value={formData.dob} onChange={handleChange} className="form-input" required />
-        </div>
+        <input
+          type="date"
+          name="dob"
+          value={formData.dob}
+          onChange={handleChange}
+          className="form-input"
+          readOnly={isFieldLocked("dob")}
+          required
+        />
+      </div>
 
         {/* RELATIVE ADDRESS */}
         <div className="form-group">
           <label>Relative Address</label>
-          <input name="relativeAddress" value={formData.relativeAddress} onChange={handleChange} className="form-input" required />
-        </div>
+        <input
+          name="relativeAddress"
+          value={formData.relativeAddress}
+          onChange={handleChange}
+          className="form-input"
+          readOnly={isFieldLocked("relativeAddress")}
+          required
+        />
+      </div>
 
         {/* RELATIVE 1 */}
         <fieldset className="form-group">
           <legend>Relative 1</legend>
-          <select name="relative1Relation" value={formData.relative1Relation} onChange={handleChange} className="form-input" required>
+          <select
+            name="relative1Relation"
+            value={formData.relative1Relation}
+            onChange={handleChange}
+            className="form-input"
+            required
+          >
             {["Self", "Sister", "Brother", "Father", "Husband", "Mother"].map((r) => (
               <option key={r}>{r}</option>
             ))}
           </select>
-          <input name="relative1Name" value={formData.relative1Name} onChange={handleChange} className="form-input" placeholder="Name" required />
-          <input name="relative1Phone" value={formData.relative1Phone} onChange={handleChange} className="form-input" placeholder="10 digit" required />
+          <input
+            name="relative1Name"
+            value={formData.relative1Name}
+            onChange={handleChange}
+            className="form-input"
+            readOnly={isFieldLocked("relative1Name")}
+            placeholder="Name"
+            required
+          />
+          <input
+            name="relative1Phone"
+            value={formData.relative1Phone}
+            onChange={handleChange}
+            className="form-input"
+            readOnly={isFieldLocked("relative1Phone")}
+            placeholder="10 digit"
+            required
+          />
         </fieldset>
 
         {/* RELATIVE 2 */}
         <fieldset className="form-group">
           <legend>Relative 2</legend>
-          <select name="relative2Relation" value={formData.relative2Relation} onChange={handleChange} className="form-input" required>
+          <select
+            name="relative2Relation"
+            value={formData.relative2Relation}
+            onChange={handleChange}
+            className="form-input"
+            required
+          >
             {["Self", "Sister", "Brother", "Father", "Husband", "Mother"].map((r) => (
               <option key={r}>{r}</option>
             ))}
           </select>
-          <input name="relative2Name" value={formData.relative2Name} onChange={handleChange} className="form-input" placeholder="Name" required />
-          <input name="relative2Phone" value={formData.relative2Phone} onChange={handleChange} className="form-input" placeholder="10 digit" required />
+          <input
+            name="relative2Name"
+            value={formData.relative2Name}
+            onChange={handleChange}
+            className="form-input"
+            readOnly={isFieldLocked("relative2Name")}
+            placeholder="Name"
+            required
+          />
+          <input
+            name="relative2Phone"
+            value={formData.relative2Phone}
+            onChange={handleChange}
+            className="form-input"
+            readOnly={isFieldLocked("relative2Phone")}
+            placeholder="10 digit"
+            required
+          />
         </fieldset>
 
         {/* COMPANY */}
         <div className="form-group">
           <label>Company / College</label>
-          <input name="companyAddress" value={formData.companyAddress} onChange={handleChange} className="form-input" required />
+          <input
+            name="companyAddress"
+            value={formData.companyAddress}
+            onChange={handleChange}
+            className="form-input"
+            readOnly={isFieldLocked("companyAddress")}
+            required
+          />
         </div>
 
         {/* JOINING COLLEGE */}
@@ -615,6 +792,7 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
             value={formData.dateOfJoiningCollege}
             onChange={handleChange}
             className="form-input"
+            readOnly={isFieldLocked("dateOfJoiningCollege")}
             required
           />
         </div>
@@ -628,7 +806,7 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
               value={formData.category}
               onChange={handleChange}
               className="form-input"
-              readOnly={isLocked}
+              readOnly={isFieldLocked("category")}
               required
             />
           </div>
@@ -642,7 +820,7 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
             value={formData.roomNo}
             onChange={handleChange}
             className="form-input"
-            readOnly={isTenant || isLocked}
+            readOnly={isFieldLocked("roomNo")}
             required
           />
         </div>
@@ -655,7 +833,7 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
             value={formData.bedNo}
             onChange={handleChange}
             className="form-input"
-            readOnly={isTenant || isLocked}
+            readOnly={isFieldLocked("bedNo")}
             required
           />
         </div>
@@ -668,7 +846,7 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
             value={formData.rentAmount}
             onChange={handleRentAmountChange}
             className="form-input"
-            readOnly={isTenant || isLocked}
+            readOnly={isFieldLocked("rentAmount")}
             required
           />
         </div>
@@ -680,14 +858,14 @@ await axios.put(`${API_ROOT}/invites/${inviteToken}/submit`, payload);
             name="depositAmount"
             value={formData.depositAmount}
             onChange={(e) => {
-              if (isTenant || isLocked) return;
+              if (isFieldLocked("depositAmount")) return;
               const v = e.target.value;
               if (v === "" || /^\d+(\.\d{0,2})?$/.test(v)) {
                 setFormData((prev) => ({ ...prev, depositAmount: v }));
               }
             }}
             className="form-input"
-            readOnly={isTenant || isLocked}
+            readOnly={isFieldLocked("depositAmount")}
             required
           />
         </div>

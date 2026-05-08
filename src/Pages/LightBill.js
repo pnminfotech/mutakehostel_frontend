@@ -70,7 +70,7 @@ const LightBill = ({ embedded }) => {
 
   const fetchLightBills = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/light-bill/all");
+      const res = await fetch("https://mutakegirlshostel-0ko7.onrender.com/api/light-bill/all");
       const data = await res.json();
       setLightBills(data);
     } catch (err) {
@@ -138,7 +138,7 @@ const LightBill = ({ embedded }) => {
         date: formattedDate,
       };
 
-      const res = await fetch("http://localhost:8000/api/light-bill", {
+      const res = await fetch("https://mutakegirlshostel-0ko7.onrender.com/api/light-bill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bodyData),
@@ -184,7 +184,7 @@ const LightBill = ({ embedded }) => {
       };
 
       const res = await fetch(
-        `http://localhost:8000/api/light-bill/${selectedBill._id}`,
+        `https://mutakegirlshostel-0ko7.onrender.com/api/light-bill/${selectedBill._id}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -206,7 +206,7 @@ const LightBill = ({ embedded }) => {
     if (!window.confirm("Delete this bill?")) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/light-bill/${bill._id}`, {
+      const res = await fetch(`https://mutakegirlshostel-0ko7.onrender.com/api/light-bill/${bill._id}`, {
         method: "DELETE",
       });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import "bootstrap/dist/css/bootstrap.min.css";
 import './Style.css';
 import "../Pages/NewComponent.css";
@@ -41,7 +41,7 @@ import LeaveNotificationBell from "../componenet/LeaveNotificationBell";
 import RoomManager from "./RoomManager"; // adjust path if needed
 // import { useNavigate } from 'react-router-dom';
 import { FaMoneyBillWave, FaPhoneAlt, FaCalendarAlt } from "react-icons/fa";
-import { api } from "../api";
+import { API_BASE } from "../api";
 function NewComponant() {
   console.log("[NewComponant] loaded at", new Date().toISOString());
   const location = useLocation();
@@ -74,6 +74,7 @@ const [showOtherExpenseModal, setShowOtherExpenseModal] = useState(false);
 
 
 const [showPendingModal, setShowPendingModal] = useState(false);
+const [showUpcomingModal, setShowUpcomingModal] = useState(false);
 
 const [pendingTenants, setPendingTenants] = useState([]);
 
@@ -85,6 +86,7 @@ const [paid, setPaid] = useState(false);
 
 const [showVacantModal, setShowVacantModal] = useState(false);
 const [editNote, setEditNote] = useState("");
+const [rentUpdateMode, setRentUpdateMode] = useState("add");
 
   const roomColorStyleMap = useMemo(() => {
     const rooms = Array.from(
@@ -113,6 +115,7 @@ const [editNote, setEditNote] = useState("");
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [shiftTenant, setShiftTenant] = useState(null);
   const [shiftTargetKey, setShiftTargetKey] = useState(""); // "roomNo-bedNo"
+  const [shiftEffectiveDate, setShiftEffectiveDate] = useState("");
 
   const [rentStart, setRentStart] = useState(null); // shared 3-month window start
   const [docs, setDocs] = useState([]);
@@ -131,6 +134,17 @@ const [editRentAmount, setEditRentAmount] = useState("");
   const [selectedLeaveDate, setSelectedLeaveDate] = useState("");
   const [currentLeaveId, setCurrentLeaveId] = useState(null);
   const [currentLeaveName, setCurrentLeaveName] = useState("");
+  const [currentLeaveTenant, setCurrentLeaveTenant] = useState(null);
+  const [leaveDeductFromDeposit, setLeaveDeductFromDeposit] = useState(false);
+  const [leaveSelectedMonths, setLeaveSelectedMonths] = useState([]);
+  const [undoBedModal, setUndoBedModal] = useState({
+    show: false,
+    tenantId: "",
+    message: "",
+    vacantBeds: [],
+    selectedIndex: "",
+    busy: false,
+  });
   const [showRentModal, setShowRentModal] = useState(false);
   const [selectedRentDetails, setSelectedRentDetails] = useState([]);
   const [photoEditTenant, setPhotoEditTenant] = useState(null);
@@ -186,7 +200,7 @@ const [editRentAmount, setEditRentAmount] = useState("");
     __savingBed: false,
 
 
-  firstRentStatus: "NOT_PAID",
+  firstRentStatus: "ADVANCE_PAID",
   firstRentPaidDate: "",
   });
   useEffect(() => {
@@ -221,7 +235,7 @@ const [editRentAmount, setEditRentAmount] = useState("");
     };
   }, [newTenant?.pincode]);
 
-  const [firstRentStatusSelection, setFirstRentStatusSelection] = useState("NOT_PAID");
+  const [firstRentStatusSelection, setFirstRentStatusSelection] = useState("ADVANCE_PAID");
   const [sortConfig, setSortConfig] = useState({
     column: null,      // 'sr' | 'name' | 'status' | 'due'
     direction: "asc",  // 'asc' | 'desc'
@@ -232,6 +246,8 @@ const [editRentAmount, setEditRentAmount] = useState("");
 
 const [showFormModal, setShowFormModal] = useState(false);
 const [formTenant, setFormTenant] = useState(null);
+const [showLeavedHistoryView, setShowLeavedHistoryView] = useState(false);
+const [historyDocsTenant, setHistoryDocsTenant] = useState(null);
 
 const openAdmissionForm = (tenant) => {
   setFormTenant(tenant);
@@ -367,7 +383,7 @@ const [formId, setFormId] = useState(null);
 
 const fetchStaffExpenses = async () => {
   try {
-    const res = await fetch("   http://localhost:8000/api/staff-expense/all");
+    const res = await fetch(`${apiUrl}staff-expense/all`);
     const data = await res.json();
     // if you have list state like setStaffExpenses, update it here
     // setStaffExpenses(Array.isArray(data) ? data : []);
@@ -393,7 +409,7 @@ const handleSaveStaffExpense = async () => {
       date: `${expensesForm.month}-01`, // store as YYYY-MM-01 (like LightBill)
     };
 
-    const res = await fetch("   http://localhost:8000/api/staff-expense", {
+    const res = await fetch(`${apiUrl}staff-expense`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(bodyData),
@@ -438,12 +454,27 @@ const normBedNo = (v) =>
 
 const occKey = (roomNo, bedNo) => `${normRoomNo(roomNo)}-${normBedNo(bedNo)}`;
 
+const parseOccupancyDate = (value) => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const ymd = raw.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymd) return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+
+  const dmy = raw.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmy) return new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
 
 
-// Tenant should remain active/occupied until leave date has actually passed.
+
+// A bed becomes vacant on the tenant's leave date.
 const hasLeaveDatePassed = (leaveDate) => {
   if (!leaveDate) return false;
-  const ld = new Date(leaveDate);
+  const ld = parseOccupancyDate(leaveDate);
 
 
   
@@ -451,7 +482,7 @@ const hasLeaveDatePassed = (leaveDate) => {
   ld.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return ld < today;
+  return ld <= today;
 };
 // ✅ use tenants if present else formData (safe)
 const occupiedBeds = useMemo(() => {
@@ -459,7 +490,7 @@ const occupiedBeds = useMemo(() => {
   const s = new Set();
 
   list.forEach((t) => {
-    if (t.leaveDate) return;
+    if (t.leaveDate && hasLeaveDatePassed(t.leaveDate)) return;
 
     // prefer roomNo directly; if only roomId exists, map it to roomNo using roomsData
     let roomNo = t.roomNo;
@@ -486,7 +517,7 @@ const makeOccKey = (roomNo, bedNo) =>
 const occupiedBedSet = useMemo(() => {
   const s = new Set();
   (formData || []).forEach((t) => {
-    if (t.leaveDate) return; // ignore left tenants
+    if (t.leaveDate && hasLeaveDatePassed(t.leaveDate)) return; // ignore tenants whose leave date has passed
     const roomNo = t.roomNo;
     const bedNo = t.bedNo;
     if (String(roomNo ?? "").trim() && String(bedNo ?? "").trim()) {
@@ -644,13 +675,19 @@ const getStatusWeight = (status) => {
   const isEditRentAtJoiningVisible = useMemo(() => {
     if (!editTenantData?.joiningDate) return false;
     const joinDate = new Date(String(editTenantData.joiningDate).split("T")[0]);
-    if (Number.isNaN(joinDate.getTime())) return false;
+    const createdAt = new Date(
+      String(editTenantData.createdAt || editTenantData.joiningDate).split("T")[0]
+    );
+    if (Number.isNaN(joinDate.getTime()) || Number.isNaN(createdAt.getTime())) return false;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     joinDate.setHours(0, 0, 0, 0);
-    const diffDays = (today - joinDate) / (1000 * 60 * 60 * 24);
-    return diffDays >= -30 && diffDays < 31;
-  }, [editTenantData?.joiningDate]);
+    createdAt.setHours(0, 0, 0, 0);
+    const windowEnd = new Date(joinDate);
+    windowEnd.setMonth(windowEnd.getMonth() + 1);
+    windowEnd.setHours(23, 59, 59, 999);
+    return today >= createdAt && today <= windowEnd;
+  }, [editTenantData?.createdAt, editTenantData?.joiningDate]);
   useEffect(() => {
     const pin = String(editTenantData?.pincode || "").trim();
     if (!/^\d{6}$/.test(pin)) return;
@@ -721,12 +758,227 @@ const [editMonthYM, setEditMonthYM] = useState({ y: null, m: null });
   // if you have any other related states, reset them here too
   // setSomethingElse(...)
 };
+const normalizeSearchValue = (value) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+const compactSearchValue = (value) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+
+const formatSearchDate = (value) => {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return [
+    d.toLocaleDateString("en-IN"),
+    d.toLocaleDateString("en-GB"),
+    d.toLocaleString("en-IN", { month: "short", year: "numeric" }),
+    d.toLocaleString("en-IN", { month: "long", year: "numeric" }),
+    String(d.getFullYear()),
+  ].join(" ");
+};
+
+const getYearFromMonthLabel = (value) => {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+
+  const fourDigit = text.match(/\b(19|20)\d{2}\b/);
+  if (fourDigit) return Number(fourDigit[0]);
+
+  const twoDigit = text.match(/\b\d{2}\b/);
+  if (twoDigit) {
+    const yy = Number(twoDigit[0]);
+    return yy >= 70 ? 1900 + yy : 2000 + yy;
+  }
+
+  return null;
+};
+
+const getTenantDateYears = (tenant) => {
+  const yearsSet = new Set();
+  const addDateYear = (value) => {
+    if (!value) return;
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) yearsSet.add(d.getFullYear());
+  };
+
+  [
+    tenant?.joiningDate,
+    tenant?.leaveDate,
+    tenant?.dateOfJoiningCollege,
+    tenant?.dob,
+    tenant?.firstRentPaidDate,
+    tenant?.createdAt,
+    tenant?.updatedAt,
+  ].forEach(addDateYear);
+
+  (Array.isArray(tenant?.rents) ? tenant.rents : []).forEach((rent) => {
+    addDateYear(rent?.date);
+    const monthYear = getYearFromMonthLabel(rent?.month);
+    if (monthYear) yearsSet.add(monthYear);
+  });
+
+  (Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : []).forEach((rent) => {
+    addDateYear(rent?.date);
+    const monthYear = getYearFromMonthLabel(rent?.month);
+    if (monthYear) yearsSet.add(monthYear);
+  });
+
+  (Array.isArray(tenant?.leaveSettlement?.deductions)
+    ? tenant.leaveSettlement.deductions
+    : []
+  ).forEach((deduction) => {
+    const monthYear = getYearFromMonthLabel(deduction?.month);
+    if (monthYear) yearsSet.add(monthYear);
+  });
+
+  return yearsSet;
+};
+
+const tenantMatchesSelectedYear = (tenant) => {
+  if (selectedYear === "All Records") return true;
+  const selected = Number(selectedYear);
+  if (!Number.isFinite(selected)) return true;
+  return getTenantDateYears(tenant).has(selected);
+};
+
+const tenantMatchesSearchText = (tenant) => {
+  const query = normalizeSearchValue(searchText);
+  const compactQuery = compactSearchValue(searchText);
+  if (!query && !compactQuery) return true;
+
+  const roomQuery = query.match(/\b(?:room|roomno|room no)\s+([a-z0-9]+)/i);
+  if (roomQuery) {
+    return compactSearchValue(tenant?.roomNo).includes(compactSearchValue(roomQuery[1]));
+  }
+
+  const bedQuery = query.match(/\b(?:bed|bedno|bed no)\s+([a-z0-9]+)/i);
+  if (bedQuery) {
+    return compactSearchValue(tenant?.bedNo).includes(compactSearchValue(bedQuery[1]));
+  }
+
+  const phoneQuery = query.match(/\b(?:mobile|mob|phone|contact)\s+([0-9]+)/i);
+  if (phoneQuery) {
+    const needle = compactSearchValue(phoneQuery[1]);
+    return [
+      tenant?.phoneNo,
+      tenant?.mobileNo,
+      tenant?.relative1Phone,
+      tenant?.relative2Phone,
+    ].some((value) => compactSearchValue(value).includes(needle));
+  }
+
+  const nameQuery = query.match(/\b(?:name|tenant)\s+(.+)/i);
+  if (nameQuery) {
+    return normalizeSearchValue(tenant?.name).includes(
+      normalizeSearchValue(nameQuery[1])
+    );
+  }
+
+  const rents = Array.isArray(tenant?.rents) ? tenant.rents : [];
+  const rentHistory = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+  const docs = Array.isArray(tenant?.documents) ? tenant.documents : [];
+  const deductions = Array.isArray(tenant?.leaveSettlement?.deductions)
+    ? tenant.leaveSettlement.deductions
+    : [];
+
+  const values = [
+    tenant?.srNo,
+    tenant?.name,
+    tenant?.phoneNo,
+    `phone ${tenant?.phoneNo || ""}`,
+    `mobile ${tenant?.phoneNo || tenant?.mobileNo || ""}`,
+    tenant?.mobileNo,
+    tenant?.roomNo,
+    `room ${tenant?.roomNo || ""}`,
+    `room no ${tenant?.roomNo || ""}`,
+    tenant?.bedNo,
+    `bed ${tenant?.bedNo || ""}`,
+    `bed no ${tenant?.bedNo || ""}`,
+    tenant?.floorNo,
+    `floor ${tenant?.floorNo || ""}`,
+    tenant?.category,
+    tenant?.address,
+    tenant?.houseNo,
+    tenant?.nearbyPlace,
+    tenant?.city,
+    tenant?.state,
+    tenant?.pincode,
+    tenant?.companyAddress,
+    tenant?.relativeAddress,
+    tenant?.relativeAddress1,
+    tenant?.relativeAddress2,
+    tenant?.relative1Name,
+    tenant?.relative1Phone,
+    tenant?.relative1Relation,
+    tenant?.relative2Name,
+    tenant?.relative2Phone,
+    tenant?.relative2Relation,
+    tenant?.depositAmount,
+    tenant?.baseRent,
+    tenant?.rentAmount,
+    tenant?.firstRentStatus,
+    tenant?.joiningDate,
+    formatSearchDate(tenant?.joiningDate),
+    tenant?.leaveDate,
+    formatSearchDate(tenant?.leaveDate),
+    tenant?.dateOfJoiningCollege,
+    formatSearchDate(tenant?.dateOfJoiningCollege),
+    tenant?.dob,
+    formatSearchDate(tenant?.dob),
+    tenant?.leaveSettlement?.grossDeposit,
+    tenant?.leaveSettlement?.refundableDeposit,
+    tenant?.leaveSettlement?.amountDueFromTenant,
+    tenant?.leaveSettlement?.totalDeduction,
+    ...rents.flatMap((rent) => [
+      rent?.month,
+      rent?.date,
+      formatSearchDate(rent?.date),
+      rent?.rentAmount,
+      rent?.paymentMode,
+      rent?.paymentType,
+      rent?.status,
+      rent?.note,
+    ]),
+    ...rentHistory.flatMap((rent) => [
+      rent?.month,
+      rent?.date,
+      formatSearchDate(rent?.date),
+      rent?.rentAmount,
+      rent?.paymentMode,
+      rent?.paymentType,
+      rent?.status,
+      rent?.note,
+    ]),
+    ...docs.flatMap((doc) => [
+      doc?.relation,
+      doc?.fileName,
+      doc?.contentType,
+      doc?.url,
+    ]),
+    ...deductions.flatMap((deduction) => [
+      deduction?.month,
+      deduction?.amount,
+      deduction?.days,
+      deduction?.dailyRent,
+      deduction?.cycleRange,
+    ]),
+  ];
+
+  const joined = values.filter(Boolean).join(" ");
+  const haystack = normalizeSearchValue(joined);
+  const compactHaystack = compactSearchValue(joined);
+  return haystack.includes(query) || compactHaystack.includes(compactQuery);
+};
+
 const years = useMemo(() => {
   const ys = new Set();
   (formData || []).forEach((d) => {
-    if (!d?.joiningDate) return;
-    const dd = new Date(d.joiningDate);
-    if (!isNaN(dd)) ys.add(dd.getFullYear());
+    getTenantDateYears(d).forEach((year) => ys.add(year));
   });
   return ["All Records", ...Array.from(ys).sort((a, b) => b - a)];
 }, [formData]);
@@ -755,7 +1007,7 @@ const existingForm = formData?.find(
 
 
 
-  const apiUrl = " http://localhost:8000/api/";
+  const apiUrl = `${API_BASE}/`;
 
 const ROOMS_API = `${apiUrl}rooms`;
 
@@ -767,10 +1019,123 @@ const ROOMS_API = `${apiUrl}rooms`;
       console.error("Failed to refresh tenants:", e);
     }
   }, [apiUrl]);
+
+  const refreshRooms = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${apiUrl}rooms`);
+      setRoomsData(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Failed to refresh rooms:", e);
+    }
+  }, [apiUrl]);
+
+  const refreshAllData = useCallback(async () => {
+    await Promise.all([refreshTenants(), refreshRooms()]);
+  }, [refreshTenants, refreshRooms]);
+
+  const lastModalStateRef = useRef(null);
+
+  useEffect(() => {
+    const modalState = {
+      add: showAddModal,
+      edit: showEditModal,
+      leave: showLeaveModal,
+      rent: showRentModal,
+      shift: showShiftModal,
+      deleteConfirm: showDeleteConfirmation,
+      password: showPasswordPrompt,
+      vacant: showVacantModal,
+      pending: showPendingModal,
+      upcoming: showUpcomingModal,
+      details: showDetailsModal,
+      admissionForm: showFormModal,
+      form: showFModal,
+      expenses: showExpensesModal,
+      otherExpense: showOtherExpenseModal,
+      photoEdit: showPhotoEditModal,
+    };
+
+    const previous = lastModalStateRef.current;
+    lastModalStateRef.current = modalState;
+
+    if (!previous) return undefined;
+
+    const didAnyModalClose = Object.keys(modalState).some(
+      (key) => previous[key] && !modalState[key]
+    );
+
+    if (!didAnyModalClose) return undefined;
+
+    const timer = window.setTimeout(() => {
+      refreshAllData();
+    }, 150);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    showAddModal,
+    showEditModal,
+    showLeaveModal,
+    showRentModal,
+    showShiftModal,
+    showDeleteConfirmation,
+    showPasswordPrompt,
+    showVacantModal,
+    showPendingModal,
+    showUpcomingModal,
+    showDetailsModal,
+    showFormModal,
+    showFModal,
+    showExpensesModal,
+    showOtherExpenseModal,
+    showPhotoEditModal,
+    refreshAllData,
+  ]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      refreshAllData();
+    };
+    const handleVisibilityChange = () => {
+      if (!document.hidden) refreshAllData();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshAllData]);
 const fmtMonthKey = (y, m) => {
   const mon = new Date(y, m, 1).toLocaleString("en-US", { month: "short" }); // e.g., "Sep"
   const yy = String(y).slice(-2); // "25"
   return `${mon}-${yy}`; // "Sep-25"
+};
+
+const getEditRentMonthKey = (editMonthYM, fallbackDate) => {
+  if (editMonthYM?.y != null && editMonthYM?.m != null) {
+    return fmtMonthKey(editMonthYM.y, editMonthYM.m);
+  }
+
+  if (fallbackDate) {
+    const d = new Date(fallbackDate);
+    if (!Number.isNaN(d.getTime())) {
+      return fmtMonthKey(d.getFullYear(), d.getMonth());
+    }
+  }
+
+  return "";
+};
+
+const getFirstRentMonthForStatus = (joiningDate, firstRentStatus) => {
+  if (!joiningDate) return "";
+  const joinDate = new Date(String(joiningDate).split("T")[0]);
+  if (Number.isNaN(joinDate.getTime())) return "";
+
+  const status = String(firstRentStatus || "NOT_PAID").trim();
+  const monthOffset = status === "ADVANCE_PAID" ? 0 : 1;
+  return fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth() + monthOffset);
 };
 
 const parseMonthKey = (key) => {
@@ -884,14 +1249,35 @@ const handleApprovedFromBell = React.useCallback((payload) => {
     if (newTenant.roomNo) p.set("roomNo", String(newTenant.roomNo));
     if (newTenant.bedNo && newTenant.bedNo !== "__other__")
       p.set("bedNo", String(newTenant.bedNo));
+    if (newTenant.address) p.set("address", String(newTenant.address));
+    if (newTenant.pincode) p.set("pincode", String(newTenant.pincode));
+    if (newTenant.city) p.set("city", String(newTenant.city));
+    if (newTenant.state) p.set("state", String(newTenant.state));
+    if (newTenant.houseNo) p.set("houseNo", String(newTenant.houseNo));
+    if (newTenant.nearbyPlace) p.set("nearbyPlace", String(newTenant.nearbyPlace));
+    if (newTenant.relativeAddress) p.set("relativeAddress", String(newTenant.relativeAddress));
+    if (newTenant.relative1Relation) p.set("relative1Relation", String(newTenant.relative1Relation));
+    if (newTenant.relative1Name) p.set("relative1Name", String(newTenant.relative1Name));
+    if (newTenant.relative1Phone) p.set("relative1Phone", String(newTenant.relative1Phone));
+    if (newTenant.relative2Relation) p.set("relative2Relation", String(newTenant.relative2Relation));
+    if (newTenant.relative2Name) p.set("relative2Name", String(newTenant.relative2Name));
+    if (newTenant.relative2Phone) p.set("relative2Phone", String(newTenant.relative2Phone));
+    if (newTenant.companyAddress) p.set("companyAddress", String(newTenant.companyAddress));
+    if (newTenant.dateOfJoiningCollege)
+      p.set("dateOfJoiningCollege", String(newTenant.dateOfJoiningCollege));
+    if (newTenant.dob) p.set("dob", String(newTenant.dob));
 
     const baseRent = newTenant.baseRent ?? "";
-    const rentAmount = newTenant.rentAmount ?? baseRent;
+    const rentAmount = baseRent !== "" && baseRent != null ? baseRent : newTenant.rentAmount;
     if (baseRent !== "") p.set("baseRent", String(baseRent));
     if (rentAmount !== "") p.set("rentAmount", String(rentAmount));
     if (newTenant.depositAmount != null && newTenant.depositAmount !== "") {
       p.set("depositAmount", String(newTenant.depositAmount));
     }
+    if (newTenant.firstRentStatus) p.set("firstRentStatus", String(newTenant.firstRentStatus));
+    if (newTenant.firstRentMonth) p.set("firstRentMonth", String(newTenant.firstRentMonth));
+    if (newTenant.firstRentPaidDate)
+      p.set("firstRentPaidDate", String(newTenant.firstRentPaidDate));
 
     base.search = p.toString(); // ← ensure params are applied
     return base.toString();
@@ -922,7 +1308,7 @@ useEffect(() => {
       setInvLoading(true);
       setInvError("");
 
-      const r = await axios.get(`   http://localhost:8000/api/invites/${token}`);
+      const r = await axios.get(`${apiUrl}invites/${token}`);
       setFormId(r.data?.formId);
       setNewTenant((p) => ({ ...p, ...(r.data?.prefill || {}) }));
     } catch (e) {
@@ -946,15 +1332,43 @@ const handleShareAddTenantModal = React.useCallback(async () => {
 
   try {
     // ✅ Create invite + draft form in DB (ONE time)
+    const roomFromId = roomsData.find((r) => String(r._id) === String(newTenant.roomId));
+    const roomFromNo = roomsData.find((r) => String(r.roomNo) === String(newTenant.roomNo));
+    const pickedRoom = roomFromId || roomFromNo;
+    const rentSource =
+      newTenant.baseRent !== "" && newTenant.baseRent != null
+        ? newTenant.baseRent
+        : newTenant.rentAmount;
+
     const payload = {
+      category: (newTenant.category || pickedRoom?.category || "").trim() || undefined,
       name: (newTenant.name || "").trim(),
       phoneNo: (newTenant.phoneNo || "").trim(),
       roomNo: newTenant.roomNo,
       bedNo: newTenant.bedNo,
       joiningDate: newTenant.joiningDate || new Date().toISOString().slice(0, 10), // ensure exists
       baseRent: newTenant.baseRent ?? "",
-      rentAmount: newTenant.rentAmount ?? newTenant.baseRent ?? "",
+      rentAmount: rentSource ?? "",
       depositAmount: newTenant.depositAmount ?? "",
+      address: newTenant.address || undefined,
+      pincode: newTenant.pincode || undefined,
+      city: newTenant.city || undefined,
+      state: newTenant.state || undefined,
+      houseNo: newTenant.houseNo || undefined,
+      nearbyPlace: newTenant.nearbyPlace || undefined,
+      relativeAddress: newTenant.relativeAddress || newTenant.RelativeAddress || undefined,
+      relative1Relation: newTenant.relative1Relation || undefined,
+      relative1Name: newTenant.relative1Name || undefined,
+      relative1Phone: newTenant.relative1Phone || undefined,
+      relative2Relation: newTenant.relative2Relation || undefined,
+      relative2Name: newTenant.relative2Name || undefined,
+      relative2Phone: newTenant.relative2Phone || undefined,
+      companyAddress: newTenant.companyAddress || undefined,
+      dateOfJoiningCollege: newTenant.dateOfJoiningCollege || undefined,
+      dob: newTenant.dob || undefined,
+      firstRentStatus: newTenant.firstRentStatus || "ADVANCE_PAID",
+      firstRentMonth: newTenant.firstRentMonth || undefined,
+      firstRentPaidDate: newTenant.firstRentPaidDate || undefined,
     };
 
     const res = await axios.post(`${apiUrl}invites`, payload, {
@@ -1007,14 +1421,16 @@ setInviteToken(res.data?.token || null);
 const parseDate = (v) => {
   if (!v) return null;
 
-  // works for ISO / Date-string
+  // Prefer explicit date formats so DD/MM/YYYY is not parsed as MM/DD/YYYY.
+  const s = String(v).trim();
+  const ymd = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (ymd) return new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]));
+
+  const m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+
   const d = new Date(v);
   if (!isNaN(d)) return d;
-
-  // try DD-MM-YYYY or DD/MM/YYYY
-  const s = String(v).trim();
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
 
   return null;
 };
@@ -1026,11 +1442,11 @@ const today0 = useMemo(() => {
 }, []);
 
 const isActiveTenant = (t) => {
-  // active if: no leaveDate OR leaveDate is today/future (upcoming)
+  // active if: no leaveDate OR leaveDate is in the future (upcoming)
   const ld = parseDate(t.leaveDate);
   if (!ld) return true;
   ld.setHours(0, 0, 0, 0);
-  return ld >= today0;
+  return ld > today0;
 };
 
 const vacantBedsList = useMemo(() => {
@@ -1341,8 +1757,21 @@ function getCycleRangeStr(tenant, cycleIndex) {
     }
   };
 
+  const getTodayISODate = () => new Date().toISOString().slice(0, 10);
+
+  const syncFirstRentStatusForAdd = (status) => {
+    const normalized = status === "NOT_PAID" ? "NOT_PAID" : "ADVANCE_PAID";
+    setFirstRentStatusSelection(normalized);
+    setNewTenant((prev) => ({
+      ...prev,
+      firstRentStatus: normalized,
+      firstRentPaidDate: normalized === "ADVANCE_PAID" ? getTodayISODate() : "",
+    }));
+  };
+
   const openAddModal = () => {
     fetchSrNo();
+    syncFirstRentStatusForAdd("ADVANCE_PAID");
     setShowAddModal(true);
   };
 
@@ -1486,7 +1915,7 @@ const handleAddTenantWithDocs = async () => {
       return;
     }
 
-    const rentAmount = Number(newTenant.rentAmount ?? newTenant.baseRent ?? 0);
+    const rentAmount = Number(newTenant.baseRent ?? newTenant.rentAmount ?? 0);
     const depositAmount = Number(newTenant.depositAmount ?? 0);
 
     if (!Number.isFinite(rentAmount) || rentAmount <= 0) {
@@ -1503,7 +1932,7 @@ const handleAddTenantWithDocs = async () => {
     const paymentMode = "Cash";
     const joinDate = new Date(newTenant.joiningDate);
     const firstRentStatus =
-      firstRentStatusSelection || newTenant.firstRentStatus || "NOT_PAID";
+      firstRentStatusSelection || newTenant.firstRentStatus || "ADVANCE_PAID";
 
 let firstRentMonth;
 
@@ -1564,6 +1993,12 @@ if (firstRentStatus === "ADVANCE_PAID") {
     fd.append("roomNo", newTenant.roomNo || "");
     fd.append("firstRentStatus", firstRentStatus);
     fd.append("firstRentMonth", firstRentMonth);
+    fd.append(
+      "firstRentPaidDate",
+      firstRentStatus === "ADVANCE_PAID"
+        ? newTenant.firstRentPaidDate || getTodayISODate()
+        : ""
+    );
 
     if (newTenant.bedNo && newTenant.bedNo !== "__other__") fd.append("bedNo", newTenant.bedNo);
 
@@ -1648,7 +2083,7 @@ const closeAddTenantModal = () => {
 
   // ✅ clear Add Tenant form
   setNewTenant(EMPTY_TENANT);
-  setFirstRentStatusSelection("NOT_PAID");
+  setFirstRentStatusSelection("ADVANCE_PAID");
 
   // ✅ clear files + message
   setSelfAadharFile(null);
@@ -1753,32 +2188,30 @@ const closeAddTenantModal = () => {
 
   const PAGE = 3; // number of month sub-columns under Rent
 
- const buildMonthsTimeline = (forms) => {
-  const today = new Date();
-  const end = new Date(today.getFullYear(), today.getMonth() + 1, 1); // include next month
+  const timelineYear = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    if (selectedYear === "All Records") return currentYear;
 
-  // baseline = earliest joining month among active tenants; fallback to 12 months back
-  const joinMonths = (Array.isArray(forms) ? forms : [])
-    .map((t) => t?.joiningDate ? new Date(t.joiningDate) : null)
-    .filter(Boolean)
-    .map((d) => new Date(d.getFullYear(), d.getMonth(), 1));
+    const parsedYear = Number(selectedYear);
+    return Number.isFinite(parsedYear) ? parsedYear : currentYear;
+  }, [selectedYear]);
 
-  const minDate = joinMonths.length
-    ? new Date(Math.min(...joinMonths.map((d) => d.getTime())))
-    : new Date(today.getFullYear(), today.getMonth() - 11, 1);
+  const buildMonthsTimeline = (year) => {
+    const months = [];
+    const cursor = new Date(Number(year) || new Date().getFullYear(), 0, 1);
+    const end = new Date(Number(year) || new Date().getFullYear(), 11, 1);
 
-  const months = [];
-  const cursor = new Date(minDate);
-  while (cursor <= end) {
-    months.push({
-      y: cursor.getFullYear(),
-      m: cursor.getMonth(),
-      label: cursor.toLocaleString("default", { month: "short", year: "numeric" }),
-    });
-    cursor.setMonth(cursor.getMonth() + 1);
-  }
-  return months;
-};
+    while (cursor <= end) {
+      months.push({
+        y: cursor.getFullYear(),
+        m: cursor.getMonth(),
+        label: cursor.toLocaleString("default", { month: "short", year: "numeric" }),
+      });
+      cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    return months;
+  };
 
 
 
@@ -1798,12 +2231,22 @@ const closeAddTenantModal = () => {
   // };
 
   // --- Memoize months + visible window so header & rows stay in sync ---
-  const months = useMemo(() => buildMonthsTimeline(formData), [formData]);
-  const defaultStart = Math.max(0, months.length - PAGE);
+  const months = useMemo(() => buildMonthsTimeline(timelineYear), [timelineYear]);
+  const currentMonth = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+  const maxStart = Math.max(0, months.length - PAGE);
+  const defaultStart =
+    timelineYear === currentYear
+      ? Math.max(0, Math.min(maxStart, currentMonth - 1))
+      : 0;
   const start = rentStart ?? defaultStart;
   const canLeft = start > 0;
   const canRight = start + PAGE < months.length;
   const visibleMonths = months.slice(start, start + PAGE);
+
+  useEffect(() => {
+    setRentStart(null);
+  }, [timelineYear]);
 
   const goLeft = (e) => {
     e?.stopPropagation?.();
@@ -1816,9 +2259,38 @@ const closeAddTenantModal = () => {
     e?.stopPropagation?.();
     setRentStart((s) => {
       const cur = s ?? defaultStart;
-      return Math.min(months.length - PAGE, cur + 1);
+      return Math.min(maxStart, cur + 1);
     });
   };
+
+  const renderMonthWindowNav = (index) => (
+    <>
+      {index === 0 && (
+        <button
+          type="button"
+          className="month-inline-nav month-inline-nav-prev"
+          disabled={!canLeft}
+          onClick={goLeft}
+          title="Previous months"
+          aria-label="Previous months"
+        >
+          &lsaquo;
+        </button>
+      )}
+      {index === visibleMonths.length - 1 && (
+        <button
+          type="button"
+          className="month-inline-nav month-inline-nav-next"
+          disabled={!canRight}
+          onClick={goRight}
+          title="Newer months"
+          aria-label="Newer months"
+        >
+          &rsaquo;
+        </button>
+      )}
+    </>
+  );
 
   const formatShort = (d) =>
     d
@@ -1841,10 +2313,10 @@ const closeAddTenantModal = () => {
       Number(rec?.rentExpected ?? 0);
 
     // tenant-level (global monthly rent)
-    const tenantExpected =
+  const tenantExpected =
       Number(tenant?.baseRent ?? 0) ||
-      Number(tenant?.rent ?? 0) ||
       Number(tenant?.rentAmount ?? 0) ||
+      Number(tenant?.rent ?? 0) ||
       Number(tenant?.expectedRent ?? 0) ||
       Number(tenant?.defaultRent ?? 0);
 
@@ -1863,6 +2335,61 @@ const closeAddTenantModal = () => {
 
 
 
+ const explicitRentFromTenant = (tenant) =>
+  toNum(tenant?.baseRent) ||
+  toNum(tenant?.rentAmount) ||
+  toNum(tenant?.rent) ||
+  toNum(tenant?.expectedRent) ||
+  toNum(tenant?.defaultRent) ||
+  toNum(tenant?.monthlyRent) ||
+  toNum(tenant?.price) ||
+  toNum(tenant?.bedPrice);
+
+ const latestPaidRentAmount = (tenant) => {
+  const paidRents = (tenant?.rents || [])
+    .filter((r) => toNum(r?.rentAmount) > 0)
+    .map((r) => ({
+      amount: toNum(r.rentAmount),
+      time: (() => {
+        if (r?.date) {
+          const d = new Date(r.date);
+          if (!Number.isNaN(d.getTime())) return d.getTime();
+        }
+        const ym = getYMFromRecord(r);
+        return ym ? new Date(ym.y, ym.m, 1).getTime() : 0;
+      })(),
+    }))
+    .sort((a, b) => a.time - b.time);
+
+  return paidRents.length ? paidRents[paidRents.length - 1].amount : 0;
+ };
+
+ const getShiftPreservedRent = (tenant) => {
+  const hasShiftHistory = (tenant?.rentHistory || []).some(
+    (entry) => entry?.source === "shift"
+  );
+  const hasShiftFlag = Boolean(
+    tenant?.shiftEffectiveFrom || tenant?.shiftDate || tenant?.effectiveFrom
+  );
+  const canUsePaidRent =
+    hasShiftHistory ||
+    hasShiftFlag ||
+    tenant?.firstRentStatus === "ADVANCE_PAID";
+
+  const latestPaid = latestPaidRentAmount(tenant);
+  const explicitRent = explicitRentFromTenant(tenant);
+  if (
+    canUsePaidRent &&
+    latestPaid > 0 &&
+    explicitRent > 0 &&
+    latestPaid < explicitRent
+  ) {
+    return latestPaid;
+  }
+
+  return 0;
+ };
+
  const expectFromTenant = (tenant, roomsData) => {
   // 1️⃣ Always prefer NEW updated bed/room price from roomsData
   if (roomsData && tenant?.roomNo && tenant?.bedNo) {
@@ -1873,7 +2400,6 @@ const closeAddTenantModal = () => {
     const bed = room?.beds?.find(
       (b) => String(b.bedNo) === String(tenant.bedNo)
     );
-console.log("ROOM FOUND BED PRICE →", bed?.price, bed);
     const updatedPrice =
       toNum(bed?.price) ||
       toNum(bed?.baseRent) ||
@@ -1882,18 +2408,195 @@ console.log("ROOM FOUND BED PRICE →", bed?.price, bed);
     if (updatedPrice) return updatedPrice; // ⭐ THIS WILL NOW RETURN 4000
   }
 
-  // 2️⃣ If room price is not found, fallback to tenant stored values
-  return (
-    toNum(tenant?.baseRent) ||
-    toNum(tenant?.rent) ||
-    toNum(tenant?.rentAmount) ||
-    toNum(tenant?.expectedRent) ||
-    toNum(tenant?.defaultRent) ||
-    toNum(tenant?.monthlyRent) ||
-    toNum(tenant?.price) ||
-    toNum(tenant?.bedPrice) ||
-    0
+ // 2️⃣ If room price is not found, fallback to tenant stored values
+  return explicitRentFromTenant(tenant);
+};
+
+const firstDayOfNextMonth = (date = new Date()) => {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(1);
+  d.setMonth(d.getMonth() + 1);
+  return d;
+};
+
+const startOfDayTime = (date) => {
+  const d = date ? new Date(date) : null;
+  if (!d || Number.isNaN(d.getTime())) return 0;
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
+const normalizeRentSnapshot = (entry = {}) => {
+  const effectiveFrom =
+    entry?.effectiveFrom ||
+    entry?.from ||
+    entry?.changedAt ||
+    entry?.date ||
+    null;
+  const parsed = effectiveFrom ? new Date(effectiveFrom) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return null;
+
+  const amount =
+    toNum(entry?.baseRent) ||
+    toNum(entry?.rentAmount) ||
+    toNum(entry?.amount) ||
+    toNum(entry?.price) ||
+    toNum(entry?.monthlyRent);
+  if (!amount) return null;
+
+  return {
+    effectiveFrom: parsed,
+    amount,
+    previousAmount: toNum(entry?.previousBaseRent) || toNum(entry?.previousRentAmount),
+    source: entry?.source || "",
+  };
+};
+
+const getCycleStartForMonth = (tenant, y, m) => {
+  if (!tenant?.joiningDate) return null;
+
+  const joinDate = new Date(tenant.joiningDate);
+  if (Number.isNaN(joinDate.getTime())) return null;
+
+  let firstBillYM;
+  if (tenant.firstRentMonth) {
+    const pm = parseMonthKey(tenant.firstRentMonth);
+    if (!pm) return null;
+    firstBillYM = pm.y * 12 + pm.m;
+  } else {
+    const isAdvance = tenant.firstRentStatus === "ADVANCE_PAID";
+    firstBillYM = joinDate.getFullYear() * 12 + joinDate.getMonth() + (isAdvance ? 0 : 1);
+  }
+
+  const cellYM = y * 12 + m;
+  if (cellYM < firstBillYM) return null;
+
+  const cycleIndex = cellYM - firstBillYM;
+  const cycleStart = new Date(joinDate);
+  cycleStart.setHours(0, 0, 0, 0);
+  cycleStart.setMonth(cycleStart.getMonth() + cycleIndex);
+
+  return cycleStart;
+};
+
+const buildRentSnapshots = (tenant, roomsData) => {
+  const snapshots = [];
+  const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+ const paidRents = (tenant?.rents || [])
+    .filter((r) => toNum(r?.rentAmount) > 0)
+    .map((r) => ({
+      amount: toNum(r.rentAmount),
+      ym: getYMFromRecord(r),
+      date: r?.date ? new Date(r.date) : null,
+    }))
+    .filter((r) => r.ym && r.date && !Number.isNaN(r.date.getTime()))
+    .sort((a, b) => (a.ym.y * 12 + a.ym.m) - (b.ym.y * 12 + b.ym.m));
+
+  history
+    .map((entry) => normalizeRentSnapshot(entry))
+    .filter(Boolean)
+    .sort((a, b) => a.effectiveFrom - b.effectiveFrom)
+    .forEach((snap) => snapshots.push(snap));
+
+  const selectedShiftDate =
+    tenant?.shiftEffectiveFrom || tenant?.shiftDate || tenant?.effectiveFrom;
+  const parsedShiftDate = selectedShiftDate ? new Date(selectedShiftDate) : null;
+  if (parsedShiftDate && !Number.isNaN(parsedShiftDate.getTime())) {
+    parsedShiftDate.setHours(0, 0, 0, 0);
+    const latestShiftIndex = snapshots
+      .map((snap, index) => ({ snap, index }))
+      .filter(({ snap }) => snap.source === "shift")
+      .sort((a, b) => b.snap.effectiveFrom - a.snap.effectiveFrom)[0]?.index;
+
+    if (latestShiftIndex !== undefined) {
+      snapshots[latestShiftIndex] = {
+        ...snapshots[latestShiftIndex],
+        effectiveFrom: parsedShiftDate,
+      };
+    }
+  }
+
+  const joinDate = tenant?.joiningDate ? new Date(tenant.joiningDate) : null;
+  if (
+    snapshots.length &&
+    joinDate &&
+    !Number.isNaN(joinDate.getTime()) &&
+    snapshots[0].effectiveFrom > joinDate
+  ) {
+    const paidBeforeFirstShift = paidRents
+      .filter((rent) => rent.date < snapshots[0].effectiveFrom)
+      .sort((a, b) => b.date - a.date)[0];
+    const previousAmount =
+      toNum(snapshots[0].previousAmount) || toNum(paidBeforeFirstShift?.amount);
+
+    if (previousAmount > 0) {
+    snapshots.unshift({
+      effectiveFrom: joinDate,
+      amount: previousAmount,
+    });
+    }
+  }
+
+  if (!snapshots.length) {
+    const fallback = expectFromTenant(tenant, roomsData);
+    if (fallback > 0) {
+      const joinDate = tenant?.joiningDate ? new Date(tenant.joiningDate) : new Date();
+      snapshots.push({
+        effectiveFrom: Number.isNaN(joinDate.getTime()) ? new Date() : joinDate,
+        amount: fallback,
+      });
+    }
+  }
+
+  const currentAmount = expectFromTenant(tenant, roomsData);
+  const lastSnapshot = snapshots[snapshots.length - 1];
+  if (currentAmount > 0 && (!lastSnapshot || toNum(lastSnapshot.amount) !== currentAmount)) {
+    snapshots.push({
+      effectiveFrom: new Date(),
+      amount: currentAmount,
+    });
+  }
+
+  return snapshots.sort((a, b) => a.effectiveFrom - b.effectiveFrom);
+};
+
+const getExpectedRentForMonth = (tenant, y, m, roomsData) => {
+  const snapshots = buildRentSnapshots(tenant, roomsData);
+  if (!snapshots.length) return expectFromTenant(tenant, roomsData);
+
+  const cycleStart = getCycleStartForMonth(tenant, y, m);
+  if (!cycleStart) return expectFromTenant(tenant, roomsData);
+
+  const cycleEnd = new Date(cycleStart);
+  cycleEnd.setMonth(cycleEnd.getMonth() + 1);
+  let expected = 0;
+  const cycleStartTime = startOfDayTime(cycleStart);
+  const cycleEndTime = startOfDayTime(cycleEnd);
+  const hasSelectedShiftDate = Boolean(
+    tenant?.shiftEffectiveFrom || tenant?.shiftDate || tenant?.effectiveFrom
   );
+
+  for (const snap of snapshots) {
+    const snapDate = new Date(snap.effectiveFrom);
+    const isLegacyMonthStartShift =
+      !hasSelectedShiftDate &&
+      snap.source === "shift" &&
+      !Number.isNaN(snapDate.getTime()) &&
+      snapDate.getDate() === 1;
+    const appliesToCycle = isLegacyMonthStartShift
+      ? startOfDayTime(snap.effectiveFrom) <= cycleStartTime
+      : startOfDayTime(snap.effectiveFrom) < cycleEndTime;
+
+    if (appliesToCycle) {
+      expected = toNum(snap.amount);
+    } else {
+      break;
+    }
+  }
+
+  return expected || expectFromTenant(tenant, roomsData);
 };
 
 
@@ -1976,14 +2679,15 @@ if (tenant.firstRentMonth) {
     return ym && ym.y === y && ym.m === m;
   });
 
-  const expected = expectFromTenant(tenant, roomsData);
   const paidAmount = rentRec ? Number(rentRec.rentAmount || 0) : 0;
+  const expected = getExpectedRentForMonth(tenant, y, m, roomsData);
   const outstanding = Math.max(0, Number(expected || 0) - Number(paidAmount || 0));
 
   let label;
   let dateStr = "";
   const today = new Date();
-  const isPast = today >= periodEnd;
+  const isAdvanceCycle = tenant.firstRentStatus === "ADVANCE_PAID";
+  const isPast = isAdvanceCycle ? today >= periodStart : today >= periodEnd;
 
   if (paidAmount > 0 && expected > 0 && paidAmount < expected) {
     label = "Pending";
@@ -2008,10 +2712,11 @@ if (tenant.firstRentMonth) {
       });
     }
   } else {
-    // If due date (cycle end) has passed, mark as Due
+    // Advance-cycle rent is due at cycle start; normal-cycle rent is due at cycle end.
     label = isPast ? "Due" : "Upcoming";
-    // show due date (cycle end) in the badge
-    dateStr = periodEnd.toLocaleDateString("en-GB", {
+    const displayDate = isAdvanceCycle ? periodStart : periodEnd;
+
+    dateStr = displayDate.toLocaleDateString("en-GB", {
       day: "2-digit",
       month: "short",
     });
@@ -2094,17 +2799,14 @@ const getRentStatusLabelForSort = (tenant) => {
   // }, []);
   // useEffect(() => {
   //   axios
-  //     .get("   http://localhost:8000/api/rooms")
+  //     .get("   https://mutakegirlshostel-0ko7.onrender.com/api/rooms")
   //     .then((response) => setRoomsData(response.data))
   //     .catch((err) => console.error("Failed to fetch rooms:", err));
   // }, []);
 
   useEffect(() => {
-    axios
-      .get(`${apiUrl}rooms`)
-      .then((response) => setRoomsData(response.data))
-      .catch((err) => console.error("Failed to fetch rooms:", err));
-  }, []);
+    refreshRooms();
+  }, [refreshRooms]);
 
   const renderTenantPhoto = (tenant) => {
     const photoUrl = getTenantPhotoUrl(tenant);
@@ -2177,7 +2879,7 @@ const getRentStatusLabelForSort = (tenant) => {
 
       const joinDate = new Date(newTenant.joiningDate);
       const firstRentStatus =
-        firstRentStatusSelection || newTenant.firstRentStatus || "NOT_PAID";
+        firstRentStatusSelection || newTenant.firstRentStatus || "ADVANCE_PAID";
       const firstRentMonth =
         firstRentStatus === "ADVANCE_PAID"
           ? fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth())
@@ -2189,6 +2891,10 @@ const getRentStatusLabelForSort = (tenant) => {
         baseRent,
         firstRentStatus,
         firstRentMonth,
+        firstRentPaidDate:
+          firstRentStatus === "ADVANCE_PAID"
+            ? newTenant.firstRentPaidDate || getTodayISODate()
+            : "",
       });
 
       await axios.post(`${apiUrl}forms`, tenantToSave);
@@ -2217,10 +2923,11 @@ const getRentStatusLabelForSort = (tenant) => {
         dob: "",
         baseRent: "",
         rentAmount: "",
-        firstRentStatus: "NOT_PAID",
+        firstRentStatus: "ADVANCE_PAID",
+        firstRentPaidDate: "",
         firstRentMonth: "",
       });
-      setFirstRentStatusSelection("NOT_PAID");
+      setFirstRentStatusSelection("ADVANCE_PAID");
 
       // const response = await axios.get(`${apiUrl}`);
       // setFormData(response.data);
@@ -2241,7 +2948,7 @@ const getRentStatusLabelForSort = (tenant) => {
 
 const occupiedBedsSet = new Set(
   formData
-    .filter((t) => !t.leaveDate)
+    .filter((t) => !(t.leaveDate && hasLeaveDatePassed(t.leaveDate)))
     .map((t) => `${String(t.roomNo).trim()}-${String(t.bedNo).trim()}`)
 );
 
@@ -2335,9 +3042,13 @@ const filteredDeletedData = useMemo(() => {
     const d = new Date(t.leaveDate);
     d.setHours(0, 0, 0, 0);
 
-    return d <= today; // already left
+    return (
+      d <= today &&
+      tenantMatchesSearchText(t) &&
+      tenantMatchesSelectedYear(t)
+    ); // already left
   });
-}, [formData]);
+}, [formData, searchText, selectedYear]);
 
 
 
@@ -2384,6 +3095,115 @@ const getBillingMonthsUpToNow = (tenant) => {
   return months;
 };
 
+const getBillingMonthsUpToDate = (tenant, cutoffDate) => {
+  if (!tenant?.joiningDate) return [];
+
+  const firstBillYM = getFirstBillYM(tenant);
+  const cutoff = cutoffDate ? new Date(cutoffDate) : new Date();
+  if (Number.isNaN(cutoff.getTime())) return [];
+
+  const lastYM = cutoff.getFullYear() * 12 + cutoff.getMonth();
+  const months = [];
+
+  for (let ym = firstBillYM; ym <= lastYM; ym++) {
+    const y = Math.floor(ym / 12);
+    const m = ym % 12;
+    months.push({ y, m });
+  }
+
+  return months;
+};
+
+const getLeaveSettlementMonths = (tenant, cutoffDate) => {
+  const cutoff = cutoffDate ? new Date(cutoffDate) : null;
+  if (!tenant?.joiningDate || !cutoff || Number.isNaN(cutoff.getTime())) return [];
+
+  const joinDate = new Date(tenant.joiningDate);
+  if (Number.isNaN(joinDate.getTime())) return [];
+
+  const months = getBillingMonthsUpToDate(tenant, cutoffDate);
+  const firstBillYM = getFirstBillYM(tenant);
+  return months
+    .map(({ y, m }) => {
+      const cycleIndex = y * 12 + m - firstBillYM;
+      const periodStart = new Date(joinDate);
+      periodStart.setMonth(periodStart.getMonth() + cycleIndex);
+      periodStart.setHours(0, 0, 0, 0);
+      const periodEnd = new Date(periodStart);
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+      periodEnd.setHours(0, 0, 0, 0);
+
+      const cell = getMonthCell(tenant, y, m);
+      const outstanding = Number(cell?.outstanding || 0);
+      const isSettledByLeaveDate = periodEnd <= cutoff;
+
+      if (!isSettledByLeaveDate || outstanding <= 0) return null;
+
+      return {
+        key: `${y}-${m}`,
+        label: new Date(y, m, 1).toLocaleString("en-IN", {
+          month: "short",
+          year: "numeric",
+        }),
+        amount: outstanding,
+      };
+    })
+    .filter(Boolean);
+};
+
+const getLeaveExtraDaysDeduction = (tenant, cutoffDate) => {
+  const cutoff = cutoffDate ? new Date(cutoffDate) : null;
+  if (!tenant?.joiningDate || !cutoff || Number.isNaN(cutoff.getTime())) return null;
+
+  cutoff.setHours(0, 0, 0, 0);
+
+  const joinDate = new Date(tenant.joiningDate);
+  if (Number.isNaN(joinDate.getTime())) return null;
+  joinDate.setHours(0, 0, 0, 0);
+
+  const months = getBillingMonthsUpToDate(tenant, cutoffDate);
+  const firstBillYM = getFirstBillYM(tenant);
+  const active = months
+    .map(({ y, m }) => {
+      const cycleIndex = y * 12 + m - firstBillYM;
+      const periodStart = new Date(joinDate);
+      periodStart.setMonth(periodStart.getMonth() + cycleIndex);
+      periodStart.setHours(0, 0, 0, 0);
+
+      const periodEnd = new Date(periodStart);
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+      periodEnd.setHours(0, 0, 0, 0);
+
+      return { y, m, periodStart, periodEnd };
+    })
+    .find(({ periodStart, periodEnd }) => cutoff > periodStart && cutoff < periodEnd);
+
+  if (!active) return null;
+
+  const expectedRent = Number(getExpectedRentForMonth(tenant, active.y, active.m, roomsData) || 0);
+  if (expectedRent <= 0) return null;
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const cycleDays = Math.max(1, Math.round((active.periodEnd - active.periodStart) / msPerDay));
+  const extraDays = Math.max(0, Math.round((cutoff - active.periodStart) / msPerDay));
+  if (extraDays <= 0 || extraDays >= cycleDays) return null;
+
+  const cell = getMonthCell(tenant, active.y, active.m);
+  const alreadyPaid = Number(cell?.amountPaid || 0);
+  const proratedAmount = Math.round((expectedRent / cycleDays) * extraDays);
+  const amount = Math.max(0, proratedAmount - alreadyPaid);
+  if (amount <= 0) return null;
+
+  return {
+    key: "extra-days-rent",
+    label: `Extra days rent (${extraDays} day${extraDays === 1 ? "" : "s"})`,
+    amount,
+    days: extraDays,
+    dailyRent: expectedRent / cycleDays,
+    cycleRange: `${fmtDM(active.periodStart)} - ${fmtDM(active.periodEnd)}`,
+  };
+};
+
 const calculateDue = (rents = [], joiningDateStr, tenant, roomsData) => {
   if (!tenant?.joiningDate) return 0;
 
@@ -2408,25 +3228,54 @@ const compareRoomBed = (a, b) => {
   return toInt(a.bedNo) - toInt(b.bedNo);
 };
 
+  const leaveSettlementMonths = useMemo(
+    () => getLeaveSettlementMonths(currentLeaveTenant, selectedLeaveDate),
+    [currentLeaveTenant, roomsData, selectedLeaveDate]
+  );
+
+  const selectedLeaveSettlementMonths = useMemo(
+    () =>
+      leaveSettlementMonths.filter((month) =>
+        leaveSelectedMonths.includes(month.key)
+      ),
+    [leaveSettlementMonths, leaveSelectedMonths]
+  );
+
+  const leaveExtraDaysDeduction = useMemo(
+    () => getLeaveExtraDaysDeduction(currentLeaveTenant, selectedLeaveDate),
+    [currentLeaveTenant, roomsData, selectedLeaveDate]
+  );
+
+  const leaveSettlementSummary = useMemo(() => {
+    const grossDeposit = Number(currentLeaveTenant?.depositAmount || 0);
+    const monthDeduction = selectedLeaveSettlementMonths.reduce(
+      (sum, month) => sum + Number(month.amount || 0),
+      0
+    );
+    const extraDaysDeduction = Number(leaveExtraDaysDeduction?.amount || 0);
+    const totalDeduction = monthDeduction + extraDaysDeduction;
+
+    return {
+      grossDeposit,
+      monthDeduction,
+      extraDaysDeduction,
+      totalDeduction,
+      refundableDeposit: Math.max(0, grossDeposit - totalDeduction),
+      amountDueFromTenant: Math.max(0, totalDeduction - grossDeposit),
+    };
+  }, [currentLeaveTenant, selectedLeaveSettlementMonths, leaveExtraDaysDeduction]);
+
   // Tenants to show in the main table (hide those who have left)
   const visibleTenants = useMemo(() => {
-  const search = (searchText || "").toLowerCase();
-
   // 1) Filter tenants (same logic you already had)
   const base = (formData || []).filter((t) => {
-    const name = (t.name || "").toLowerCase();
-    const bed = t.bedNo != null ? String(t.bedNo) : "";
-    const joinYear = t.joiningDate
-      ? String(new Date(t.joiningDate).getFullYear())
-      : null;
-
     const leaveISO = leaveDates[t._id];
     const isLeaved = leaveISO && new Date(leaveISO) < new Date();
 
     return (
       !isLeaved &&
-      (name.includes(search) || bed.includes(search)) &&
-      (selectedYear === "All Records" || joinYear === String(selectedYear))
+      tenantMatchesSearchText(t) &&
+      tenantMatchesSelectedYear(t)
     );
   });
 
@@ -2647,6 +3496,13 @@ setEditingTenant(tenant);
 setEditMonthYM({ y: year, m: monthIdx });
 // date field now will be "today", set once on open:
 setEditRentDate(new Date().toISOString().split("T")[0]);
+const cell = getMonthCell(tenant, year, monthIdx);
+setEditRentAmount(
+  Number(cell?.outstanding || cell?.expected || 0) > 0
+    ? String(Number(cell?.outstanding || cell?.expected || 0))
+    : ""
+);
+setRentUpdateMode("add");
     // Optional: clear or auto-suggest amount
     // setEditRentAmount(expectFromTenant(tenant, roomsData));
   };
@@ -2674,6 +3530,8 @@ setEditRentDate(new Date().toISOString().split("T")[0]);
       bedPrice: price,
       baseRent: price,
       rentAmount: price,
+      firstRentStatus: "ADVANCE_PAID",
+      firstRentPaidDate: new Date().toISOString().slice(0, 10),
       // clear inline “other bed” form fields if you use them
       newBedNo: "",
       newBedPrice: "",
@@ -2696,6 +3554,7 @@ setEditRentDate(new Date().toISOString().split("T")[0]);
     const dueList = getAllPendingMonths(tenant);
     setDueMonths(dueList);
     setSelectedTenantName(tenant.name || "");
+    setSelectedTenant(tenant);
     setShowDueModal(true);
   };
 
@@ -2703,6 +3562,7 @@ setEditRentDate(new Date().toISOString().split("T")[0]);
     if (!tenant) return;
     setShiftTenant(tenant);
     setShiftTargetKey("");
+    setShiftEffectiveDate(new Date().toISOString().slice(0, 10));
     setShowShiftModal(true);
   };
 
@@ -2722,11 +3582,17 @@ setEditRentDate(new Date().toISOString().split("T")[0]);
         today.setHours(0, 0, 0, 0);
         joinDate.setHours(0, 0, 0, 0);
         const diffDays = (today - joinDate) / (1000 * 60 * 60 * 24);
-        if (diffDays >= -30 && diffDays < 31) {
+        if (diffDays >= 0 && diffDays < 31) {
           copy.firstRentStatus = "ADVANCE_PAID";
           copy.firstRentPaidDate = copy.firstRentPaidDate || new Date().toISOString().slice(0, 10);
         }
       }
+    }
+    if (!copy.firstRentMonth && copy.joiningDate) {
+      copy.firstRentMonth = getFirstRentMonthForStatus(
+        copy.joiningDate,
+        copy.firstRentStatus || "NOT_PAID"
+      );
     }
     setEditTenantData(copy);
     setShowEditModal(true);
@@ -2887,39 +3753,261 @@ const EMPTY_TENANT = {
   dateOfJoiningCollege: "",
   companyAddress: "",
   relativeAddress: "",
-  firstRentStatus: "NOT_PAID",
-firstRentMonth: "",
+  firstRentStatus: "ADVANCE_PAID",
+  firstRentPaidDate: "",
+  firstRentMonth: "",
 
 };
-  const handleDownloadExcel = () => {
-    const sheetData = formData.map((item) => ({
-      SrNo: item.srNo,
-      Name: item.name,
-      Phone: item.phoneNo,
-      JoiningDate: item.joiningDate,
-      RoomNo: item.roomNo,
-      FloorNo: item.floorNo,
-      BedNo: item.bedNo,
-      DepositAmount: item.depositAmount,
-      Address: item.address,
-      RelativeAddress1: item.relativeAddress1,
-      RelativeAddress2: item.relativeAddress2,
-      CompanyAddress: item.companyAddress,
-      DateOfJoiningCollege: item.dateOfJoiningCollege,
-      DOB: item.dob,
-    }));
 
-    const worksheet = XLSX.utils.json_to_sheet(sheetData);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Tenants");
+const EXPORT_COLORS = {
+  title: "1E3A8A",
+  header: "2563EB",
+  section: "0F766E",
+  labelFill: "EFF6FF",
+  bandFill: "F8FAFC",
+  border: "CBD5E1",
+  text: "0F172A",
+  subText: "475569",
+};
 
-    const excelBuffer = XLSX.write(workbook, {
-      bookType: "xlsx",
-      type: "array",
-    });
-    const data = new Blob([excelBuffer], { type: "application/octet-stream" });
-    saveAs(data, "tenant_data.xlsx");
+const rgb = (hex) => ({ rgb: hex });
+
+const borderStyle = (color = EXPORT_COLORS.border) => ({
+  top: { style: "thin", color: rgb(color) },
+  bottom: { style: "thin", color: rgb(color) },
+  left: { style: "thin", color: rgb(color) },
+  right: { style: "thin", color: rgb(color) },
+});
+
+const setCellStyle = (ws, row, col, style) => {
+  const cell = ws[XLSX.utils.encode_cell({ r: row, c: col })];
+  if (cell) cell.s = style;
+};
+
+const mergeRow = (ws, row, lastCol) => {
+  ws["!merges"] = ws["!merges"] || [];
+  ws["!merges"].push({ s: { r: row, c: 0 }, e: { r: row, c: lastCol } });
+};
+
+const styleDataGrid = (ws, startRow, endRow, colCount, options = {}) => {
+  const alternate = options.alternate !== false;
+  for (let r = startRow; r <= endRow; r++) {
+    for (let c = 0; c < colCount; c++) {
+      const isLabel = c === 0;
+      const fillColor = alternate && r % 2 === 0 ? EXPORT_COLORS.bandFill : "FFFFFF";
+      setCellStyle(ws, r, c, {
+        font: {
+          name: "Calibri",
+          sz: 11,
+          color: rgb(EXPORT_COLORS.text),
+          bold: isLabel,
+        },
+        fill: {
+          patternType: "solid",
+          fgColor: rgb(isLabel ? EXPORT_COLORS.labelFill : fillColor),
+        },
+        border: borderStyle(),
+        alignment: {
+          vertical: "center",
+          horizontal: "left",
+          wrapText: true,
+        },
+      });
+    }
+  }
+};
+
+const styleTitleRow = (ws, row, lastCol, subtitle = false) => {
+  mergeRow(ws, row, lastCol);
+  setCellStyle(ws, row, 0, {
+    font: {
+      name: "Calibri",
+      sz: subtitle ? 10 : 14,
+      bold: !subtitle,
+      italic: subtitle,
+      color: rgb(subtitle ? EXPORT_COLORS.subText : "FFFFFF"),
+    },
+    fill: {
+      patternType: "solid",
+      fgColor: rgb(subtitle ? "E2E8F0" : EXPORT_COLORS.title),
+    },
+    border: borderStyle(subtitle ? "CBD5E1" : EXPORT_COLORS.title),
+    alignment: {
+      horizontal: subtitle ? "left" : "center",
+      vertical: "center",
+      wrapText: true,
+    },
+  });
+};
+
+const styleSectionRow = (ws, row, lastCol) => {
+  mergeRow(ws, row, lastCol);
+  setCellStyle(ws, row, 0, {
+    font: {
+      name: "Calibri",
+      sz: 11,
+      bold: true,
+      color: rgb("FFFFFF"),
+    },
+    fill: {
+      patternType: "solid",
+      fgColor: rgb(EXPORT_COLORS.section),
+    },
+    border: borderStyle(EXPORT_COLORS.section),
+    alignment: {
+      horizontal: "left",
+      vertical: "center",
+      wrapText: true,
+    },
+  });
+};
+
+const normalizeSheetText = (ws, startRow, endRow, startCol, endCol) => {
+  for (let r = startRow; r <= endRow; r++) {
+    for (let c = startCol; c <= endCol; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[addr];
+      if (!cell || cell.v === undefined || cell.v === null || cell.v === "") continue;
+      cell.v = String(cell.v);
+      cell.t = "s";
+    }
+  }
+};
+
+const setHyperlinkCell = (ws, row, col, url, tooltip) => {
+  if (!url) return;
+  const addr = XLSX.utils.encode_cell({ r: row, c: col });
+  const cell = ws[addr];
+  if (!cell) return;
+  cell.l = {
+    Target: url,
+    Tooltip: tooltip || url,
   };
+};
+
+const getExportDocuments = (...sources) => {
+  const candidates = [];
+
+  sources.forEach((source) => {
+    if (!source || typeof source !== "object") return;
+    candidates.push(
+      source.documents,
+      source.documentFiles,
+      source.uploadedDocuments,
+      source.docs
+    );
+  });
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      return candidate;
+    }
+  }
+
+  return [];
+};
+
+const handleDownloadExcel = () => {
+  const headers = [
+    "SrNo",
+    "Name",
+    "Phone",
+    "JoiningDate",
+    "RoomNo",
+    "FloorNo",
+    "BedNo",
+    "DepositAmount",
+    "Address",
+    "RelativeAddress1",
+    "RelativeAddress2",
+    "CompanyAddress",
+    "DateOfJoiningCollege",
+    "DOB",
+  ];
+
+  const rows = formData.map((item) => ([
+    item.srNo ?? "",
+    item.name ?? "",
+    item.phoneNo ?? "",
+    item.joiningDate ?? "",
+    item.roomNo ?? "",
+    item.floorNo ?? "",
+    item.bedNo ?? "",
+    item.depositAmount ?? "",
+    item.address ?? "",
+    item.relativeAddress1 ?? "",
+    item.relativeAddress2 ?? "",
+    item.companyAddress ?? "",
+    item.dateOfJoiningCollege ?? "",
+    item.dob ?? "",
+  ]));
+
+  const aoa = [
+    ["Tenant Summary Report"],
+    [`Generated on ${new Date().toLocaleString("en-IN")}`],
+    [],
+    headers,
+    ...rows,
+  ];
+
+  const worksheet = XLSX.utils.aoa_to_sheet(aoa);
+  normalizeSheetText(worksheet, 4, aoa.length - 1, 0, headers.length - 1);
+  worksheet["!merges"] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: headers.length - 1 } },
+  ];
+  worksheet["!cols"] = [
+    { wch: 10 },
+    { wch: 20 },
+    { wch: 14 },
+    { wch: 14 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 10 },
+    { wch: 14 },
+    { wch: 26 },
+    { wch: 22 },
+    { wch: 22 },
+    { wch: 22 },
+    { wch: 18 },
+    { wch: 18 },
+  ];
+
+  styleTitleRow(worksheet, 0, headers.length - 1, false);
+  styleTitleRow(worksheet, 1, headers.length - 1, true);
+  for (let c = 0; c < headers.length; c++) {
+    setCellStyle(worksheet, 3, c, {
+      font: {
+        name: "Calibri",
+        sz: 11,
+        bold: true,
+        color: rgb("FFFFFF"),
+      },
+      fill: {
+        patternType: "solid",
+        fgColor: rgb(EXPORT_COLORS.header),
+      },
+      border: borderStyle(EXPORT_COLORS.header),
+      alignment: {
+        horizontal: "center",
+        vertical: "center",
+        wrapText: true,
+      },
+    });
+  }
+  styleDataGrid(worksheet, 4, aoa.length - 1, headers.length);
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Tenants");
+
+  const excelBuffer = XLSX.write(workbook, {
+    bookType: "xlsx",
+    type: "array",
+    cellStyles: true,
+  });
+  const data = new Blob([excelBuffer], { type: "application/octet-stream" });
+  saveAs(data, "tenant_data.xlsx");
+};
   const getDisplayedRent = (rents = []) => {
     const now = new Date();
     const currentMonth = now.getMonth();
@@ -3038,18 +4126,85 @@ const handleMobileSectionSelect = (key) => {
   const handleLeave = (tenant) => {
     setCurrentLeaveId(tenant._id);
     setCurrentLeaveName(tenant.name);
+    setCurrentLeaveTenant(tenant);
+    setSelectedLeaveDate(new Date().toISOString().slice(0, 10));
+    setLeaveDeductFromDeposit(false);
+    setLeaveSelectedMonths([]);
     setShowLeaveModal(true);
   };
+
+  const closeLeaveModal = () => {
+    setShowLeaveModal(false);
+    setCurrentLeaveTenant(null);
+    setLeaveDeductFromDeposit(false);
+    setLeaveSelectedMonths([]);
+    setSelectedLeaveDate("");
+    setCurrentLeaveId(null);
+    setCurrentLeaveName("");
+  };
+
  const confirmLeave = async () => {
   if (!selectedLeaveDate) {
     alert("Please select a leave date.");
     return;
   }
 
+  const settlementMonths = leaveSettlementMonths;
+  const selectedSettlementMonths = selectedLeaveSettlementMonths;
+  if (
+    leaveDeductFromDeposit &&
+    settlementMonths.length > 0 &&
+    selectedSettlementMonths.length === 0 &&
+    !leaveExtraDaysDeduction
+  ) {
+    alert("Please select at least one month to deduct, or turn off deposit deduction.");
+    return;
+  }
+  const grossDeposit = leaveSettlementSummary.grossDeposit;
+  const totalDeduction = leaveDeductFromDeposit
+    ? leaveSettlementSummary.totalDeduction
+    : 0;
+  const refundableDeposit = leaveDeductFromDeposit
+    ? leaveSettlementSummary.refundableDeposit
+    : grossDeposit;
+  const amountDueFromTenant = leaveDeductFromDeposit
+    ? leaveSettlementSummary.amountDueFromTenant
+    : 0;
+  const deductionRows = leaveDeductFromDeposit
+    ? [
+        ...selectedSettlementMonths.map((month) => ({
+          month: month.label,
+          amount: Number(month.amount || 0),
+        })),
+        ...(leaveExtraDaysDeduction
+          ? [
+              {
+                month: leaveExtraDaysDeduction.label,
+                amount: Number(leaveExtraDaysDeduction.amount || 0),
+                days: leaveExtraDaysDeduction.days,
+                dailyRent: Math.round(Number(leaveExtraDaysDeduction.dailyRent || 0)),
+                cycleRange: leaveExtraDaysDeduction.cycleRange,
+              },
+            ]
+          : []),
+      ]
+    : [];
+
   try {
     const payload = {
       tenantId: currentLeaveId,
       leaveDate: selectedLeaveDate,
+      leaveSettlement: {
+        deductFromDeposit: leaveDeductFromDeposit,
+        selectedMonths: leaveDeductFromDeposit
+          ? selectedSettlementMonths.map((month) => month.label)
+          : [],
+        deductions: deductionRows,
+        grossDeposit,
+        totalDeduction,
+        refundableDeposit,
+        amountDueFromTenant,
+      },
     };
 
     console.log("Sending leave payload:", payload);
@@ -3060,7 +4215,40 @@ const handleMobileSectionSelect = (key) => {
     );
 
     alert("Leave marked successfully");
-    setShowLeaveModal(false);
+    const updatedTenant = res?.data?.tenant;
+    if (updatedTenant?._id) {
+      setFormData((prev) =>
+        prev.map((tenant) =>
+          tenant._id === updatedTenant._id ? { ...tenant, ...updatedTenant } : tenant
+        )
+      );
+      setTenants((prev) =>
+        prev.map((tenant) =>
+          tenant._id === updatedTenant._id ? { ...tenant, ...updatedTenant } : tenant
+        )
+      );
+    } else {
+      setFormData((prev) =>
+        prev.map((tenant) =>
+          tenant._id === currentLeaveId
+            ? { ...tenant, leaveDate: selectedLeaveDate, isOnLeave: true, leaveSettlement: payload.leaveSettlement }
+            : tenant
+        )
+      );
+      setTenants((prev) =>
+        prev.map((tenant) =>
+          tenant._id === currentLeaveId
+            ? { ...tenant, leaveDate: selectedLeaveDate, isOnLeave: true, leaveSettlement: payload.leaveSettlement }
+            : tenant
+        )
+      );
+    }
+    setLeaveDates((prev) => ({
+      ...prev,
+      [currentLeaveId]: selectedLeaveDate,
+    }));
+    closeLeaveModal();
+    await refreshTenants();
 
   } catch (error) {
     console.error(
@@ -3121,13 +4309,23 @@ const getAllPendingMonths = (tenant) => {
     const c = getMonthCell(tenant, y, m);
     const isRealDue =
       c?.isPast && (c.label === "Due" || c.label === "Pending");
-    if (isRealDue) {
-      out.push(
-        new Date(y, m, 1).toLocaleString("default", {
+    const outstanding = Number(c?.outstanding || 0);
+    if (isRealDue && outstanding > 0) {
+      const monthLabel = new Date(y, m, 1).toLocaleString("default", {
           month: "long",
           year: "numeric",
-        })
-      );
+      });
+      out.push({
+        y,
+        m,
+        key: `${y}-${m}`,
+        label: monthLabel,
+        cycle: c.rangeText || "",
+        dueDate: c.dateStr || "",
+        expected: Number(c.expected || 0),
+        paid: Number(c.amountPaid || 0),
+        outstanding,
+      });
     }
   });
 
@@ -3175,27 +4373,98 @@ const getAllPendingMonths = (tenant) => {
 
   // formupdate
 
- const handleUndoClick = async (tenantId) => {
-  if (!window.confirm("Undo this tenant's leave?")) return;
+ const formatVacantBedOption = (bed) =>
+  `Room ${bed.roomNo} - Bed ${bed.bedNo}` +
+  `${bed.category ? ` - ${bed.category}` : ""}` +
+  `${bed.floorNo ? ` - Floor ${bed.floorNo}` : ""}` +
+  `${bed.price != null ? ` - Rs. ${bed.price}` : ""}`;
+
+ const openUndoBedModal = (tenantId, message, vacantBeds = []) => {
+  if (!vacantBeds.length) {
+    alert(`${message}\n\nNo vacant beds are available right now.`);
+    return;
+  }
+
+  setUndoBedModal({
+    show: true,
+    tenantId,
+    message,
+    vacantBeds,
+    selectedIndex: "",
+    busy: false,
+  });
+};
+
+ const undoLeaveRequest = async (tenantId, bedOverride = null) => {
+  const payload = { id: tenantId };
+  if (bedOverride) {
+    payload.roomNo = bedOverride.roomNo;
+    payload.bedNo = bedOverride.bedNo;
+    payload.category = bedOverride.category;
+  }
+
+  return axios.post(`${apiUrl}/cancel-leave`, payload);
+};
+
+ const handleConfirmUndoWithSelectedBed = async () => {
+  const selectedIndex = Number(undoBedModal.selectedIndex);
+  const pickedBed = undoBedModal.vacantBeds[selectedIndex];
+  if (!pickedBed) {
+    alert("Please select a vacant bed.");
+    return;
+  }
 
   try {
-    const res = await axios.post(
-      `${apiUrl}/cancel-leave`,
-      { id: tenantId }
-    );
+    setUndoBedModal((prev) => ({ ...prev, busy: true }));
+    const retryRes = await undoLeaveRequest(undoBedModal.tenantId, pickedBed);
+    if (retryRes.data?.success) {
+      const restored = retryRes.data?.form;
+      alert(
+        `Leave undone successfully.\nAssigned bed: Room ${restored?.roomNo || pickedBed.roomNo}, Bed ${restored?.bedNo || pickedBed.bedNo}`
+      );
+      setUndoBedModal({
+        show: false,
+        tenantId: "",
+        message: "",
+        vacantBeds: [],
+        selectedIndex: "",
+        busy: false,
+      });
+      await refreshTenants?.();
+      return;
+    }
+    alert(retryRes.data?.message || "Failed to undo leave.");
+    setUndoBedModal((prev) => ({ ...prev, busy: false }));
+  } catch (retryError) {
+    console.error("Error undoing leave with selected bed:", retryError);
+    alert(retryError?.response?.data?.message || "Failed to undo leave with selected bed.");
+    setUndoBedModal((prev) => ({ ...prev, busy: false }));
+  }
+};
+
+ const handleUndoClick = async (tenantId) => {
+  try {
+    let res = await undoLeaveRequest(tenantId);
 
     if (res.data?.success) {
-      alert("Leave undone successfully.");
-
-      // Refresh tenant list from backend
+      const restored = res.data?.form;
+      alert(
+        `Leave undone successfully.\nAssigned bed: Room ${restored?.roomNo || "-"}, Bed ${restored?.bedNo || "-"}`
+      );
       await refreshTenants?.();
-
-    } else {
-      alert(res.data?.message || "Failed to undo leave.");
+      return;
     }
+
+    alert(res.data?.message || "Failed to undo leave.");
   } catch (error) {
+    const data = error?.response?.data;
+    if (error?.response?.status === 409 && (data?.code === "BED_OCCUPIED" || data?.code === "BED_REQUIRED")) {
+      openUndoBedModal(tenantId, data.message || "Please select another vacant bed.", data.vacantBeds || []);
+      return;
+    }
+
     console.error("Error undoing leave:", error);
-    alert("Failed to undo leave.");
+    alert(data?.message || "Failed to undo leave.");
   }
 };
   const handleDownloadForm = async (tenant) => {
@@ -3234,10 +4503,59 @@ const getAllPendingMonths = (tenant) => {
     // ✅ Bed price / base rent fallback
     const bedPrice = toNum(item.baseRent); // your bed price stored here
     const effectiveRentAmount = currentMonthRentAmount > 0 ? currentMonthRentAmount : bedPrice;
+    const exportDocs = getExportDocuments(item, tenant);
+    const docLinkRows = [];
+    const settlement = item.leaveSettlement || {};
+    const settlementDeductions = Array.isArray(settlement.deductions)
+      ? settlement.deductions
+      : [];
+    const totalDeductionAmount =
+      settlement.totalDeduction != null
+        ? Number(settlement.totalDeduction || 0)
+        : settlementDeductions.reduce(
+            (sum, deduction) => sum + Number(deduction?.amount || 0),
+            0
+          );
+    const extraDaysDeductions = settlementDeductions.filter((deduction) => {
+      const label = String(deduction?.month || "").toLowerCase();
+      return (
+        Number(deduction?.days || 0) > 0 ||
+        Number(deduction?.dailyRent || 0) > 0 ||
+        Boolean(deduction?.cycleRange) ||
+        label.includes("extra")
+      );
+    });
+    const extraDaysDeductionAmount = extraDaysDeductions.reduce(
+      (sum, deduction) => sum + Number(deduction?.amount || 0),
+      0
+    );
+    const fullMonthDeductionAmount = Math.max(
+      0,
+      totalDeductionAmount - extraDaysDeductionAmount
+    );
+    const extraDaysDetailText = extraDaysDeductions
+      .map((deduction) => {
+        const parts = [
+          deduction.month || "Extra days rent",
+          deduction.days ? `${deduction.days} days` : "",
+          deduction.dailyRent
+            ? `Rs. ${Number(deduction.dailyRent || 0).toLocaleString("en-IN")} per day`
+            : "",
+          deduction.cycleRange || "",
+          `Rs. ${Number(deduction.amount || 0).toLocaleString("en-IN")}`,
+        ].filter(Boolean);
+        return parts.join(" | ");
+      })
+      .join("\n");
+
+    const reportTitle = `Tenant Report - ${item.name || "Tenant"}`;
+    const generatedLine = `Generated on ${new Date().toLocaleString("en-IN")}`;
 
     const formatted = [
+      [reportTitle],
+      [generatedLine],
+      [],
       ["Field", "Value"],
-
       ["SrNo", item.srNo ?? ""],
       ["Name", item.name ?? ""],
       ["Phone", item.phoneNo ?? ""],
@@ -3252,8 +4570,27 @@ const getAllPendingMonths = (tenant) => {
       ["CompanyAddress", item.companyAddress ?? ""],
       ["DateOfJoiningCollege", formatDate(item.dateOfJoiningCollege)],
       ["DOB", formatDate(item.dob)],
- 
-    
+      ["LeaveDate", formatDate(item.leaveDate)],
+      [
+        "DeductFromDeposit",
+        settlement.deductFromDeposit ? "Yes" : "No",
+      ],
+      [
+        "GrossDeposit",
+        settlement.grossDeposit ?? item.depositAmount ?? "",
+      ],
+      ["FullMonthDeduction", fullMonthDeductionAmount],
+      ["ExtraDaysDeduction", extraDaysDeductionAmount],
+      ["ExtraDaysDetails", extraDaysDetailText || "N/A"],
+      ["TotalDeduction", totalDeductionAmount],
+      [
+        "RefundableDeposit",
+        settlement.refundableDeposit ?? item.depositAmount ?? "",
+      ],
+      [
+        "AmountDueFromTenant",
+        settlement.amountDueFromTenant ?? 0,
+      ],
     ];
 
     // ✅ Optional: include full rent history
@@ -3266,14 +4603,382 @@ const getAllPendingMonths = (tenant) => {
       });
     }
 
+    if (exportDocs.length > 0) {
+      formatted.push(["", ""]);
+      formatted.push(["Documents", ""]);
+      exportDocs.forEach((doc, i) => {
+        const href = docHrefSafe(doc);
+        formatted.push([`Doc ${i + 1} Relation`, doc.relation || ""]);
+        formatted.push([`Doc ${i + 1} URL`, href || "No link available"]);
+        if (href) {
+          docLinkRows.push({
+            row: formatted.length - 1,
+            label: doc.fileName || doc.relation || `Document ${i + 1}`,
+            url: href,
+          });
+        }
+      });
+    }
+
     const ws = XLSX.utils.aoa_to_sheet(formatted);
+    normalizeSheetText(ws, 4, formatted.length - 1, 0, 1);
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },
+    ];
     ws["!cols"] = [{ wch: 32 }, { wch: 45 }];
+
+    styleTitleRow(ws, 0, 1, false);
+    styleTitleRow(ws, 1, 1, true);
+    setCellStyle(ws, 3, 0, {
+      font: {
+        name: "Calibri",
+        sz: 11,
+        bold: true,
+        color: rgb("FFFFFF"),
+      },
+      fill: {
+        patternType: "solid",
+        fgColor: rgb(EXPORT_COLORS.header),
+      },
+      border: borderStyle(EXPORT_COLORS.header),
+      alignment: {
+        horizontal: "center",
+        vertical: "center",
+        wrapText: true,
+      },
+    });
+    setCellStyle(ws, 3, 1, {
+      font: {
+        name: "Calibri",
+        sz: 11,
+        bold: true,
+        color: rgb("FFFFFF"),
+      },
+      fill: {
+        patternType: "solid",
+        fgColor: rgb(EXPORT_COLORS.header),
+      },
+      border: borderStyle(EXPORT_COLORS.header),
+      alignment: {
+        horizontal: "center",
+        vertical: "center",
+        wrapText: true,
+      },
+    });
+
+    for (let row = 4; row < formatted.length; row++) {
+      const [label, value] = formatted[row] || [];
+      if (!label && !value) continue;
+
+      if (label && !value && label !== "Field") {
+        styleSectionRow(ws, row, 1);
+        continue;
+      }
+
+      const fillColor = row % 2 === 0 ? EXPORT_COLORS.bandFill : "FFFFFF";
+      setCellStyle(ws, row, 0, {
+        font: {
+          name: "Calibri",
+          sz: 11,
+          bold: true,
+          color: rgb(EXPORT_COLORS.text),
+        },
+        fill: {
+          patternType: "solid",
+          fgColor: rgb(EXPORT_COLORS.labelFill),
+        },
+        border: borderStyle(),
+        alignment: {
+          horizontal: "left",
+          vertical: "center",
+          wrapText: true,
+        },
+      });
+      setCellStyle(ws, row, 1, {
+        font: {
+          name: "Calibri",
+          sz: 11,
+          color: rgb(EXPORT_COLORS.text),
+        },
+        fill: {
+          patternType: "solid",
+          fgColor: rgb(fillColor),
+        },
+        border: borderStyle(),
+        alignment: {
+          horizontal: "left",
+          vertical: "center",
+          wrapText: true,
+        },
+      });
+    }
+
+    docLinkRows.forEach(({ row, url, label }) => {
+      setCellStyle(ws, row, 1, {
+        font: {
+          name: "Calibri",
+          sz: 11,
+          color: rgb("0563C1"),
+          underline: true,
+        },
+        fill: {
+          patternType: "solid",
+          fgColor: rgb(row % 2 === 0 ? EXPORT_COLORS.bandFill : "FFFFFF"),
+        },
+        border: borderStyle(),
+        alignment: {
+          horizontal: "left",
+          vertical: "center",
+          wrapText: true,
+        },
+      });
+      setHyperlinkCell(ws, row, 1, url, `Open ${label}`);
+    });
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Tenant Data");
 
+    const settlementRows = [
+      [`Leave Settlement - ${item.name || "Tenant"}`],
+      [`Generated on ${new Date().toLocaleString("en-IN")}`],
+      [],
+      ["Field", "Value"],
+      ["Leave Date", formatDate(item.leaveDate)],
+      ["Deduct From Deposit", settlement.deductFromDeposit ? "Yes" : "No"],
+      [
+        "Gross Deposit",
+        settlement.grossDeposit ?? item.depositAmount ?? "",
+      ],
+      ["Full Month Deduction", fullMonthDeductionAmount],
+      ["Extra Days Deduction", extraDaysDeductionAmount],
+      ["Total Deduction", totalDeductionAmount],
+      [
+        "Refundable Deposit",
+        settlement.refundableDeposit ?? item.depositAmount ?? "",
+      ],
+      [
+        "Amount Due From Tenant",
+        settlement.amountDueFromTenant ?? 0,
+      ],
+    ];
+
+    settlementDeductions.forEach((deduction, idx) => {
+      settlementRows.push([`Deduction ${idx + 1} Month`, deduction.month || ""]);
+      settlementRows.push([`Deduction ${idx + 1} Amount`, deduction.amount ?? 0]);
+      if (Number(deduction?.days || 0) > 0) {
+        settlementRows.push([`Deduction ${idx + 1} Days`, deduction.days]);
+      }
+      if (Number(deduction?.dailyRent || 0) > 0) {
+        settlementRows.push([`Deduction ${idx + 1} Daily Rent`, deduction.dailyRent]);
+      }
+      if (deduction?.cycleRange) {
+        settlementRows.push([`Deduction ${idx + 1} Cycle Range`, deduction.cycleRange]);
+      }
+    });
+
+    if (settlementRows.length > 1) {
+      const settlementSheet = XLSX.utils.aoa_to_sheet(settlementRows);
+      normalizeSheetText(settlementSheet, 4, settlementRows.length - 1, 0, 1);
+      settlementSheet["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } },
+      ];
+      settlementSheet["!cols"] = [{ wch: 24 }, { wch: 40 }];
+      styleTitleRow(settlementSheet, 0, 1, false);
+      styleTitleRow(settlementSheet, 1, 1, true);
+      setCellStyle(settlementSheet, 3, 0, {
+        font: {
+          name: "Calibri",
+          sz: 11,
+          bold: true,
+          color: rgb("FFFFFF"),
+        },
+        fill: {
+          patternType: "solid",
+          fgColor: rgb(EXPORT_COLORS.header),
+        },
+        border: borderStyle(EXPORT_COLORS.header),
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+          wrapText: true,
+        },
+      });
+      setCellStyle(settlementSheet, 3, 1, {
+        font: {
+          name: "Calibri",
+          sz: 11,
+          bold: true,
+          color: rgb("FFFFFF"),
+        },
+        fill: {
+          patternType: "solid",
+          fgColor: rgb(EXPORT_COLORS.header),
+        },
+        border: borderStyle(EXPORT_COLORS.header),
+        alignment: {
+          horizontal: "center",
+          vertical: "center",
+          wrapText: true,
+        },
+      });
+      for (let row = 4; row < settlementRows.length; row++) {
+        const fillColor = row % 2 === 0 ? EXPORT_COLORS.bandFill : "FFFFFF";
+        setCellStyle(settlementSheet, row, 0, {
+          font: {
+            name: "Calibri",
+            sz: 11,
+            bold: true,
+            color: rgb(EXPORT_COLORS.text),
+          },
+          fill: {
+            patternType: "solid",
+            fgColor: rgb(EXPORT_COLORS.labelFill),
+          },
+          border: borderStyle(),
+          alignment: {
+            horizontal: "left",
+            vertical: "center",
+            wrapText: true,
+          },
+        });
+        setCellStyle(settlementSheet, row, 1, {
+          font: {
+            name: "Calibri",
+            sz: 11,
+            color: rgb(EXPORT_COLORS.text),
+          },
+          fill: {
+            patternType: "solid",
+            fgColor: rgb(fillColor),
+          },
+          border: borderStyle(),
+          alignment: {
+            horizontal: "left",
+            vertical: "center",
+            wrapText: true,
+          },
+        });
+      }
+      XLSX.utils.book_append_sheet(wb, settlementSheet, "Leave Settlement");
+    }
+
+    const docs = exportDocs;
+    if (docs.length > 0) {
+      const docRows = [["Documents"]];
+      docRows.push([`Generated on ${new Date().toLocaleString("en-IN")}`]);
+      docRows.push([""]);
+      docRows.push(["Document", "Relation", "ImageKit URL"]);
+      docs.forEach((doc, idx) => {
+        const href = docHrefSafe(doc);
+        docRows.push([
+          doc.fileName || doc.relation || `Document ${idx + 1}`,
+          doc.relation || "",
+          href || "No link available",
+        ]);
+      });
+
+      const docsSheet = XLSX.utils.aoa_to_sheet(docRows);
+      normalizeSheetText(docsSheet, 4, docRows.length - 1, 0, 2);
+      docsSheet["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
+      ];
+      docsSheet["!cols"] = [{ wch: 28 }, { wch: 20 }, { wch: 90 }];
+      styleTitleRow(docsSheet, 0, 2, false);
+      styleTitleRow(docsSheet, 1, 2, true);
+      for (let c = 0; c < 3; c++) {
+        setCellStyle(docsSheet, 3, c, {
+          font: {
+            name: "Calibri",
+            sz: 11,
+            bold: true,
+            color: rgb("FFFFFF"),
+          },
+          fill: {
+            patternType: "solid",
+            fgColor: rgb(EXPORT_COLORS.header),
+          },
+          border: borderStyle(EXPORT_COLORS.header),
+          alignment: {
+            horizontal: "center",
+            vertical: "center",
+            wrapText: true,
+          },
+        });
+      }
+      for (let row = 4; row < docRows.length; row++) {
+        const fillColor = row % 2 === 0 ? EXPORT_COLORS.bandFill : "FFFFFF";
+        setCellStyle(docsSheet, row, 0, {
+          font: {
+            name: "Calibri",
+            sz: 11,
+            bold: true,
+            color: rgb(EXPORT_COLORS.text),
+          },
+          fill: {
+            patternType: "solid",
+            fgColor: rgb(EXPORT_COLORS.labelFill),
+          },
+          border: borderStyle(),
+          alignment: {
+            horizontal: "left",
+            vertical: "center",
+            wrapText: true,
+          },
+        });
+        setCellStyle(docsSheet, row, 1, {
+          font: {
+            name: "Calibri",
+            sz: 11,
+            color: rgb(EXPORT_COLORS.text),
+          },
+          fill: {
+            patternType: "solid",
+            fgColor: rgb(fillColor),
+          },
+          border: borderStyle(),
+          alignment: {
+            horizontal: "left",
+            vertical: "center",
+            wrapText: true,
+          },
+        });
+        const href = docHrefSafe(docs[row - 4]);
+        setCellStyle(docsSheet, row, 2, {
+          font: {
+            name: "Calibri",
+            sz: 11,
+            color: rgb(href ? "0563C1" : EXPORT_COLORS.text),
+            underline: !!href,
+          },
+          fill: {
+            patternType: "solid",
+            fgColor: rgb(fillColor),
+          },
+          border: borderStyle(),
+          alignment: {
+            horizontal: "left",
+            vertical: "center",
+            wrapText: true,
+          },
+        });
+        if (href) {
+          setHyperlinkCell(
+            docsSheet,
+            row,
+            2,
+            href,
+            `Open ${docs[row - 4]?.fileName || docs[row - 4]?.relation || "document"}`
+          );
+        }
+      }
+      XLSX.utils.book_append_sheet(wb, docsSheet, "Documents");
+    }
+
     const safeName = (item.name || "Tenant").replace(/[\\/:*?"<>|]/g, "_");
-    XLSX.writeFile(wb, `Tenant_${safeName}.xlsx`);
+    XLSX.writeFile(wb, `Tenant_${safeName}.xlsx`, { cellStyles: true });
   } catch (err) {
     console.error("Download failed", err);
     alert("Failed to download tenant data.");
@@ -3317,20 +5022,36 @@ const getAllPendingMonths = (tenant) => {
       const payload = {
         name: editTenantData.name || undefined,
         phoneNo: editTenantData.phoneNo || undefined,
+        address: editTenantData.address || undefined,
         pincode: editTenantData.pincode || undefined,
         city: editTenantData.city || undefined,
         state: editTenantData.state || undefined,
         houseNo: editTenantData.houseNo || undefined,
         nearbyPlace: editTenantData.nearbyPlace || undefined,
+        relativeAddress: editTenantData.relativeAddress || undefined,
+        relative1Relation: editTenantData.relative1Relation || undefined,
+        relative1Name: editTenantData.relative1Name || undefined,
+        relative1Phone: editTenantData.relative1Phone || undefined,
+        relative2Relation: editTenantData.relative2Relation || undefined,
+        relative2Name: editTenantData.relative2Name || undefined,
+        relative2Phone: editTenantData.relative2Phone || undefined,
+        companyAddress: editTenantData.companyAddress || undefined,
+        dateOfJoiningCollege: editTenantData.dateOfJoiningCollege || undefined,
+        dob: editTenantData.dob || undefined,
         roomNo: editTenantData.roomNo || undefined,
         bedNo: editTenantData.bedNo || undefined,
         joiningDate: joinDate,
         baseRent: toNumLocal(editTenantData.baseRent),
-        rentAmount: toNumLocal(editTenantData.rentAmount ?? editTenantData.baseRent),
+        rentAmount: toNumLocal(
+          editTenantData.baseRent !== "" && editTenantData.baseRent != null
+            ? editTenantData.baseRent
+            : editTenantData.rentAmount
+        ),
         depositAmount: toNumLocal(editTenantData.depositAmount),
         category: inferredCategory,
         firstRentStatus: editTenantData.firstRentStatus || undefined,
         firstRentMonth: editTenantData.firstRentMonth || undefined,
+        firstRentPaidDate: editTenantData.firstRentPaidDate || undefined,
       };
 
       const res = await axios.post(
@@ -3379,10 +5100,17 @@ const getAllPendingMonths = (tenant) => {
       setEditDocMsg("");
       const hasEditDocs =
         !!editSelfAadharFile || !!editParentAadharFile || !!editPhotoFile;
+      const firstRentStatus = String(
+        editTenantData.firstRentStatus || "NOT_PAID"
+      ).trim();
+      const firstRentMonth = getFirstRentMonthForStatus(
+        editTenantData.joiningDate,
+        firstRentStatus
+      );
 
       if (hasEditDocs) {
         const rentAmountNum = Number(
-          editTenantData.rentAmount ?? editTenantData.baseRent ?? 0
+          editTenantData.baseRent ?? editTenantData.rentAmount ?? 0
         );
         if (!Number.isFinite(rentAmountNum) || rentAmountNum <= 0) {
           setEditDocMsg("Rent Amount is required (must be a valid number).");
@@ -3392,16 +5120,6 @@ const getAllPendingMonths = (tenant) => {
           setEditDocMsg("Joining Date is required.");
           return;
         }
-
-        const joinDate = new Date(editTenantData.joiningDate);
-        const firstRentStatus = String(
-          editTenantData.firstRentStatus || "NOT_PAID"
-        ).trim();
-        const firstRentMonth =
-          editTenantData.firstRentMonth ||
-          (firstRentStatus === "ADVANCE_PAID"
-            ? fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth())
-            : fmtMonthKey(joinDate.getFullYear(), joinDate.getMonth() + 1));
 
         const fd = new FormData();
         fd.append("formId", editTenantData._id);
@@ -3508,7 +5226,11 @@ const getAllPendingMonths = (tenant) => {
 
       const response = await axios.put(
         `${apiUrl}update/${editTenantData._id}`,
-        editTenantData
+        {
+          ...editTenantData,
+          firstRentStatus,
+          firstRentMonth,
+        }
       );
       alert("Tenant updated successfully!");
 
@@ -3525,6 +5247,10 @@ const getAllPendingMonths = (tenant) => {
   };
   const handleShiftSave = async () => {
     if (!shiftTenant || !shiftTargetKey) return;
+    if (!shiftEffectiveDate) {
+      alert("Please select the shift effective date.");
+      return;
+    }
 
     const [roomNo, bedNo] = shiftTargetKey.split("-");
 
@@ -3536,7 +5262,7 @@ const getAllPendingMonths = (tenant) => {
     );
 
     const newBaseRent = slot ? toNum(slot.price) : toNum(shiftTenant.baseRent);
-    const newRentAmount = newBaseRent || toNum(shiftTenant.rentAmount);
+    const agreedRentAmount = newBaseRent;
 
     try {
       // ⛏️ Uses your existing update endpoint
@@ -3545,7 +5271,8 @@ const getAllPendingMonths = (tenant) => {
         roomNo,
         bedNo,
         baseRent: newBaseRent,
-        rentAmount: newRentAmount,
+        rentAmount: agreedRentAmount,
+        shiftEffectiveFrom: shiftEffectiveDate,
       };
 
       const res = await axios.put(
@@ -3561,12 +5288,19 @@ const getAllPendingMonths = (tenant) => {
       setShowShiftModal(false);
       setShiftTenant(null);
       setShiftTargetKey("");
+      setShiftEffectiveDate("");
       alert("Tenant shifted successfully.");
     } catch (err) {
       console.error("Shift room failed:", err);
+      const unpaid = err?.response?.data?.unpaidRents;
+      const unpaidText = Array.isArray(unpaid) && unpaid.length
+        ? `\n\nPending: ${unpaid
+            .map((item) => `${item.month} ₹${toNum(item.outstanding).toLocaleString("en-IN")}`)
+            .join(", ")}`
+        : "";
       alert(
-        err?.response?.data?.message ||
-          "Failed to shift tenant. Please try again."
+        (err?.response?.data?.message ||
+          "Failed to shift tenant. Please try again.") + unpaidText
       );
     }
   };
@@ -3629,24 +5363,31 @@ const getAllPendingMonths = (tenant) => {
 const handleSave = async () => {
   if (!editingTenant) return;
 
-  if (!(editMonthYM?.y >= 1900) || !(editMonthYM?.m >= 0)) {
-    alert("Please pick a rent month before saving.");
-    return;
-  }
-
   const paymentISO =
     editRentDate && String(editRentDate).trim()
       ? editRentDate
       : new Date().toISOString().split("T")[0];
 
   try {
-    const monthKey = fmtMonthKey(editMonthYM.y, editMonthYM.m);
+    const monthKey = getEditRentMonthKey(editMonthYM, paymentISO);
+
+    if (!monthKey) {
+      alert("Please pick a valid rent month before saving.");
+      return;
+    }
+
+    const addedAmount = Number(editRentAmount) || 0;
+    const existingCell = getMonthCell(editingTenant, editMonthYM.y, editMonthYM.m);
+    const existingPaidAmount = Number(existingCell?.amountPaid || 0);
+    const totalPaidAmount =
+      rentUpdateMode === "replace" ? addedAmount : existingPaidAmount + addedAmount;
 
     const payload = {
-      rentAmount: Number(editRentAmount) || 0,
+      rentAmount: addedAmount,
       date: paymentISO,
       paymentDate: paymentISO,
       month: monthKey,
+      rentUpdateMode,
       paymentMode: editPaymentMode || "Cash",
       note: editNote || "", // ✅ NEW (optional)
     };
@@ -3661,7 +5402,7 @@ const handleSave = async () => {
               rents: upsertRentForMonth(t, {
                 y: editMonthYM.y,
                 m: editMonthYM.m,
-                amount: Number(editRentAmount) || 0,
+                amount: totalPaidAmount,
                 date: paymentISO,
                 mode: editPaymentMode || "Cash",
                 note: editNote || "", // ✅ NEW
@@ -3733,6 +5474,53 @@ useEffect(() => {
   setPendingTenants(list);
   setPendingRents(list.length);
 }, [formData, roomsData]);
+
+const upcomingRentEntries = useMemo(() => {
+  if (!formData || !formData.length) return [];
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  return (formData || [])
+    .filter((t) => !t.leaveDate)
+    .flatMap((t) =>
+      months
+        .map(({ y, m }) => {
+          if (y !== currentYear || m > currentMonth) return null;
+
+          const c = getMonthCell(t, y, m);
+          if (!c || c.label !== "Upcoming") return null;
+
+          return {
+            key: `${t._id}-${y}-${m}`,
+            tenant: t,
+            roomNo: t.roomNo,
+            bedNo: t.bedNo,
+            billYear: y,
+            billMonth: m,
+            monthText: new Date(y, m, 1).toLocaleString("default", {
+              month: "long",
+              year: "numeric",
+            }),
+            dateStr:
+              c.dateStr ||
+              new Date(y, m, 1).toLocaleDateString("en-GB", {
+                day: "2-digit",
+                month: "short",
+              }),
+            amount: Number(c.expected || expectFromTenant(t, roomsData) || 0),
+          };
+        })
+        .filter(Boolean)
+    )
+    .sort((a, b) => {
+      const roomCmp = compareRoomBed(a, b);
+      if (roomCmp !== 0) return roomCmp;
+      if (a.billYear !== b.billYear) return a.billYear - b.billYear;
+      return a.billMonth - b.billMonth;
+    });
+}, [formData, roomsData, months]);
 
 
   if (loading) return <div className="text-center mt-5">Loading...</div>;
@@ -4138,7 +5926,8 @@ const isTodayOrFuture = (iso) => {
   onManageRooms={() => navigate("/roommanager")}
   onAddTenant={openAddModal}
   onDownloadExcel={handleDownloadExcel}
-  onBack={() => handleNavigation("/maindashboard")}
+  onOpenHistory={() => setShowLeavedHistoryView((prev) => !prev)}
+  isHistoryView={showLeavedHistoryView}
 />
 
 {/* Rent-only summary cards */}
@@ -4147,9 +5936,10 @@ const isTodayOrFuture = (iso) => {
   occupiedBeds={formData.filter((d) => !hasLeaveDatePassed(d?.leaveDate)).length}
   vacantBeds={vacantCount}
   pendingRents={pendingRents}
-  depositCount={formData.filter((d) => Number(d.depositAmount) > 0).length}
+  upcomingRents={upcomingRentEntries.length}
   onVacantClick={() => setShowVacantModal(true)}
   onPendingClick={() => setShowPendingModal(true)}
+  onUpcomingClick={() => setShowUpcomingModal(true)}
 />
 
   {showMobileVacantBeds ? (
@@ -4240,6 +6030,9 @@ const isTodayOrFuture = (iso) => {
     </>
   )}
 
+  <div className="desktop-rent-tables-group">
+  {!showLeavedHistoryView && (
+  <div className="desktop-rent-table-group">
   <div className="rent-table-desktop d-flex align-items-center justify-content-center">
     <button
       type="button"
@@ -4299,7 +6092,7 @@ const isTodayOrFuture = (iso) => {
     {visibleMonths.map((m, i) => (
       <th
         key={`${m.y}-${m.m}-${i}`}
-        className="text-center"
+        className="text-center rent-month-header"
         style={{ minWidth: 140, backgroundColor: "#ffc0cb" }}
       >
         {m.label}
@@ -4363,9 +6156,7 @@ const isTodayOrFuture = (iso) => {
       className="btn btn-sm shift-btn mb-1"
       onClick={(e) => {
         e.stopPropagation();
-        setShiftTenant(tenant);
-        setShiftTargetKey("");
-        setShowShiftModal(true);
+        openShiftTenantModal(tenant);
       }}
     >
       <FaExchangeAlt className="me-1" />
@@ -4418,7 +6209,6 @@ const isTodayOrFuture = (iso) => {
 
 
                       {/* Month cells */}
-{/* Month cells */}
                  {visibleMonths.map((m, i) => {
   const c = getMonthCell(tenant, m.y, m.m);
   const extraNum = Number(c.extra || 0);
@@ -4431,8 +6221,11 @@ if (cellYM < firstBillYM) {
   return (
     <td
       key={`${tenant._id}-${m.y}-${m.m}-${i}`}
-      className="text-center text-muted"
+      className={`text-center text-muted rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
+        i === visibleMonths.length - 1 ? "has-next-nav" : ""
+      }`}
     >
+      {renderMonthWindowNav(i)}
       —
     </td>
   );
@@ -4445,7 +6238,13 @@ const cycleIndex = cellYM - firstBillYM;
 const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
 
   return (
-    <td key={`${tenant._id}-${m.y}-${m.m}-${i}`} className="text-center">
+    <td
+      key={`${tenant._id}-${m.y}-${m.m}-${i}`}
+      className={`text-center rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
+        i === visibleMonths.length - 1 ? "has-next-nav" : ""
+      }`}
+    >
+      {renderMonthWindowNav(i)}
       <div
         style={{ cursor: "pointer" }}
         onClick={() => openEditForTenantMonth(tenant._id, m.m, m.y)}
@@ -4477,7 +6276,7 @@ const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
 
             {/* ✅ Paid date INSIDE green badge */}
           {/* ✅ Date INSIDE badge for Paid / Due / Upcoming */}
-{(c.label === "Paid" || c.label === "Due" || c.label === "Upcoming") &&
+{(c.label === "Paid" || c.label === "Due" || c.label === "Upcoming" || c.label === "Pending") &&
   c.dateStr && (
     <span
       style={{
@@ -4540,9 +6339,7 @@ const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
             style={{ lineHeight: 1, fontWeight: 800 }}
           >
             ₹
-            {Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString(
-              "en-IN"
-            )}
+            {Number(c.expected || 0).toLocaleString("en-IN")}
           </div>
         )}
 
@@ -4553,9 +6350,7 @@ const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
             style={{ lineHeight: 1, fontWeight: 800 }}
           >
             ₹
-            {Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString(
-              "en-IN"
-            )}
+            {Number(c.expected || 0).toLocaleString("en-IN")}
           </div>
         )}
 
@@ -4587,8 +6382,6 @@ const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
   );
 })}
 
-
-
                       {/* Due total */}
                      <td
   style={{
@@ -4596,10 +6389,7 @@ const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
     color: dueAmount > 0 ? "red" : "inherit",
   }}
   onClick={() => {
-    const dueList = getAllPendingMonths(tenant);
-    setDueMonths(dueList);
-    setSelectedTenantName(tenant.name);
-    setShowDueModal(true);
+    openDueMonthsModal(tenant);
   }}
 >
   ₹{dueAmount.toLocaleString("en-IN")}
@@ -4781,8 +6571,11 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 {visibleMonths.map((m, idx) => (
   <td
     key={`${key}-${m.y}-${m.m}-${idx}`}
-    className="text-center text-muted"
+    className={`text-center text-muted rent-month-window-cell ${idx === 0 ? "has-prev-nav" : ""} ${
+      idx === visibleMonths.length - 1 ? "has-next-nav" : ""
+    }`}
   >
+    {renderMonthWindowNav(idx)}
     —{/* vacant beds show no monthly status */}
   </td>
 ))}
@@ -4830,9 +6623,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                                 className="btn btn-sm shift-btn mb-1"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setShiftTenant(tenant);
-                                  setShiftTargetKey("");
-                                  setShowShiftModal(true);
+                                  openShiftTenantModal(tenant);
                                 }}
                               >
                                 <FaExchangeAlt className="me-1" />
@@ -4888,8 +6679,11 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                               return (
                                 <td
                                   key={`${tenant._id}-${m.y}-${m.m}-${i}`}
-                                  className="text-center text-muted"
+                                  className={`text-center text-muted rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
+                                    i === visibleMonths.length - 1 ? "has-next-nav" : ""
+                                  }`}
                                 >
+                                  {renderMonthWindowNav(i)}
                                   —
                                 </td>
                               );
@@ -4899,7 +6693,13 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                             const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
 
                             return (
-                              <td key={`${tenant._id}-${m.y}-${m.m}-${i}`} className="text-center">
+                              <td
+                                key={`${tenant._id}-${m.y}-${m.m}-${i}`}
+                                className={`text-center rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
+                                  i === visibleMonths.length - 1 ? "has-next-nav" : ""
+                                }`}
+                              >
+                                {renderMonthWindowNav(i)}
                                 <div
                                   style={{ cursor: "pointer" }}
                                   onClick={() => openEditForTenantMonth(tenant._id, m.m, m.y)}
@@ -4927,7 +6727,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                                       }}
                                     >
                                       <span>{c.label}</span>
-                                      {(c.label === "Paid" || c.label === "Due" || c.label === "Upcoming") &&
+                                      {(c.label === "Paid" || c.label === "Due" || c.label === "Upcoming" || c.label === "Pending") &&
                                         c.dateStr && (
                                           <span
                                             style={{
@@ -4985,7 +6785,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                                       style={{ lineHeight: 1, fontWeight: 800 }}
                                     >
                                       ₹
-                                      {Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString("en-IN")}
+                                      {Number(c.expected || 0).toLocaleString("en-IN")}
                                     </div>
                                   )}
 
@@ -4995,7 +6795,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                                       style={{ lineHeight: 1, fontWeight: 800 }}
                                     >
                                       ₹
-                                      {Number(expectFromTenant(tenant, roomsData) || 0).toLocaleString("en-IN")}
+                                      {Number(c.expected || 0).toLocaleString("en-IN")}
                                     </div>
                                   )}
 
@@ -5031,10 +6831,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                               color: dueAmount > 0 ? "red" : "inherit",
                             }}
                             onClick={() => {
-                              const dueList = getAllPendingMonths(tenant);
-                              setDueMonths(dueList);
-                              setSelectedTenantName(tenant.name);
-                              setShowDueModal(true);
+                              openDueMonthsModal(tenant);
                             }}
                           >
                             ₹{dueAmount.toLocaleString("en-IN")}
@@ -5094,99 +6891,248 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
               </tbody>
             </table>
 </div>
-            {/* Leaved Tenants Section (unchanged) */}
-  {filteredDeletedData.length > 0 && (
-  <div className="mt-5 leaved-tenants-section">
-    <h5 style={{ fontWeight: "bold" }} className="leavedtenant" >Leaved Tenants</h5>
+</div>
+  )}
 
-    <table className="table table-bordered">
-      <thead>
-        <tr>
-          <th>Room No</th>
-          <th>Name</th>
-          <th>Joining Date</th>
-          <th>Leave Date</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
+  {!showLeavedHistoryView && filteredDeletedData.length > 0 && (
+    <div className="mt-5 leaved-tenants-section">
+      <h5 style={{ fontWeight: "bold" }} className="leavedtenant">
+        Leaved Tenants
+      </h5>
 
-      <tbody>
-        {filteredDeletedData.map((tenant, index) => {
-          // -----------------------------
-          // DATE LOGIC (30 DAYS UNDO RULE)
-          // -----------------------------
-          const leaveDate = new Date(tenant.leaveDate);
-          leaveDate.setHours(0, 0, 0, 0);
+      <table className="table table-bordered">
+        <thead>
+          <tr>
+            <th>Room No</th>
+            <th>Name</th>
+            <th>Joining Date</th>
+            <th>Leave Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
 
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
+        <tbody>
+          {filteredDeletedData.map((tenant, index) => {
+            const leaveDate = new Date(tenant.leaveDate);
+            leaveDate.setHours(0, 0, 0, 0);
 
-          const diffInDays =
-            (today.getTime() - leaveDate.getTime()) /
-            (1000 * 60 * 60 * 24);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
 
-          // Allow undo only within last 30 days
-          const isUndoAllowed =
-            diffInDays >= 0 && diffInDays <= 30;
+            const diffInDays =
+              (today.getTime() - leaveDate.getTime()) /
+              (1000 * 60 * 60 * 24);
 
-          return (
-            <tr key={tenant._id || index}>
-              {/* Room */}
-              <td>
-                {tenant.roomNo}
-                <div className="text-muted small">
-                  bed {tenant.bedNo}
-                </div>
-              </td>
+            const isUndoAllowed = diffInDays >= 0 && diffInDays <= 30;
 
-              {/* Name */}
-              <td
-                style={{ cursor: "pointer" }}
-                onClick={() => showRentHistory(tenant)}
-              >
-                {tenant.name}
-              </td>
+            return (
+              <tr key={tenant._id || index}>
+                <td>
+                  {tenant.roomNo}
+                  <div className="text-muted small">bed {tenant.bedNo}</div>
+                </td>
 
-              {/* Joining Date */}
-              <td>
-                {new Date(tenant.joiningDate).toLocaleDateString()}
-              </td>
-
-              {/* Leave Date */}
-              <td>
-                {leaveDate.toLocaleDateString()}
-              </td>
-
-              {/* Actions */}
-              <td>
-                {isUndoAllowed && (
-                  <button
-                    className="btn btn-sm btn-success me-2"
-                    onClick={() => handleUndoClick(tenant._id)}
-                    title="Undo leave (allowed within 30 days)"
-                  >
-                    <FaUndo />
-                  </button>
-                )}
-
-                <button
-                  className="btn btn-sm"
-                  style={{
-                    backgroundColor: "#2d6eef",
-                    color: "white",
-                  }}
-                  onClick={() => handleDownloadForm(tenant)}
+                <td
+                  style={{ cursor: "pointer" }}
+                  onClick={() => showRentHistory(tenant)}
                 >
-                  <FaDownload />
-                </button>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+                  {tenant.name}
+                </td>
+
+                <td>{new Date(tenant.joiningDate).toLocaleDateString()}</td>
+
+                <td>{leaveDate.toLocaleDateString()}</td>
+
+                <td>
+                  {isUndoAllowed && (
+                    <button
+                      className="btn btn-sm btn-success me-2"
+                      onClick={() => handleUndoClick(tenant._id)}
+                      title="Undo leave (allowed within 30 days)"
+                    >
+                      <FaUndo />
+                    </button>
+                  )}
+
+                  <button
+                    className="btn btn-sm"
+                    style={{
+                      backgroundColor: "#2d6eef",
+                      color: "white",
+                    }}
+                    onClick={() => handleDownloadForm(tenant)}
+                  >
+                    <FaDownload />
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  {showLeavedHistoryView && (
+    <div className="desktop-rent-table-group leaved-tenants-section">
+      <div className="d-flex align-items-center justify-content-between mb-3">
+        <h5 style={{ fontWeight: "bold" }} className="leavedtenant mb-0">
+          Leaved Tenant History
+        </h5>
+        <span className="text-muted small">{filteredDeletedData.length} tenants</span>
+      </div>
+
+      {filteredDeletedData.length > 0 ? (
+        <div className="table-responsive rent-table-wrapper">
+          <table className="table table-bordered align-middle renttable">
+                <thead>
+                  <tr>
+                    <th>Tenant</th>
+                    <th>Room / Bed</th>
+                    <th>Dates</th>
+                    <th>Contact</th>
+                    <th>Deposit</th>
+                    <th>All Rents / Status</th>
+                    <th>Documents</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredDeletedData.map((tenant, index) => {
+                    const docs = Array.isArray(tenant.documents) ? tenant.documents : [];
+                    const rents = Array.isArray(tenant.rents) ? tenant.rents : [];
+                    const totalPaid = rents.reduce(
+                      (sum, rent) => sum + (Number(rent?.rentAmount) || 0),
+                      0
+                    );
+                    const leaveDate = tenant.leaveDate ? new Date(tenant.leaveDate) : null;
+                    const joiningDate = tenant.joiningDate ? new Date(tenant.joiningDate) : null;
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    if (leaveDate && !isNaN(leaveDate)) leaveDate.setHours(0, 0, 0, 0);
+                    const diffInDays = leaveDate && !isNaN(leaveDate)
+                      ? (today.getTime() - leaveDate.getTime()) / (1000 * 60 * 60 * 24)
+                      : null;
+                    const isUndoAllowed = diffInDays != null && diffInDays >= 0 && diffInDays <= 30;
+                    const sortedRents = [...rents].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+                    return (
+                      <tr key={tenant._id || index}>
+                        <td
+                          style={{ cursor: "pointer" }}
+                          role="button"
+                          tabIndex={0}
+                          title="Open tenant details"
+                          onClick={() => openAdmissionForm(tenant)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") openAdmissionForm(tenant);
+                          }}
+                        >
+                          <div className="fw-semibold text-primary">{tenant.name || "-"}</div>
+                        </td>
+                        <td>
+                          <div>Room {tenant.roomNo || "-"}</div>
+                          <div className="text-muted small">Bed {tenant.bedNo || "-"}</div>
+                          {tenant.category && (
+                            <div className="text-muted small">{tenant.category}</div>
+                          )}
+                        </td>
+                        <td>
+                          <div>
+                            Joining:{" "}
+                            {joiningDate && !isNaN(joiningDate)
+                              ? joiningDate.toLocaleDateString("en-IN")
+                              : "-"}
+                          </div>
+                          <div className="text-danger">
+                            Leave:{" "}
+                            {leaveDate && !isNaN(leaveDate)
+                              ? leaveDate.toLocaleDateString("en-IN")
+                              : "-"}
+                          </div>
+                        </td>
+                        <td>
+                          <div>{tenant.phoneNo || "-"}</div>
+                          {tenant.relative1Phone && (
+                            <div className="text-muted small">
+                              Relative: {tenant.relative1Phone}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          Rs. {Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
+                          {tenant.leaveSettlement?.refundableDeposit != null && (
+                            <div className="text-muted small">
+                              Refund: Rs.{" "}
+                              {Number(tenant.leaveSettlement.refundableDeposit || 0).toLocaleString("en-IN")}
+                            </div>
+                          )}
+                        </td>
+                        <td>
+                          <div className="fw-semibold">
+                            Total Paid: Rs. {totalPaid.toLocaleString("en-IN")}
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-primary mt-2"
+                            onClick={() => showRentHistory(tenant)}
+                            disabled={sortedRents.length === 0}
+                          >
+                            View Rents
+                          </button>
+                          {sortedRents.length === 0 && (
+                            <div className="text-muted small mt-1">No rent payments saved.</div>
+                          )}
+                        </td>
+                        <td>
+                          <div>{docs.length} documents</div>
+                          {docs.length > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-primary mt-1"
+                              onClick={() => setHistoryDocsTenant(tenant)}
+                            >
+                              View Documents
+                            </button>
+                          )}
+                        </td>
+                        <td>
+                          <div className="d-flex flex-wrap gap-2">
+                            {isUndoAllowed && (
+                              <button
+                                type="button"
+                                className="btn btn-sm text-white d-inline-flex align-items-center justify-content-center"
+                                style={{ backgroundColor: "#198754", width: 32, height: 32 }}
+                                onClick={() => handleUndoClick(tenant._id)}
+                                title="Undo leave"
+                              >
+                                <FaUndo />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="btn btn-sm text-white d-inline-flex align-items-center justify-content-center"
+                              style={{ backgroundColor: "#2d6eef", width: 32, height: 32 }}
+                              onClick={() => handleDownloadForm(tenant)}
+                              title="Download Excel"
+                            >
+                              <FaDownload />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+        </div>
+      ) : (
+        <div className="text-muted">No leaved tenant history found.</div>
+      )}
+    </div>
+  )}
+
   </div>
-)}
 
           </div>
           )}
@@ -5240,6 +7186,76 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
       </div>
     </div>
   </>
+)}
+
+{historyDocsTenant && (
+  <div
+    className="modal d-block"
+    tabIndex="-1"
+    style={{ backgroundColor: "rgba(0,0,0,0.55)", zIndex: 1060 }}
+  >
+    <div className="modal-dialog modal-lg modal-dialog-scrollable">
+      <div className="modal-content">
+        <div className="modal-header">
+          <h5 className="modal-title">
+            Documents - {historyDocsTenant.name || "Tenant"}
+          </h5>
+          <button
+            type="button"
+            className="btn-close p-0"
+            onClick={() => setHistoryDocsTenant(null)}
+          >
+            x
+          </button>
+        </div>
+        <div className="modal-body">
+          {Array.isArray(historyDocsTenant.documents) && historyDocsTenant.documents.length > 0 ? (
+            <div className="d-grid gap-2">
+              {historyDocsTenant.documents.map((doc, index) => {
+                const href = docHrefSafe(doc);
+                const label = doc.relation || doc.fileName || `Document ${index + 1}`;
+                return (
+                  <div
+                    key={`${historyDocsTenant._id}-history-doc-${index}`}
+                    className="border rounded p-2"
+                  >
+                    <div className="fw-semibold">{index + 1}. {label}</div>
+                    <div className="text-muted small">
+                      {doc.fileName || doc.contentType || "Uploaded document"}
+                    </div>
+                    {href ? (
+                      <div className="mt-2 d-flex flex-wrap gap-2">
+                        <a
+                          className="btn btn-sm btn-outline-primary"
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Open Document
+                        </a>
+                        {/* <a
+                          className="small align-self-center"
+                          href={href}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {href}
+                        </a> */}
+                      </div>
+                    ) : (
+                      <div className="text-muted small mt-2">No document link available.</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-muted">No documents uploaded for this tenant.</div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
 )}
  {/* add tenant modal */}
      {showAddModal && (
@@ -5958,29 +7974,47 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
     Rent at Joining
   </label>
 
-  <select
-    className="form-select"
-    value={firstRentStatusSelection}
-    onChange={(e) => {
-      const value = e.target.value;
-      setFirstRentStatusSelection(value);
-      setNewTenant((prev) => ({
-        ...prev,
-        firstRentStatus: value,
-        firstRentPaidDate:
-          value === "ADVANCE_PAID"
-            ? new Date().toISOString().slice(0, 10)
-            : "",
-      }));
-    }}
-  >
-    <option value="NOT_PAID">
-      Not Paid (Normal cycle)
-    </option>
-    <option value="ADVANCE_PAID">
-      Paid at Joining (Advance)
-    </option>
-  </select>
+  <div className="btn-group w-100" role="radiogroup" aria-label="Rent at Joining">
+    <input
+      type="radio"
+      className="btn-check"
+      name="firstRentStatus"
+      id="firstRentStatusAdvance"
+      checked={firstRentStatusSelection === "ADVANCE_PAID"}
+      onChange={() => syncFirstRentStatusForAdd("ADVANCE_PAID")}
+    />
+    <label
+      className={`btn flex-fill py-2 text-center ${
+        firstRentStatusSelection === "ADVANCE_PAID"
+          ? "btn-primary text-white"
+          : "btn-outline-primary"
+      }`}
+      htmlFor="firstRentStatusAdvance"
+    >
+      <span className="d-block">Paid at Joining</span>
+      <span className="d-block small">(Advance)</span>
+    </label>
+
+    <input
+      type="radio"
+      className="btn-check"
+      name="firstRentStatus"
+      id="firstRentStatusNormal"
+      checked={firstRentStatusSelection === "NOT_PAID"}
+      onChange={() => syncFirstRentStatusForAdd("NOT_PAID")}
+    />
+    <label
+      className={`btn flex-fill py-2 text-center ${
+        firstRentStatusSelection === "NOT_PAID"
+          ? "btn-primary text-white"
+          : "btn-outline-primary"
+      }`}
+      htmlFor="firstRentStatusNormal"
+    >
+      <span className="d-block">Not Paid</span>
+      <span className="d-block small">(Normal cycle)</span>
+    </label>
+  </div>
 
   <small className="text-muted mt-1 d-block">
     • Normal cycle → rent appears in next month<br />
@@ -6360,7 +8394,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 
       const joinDate = newTenant.joiningDate ? new Date(newTenant.joiningDate) : null;
       const firstRentStatus =
-        firstRentStatusSelection || newTenant.firstRentStatus || "NOT_PAID";
+        firstRentStatusSelection || newTenant.firstRentStatus || "ADVANCE_PAID";
       const firstRentMonth =
         joinDate
           ? (firstRentStatus === "ADVANCE_PAID"
@@ -6374,16 +8408,35 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
         bedNo,
         name: String(newTenant.name || "").trim() || undefined,
         phoneNo: phone10 || undefined,
+        address: String(newTenant.address || "").trim() || undefined,
         pincode: String(newTenant.pincode || "").trim() || undefined,
         city: String(newTenant.city || "").trim() || undefined,
         state: String(newTenant.state || "").trim() || undefined,
         houseNo: String(newTenant.houseNo || "").trim() || undefined,
         nearbyPlace: String(newTenant.nearbyPlace || "").trim() || undefined,
+        relativeAddress: String(newTenant.relativeAddress || "").trim() || undefined,
+        relative1Relation: newTenant.relative1Relation || undefined,
+        relative1Name: String(newTenant.relative1Name || "").trim() || undefined,
+        relative1Phone: String(newTenant.relative1Phone || "").trim() || undefined,
+        relative2Relation: newTenant.relative2Relation || undefined,
+        relative2Name: String(newTenant.relative2Name || "").trim() || undefined,
+        relative2Phone: String(newTenant.relative2Phone || "").trim() || undefined,
+        companyAddress: String(newTenant.companyAddress || "").trim() || undefined,
+        dateOfJoiningCollege: newTenant.dateOfJoiningCollege || undefined,
+        dob: newTenant.dob || undefined,
         joiningDate: newTenant.joiningDate || undefined,
-        rentAmount: toNum(newTenant.rentAmount ?? newTenant.baseRent),
+        rentAmount: toNum(
+          newTenant.baseRent !== "" && newTenant.baseRent != null
+            ? newTenant.baseRent
+            : newTenant.rentAmount
+        ),
         depositAmount: toNum(newTenant.depositAmount),
         firstRentStatus,
         firstRentMonth,
+        firstRentPaidDate:
+          firstRentStatus === "ADVANCE_PAID"
+            ? newTenant.firstRentPaidDate || getTodayISODate()
+            : "",
       };
 
       // ✅ validations
@@ -6641,10 +8694,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                           (r) => String(r.roomNo) === String(newTenant.roomNo)
                         )
                         ?.beds.filter(
-                          (bed) =>
-                            !occupiedBeds.has(
-                              `${newTenant.roomNo}-${bed.bedNo}`
-                            )
+                          (bed) => !occupiedBeds.has(occKey(newTenant.roomNo, bed.bedNo))
                         ) // only unoccupied beds
                         .map((bed) => (
                           <option key={bed.bedNo} value={bed.bedNo}>
@@ -6864,7 +8914,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
           tabIndex="-1"
           style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
         >
-          <div className="modal-dialog">
+          <div className="modal-dialog modal-lg">
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">
@@ -6878,19 +8928,74 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
               </div>
               <div className="modal-body">
                 {dueMonths.length > 0 ? (
-                  <ul className="list-group">
-                    {/* {dueMonths.map((month, idx) => (
-                      <li key={idx} className="list-group-item">
-                        {month}
-                      </li>
-                    ))} */}
-                    {dueMonths.map((month, idx) => (
-  <li key={`${month}-${idx}`} className="list-group-item">
-    {month}
-  </li>
-))}
+                  <div className="table-responsive">
+                    <table className="table table-sm table-bordered align-middle mb-0">
+                      <thead className="table-light">
+                        <tr>
+                          <th>Month</th>
+                          <th>Cycle</th>
+                          <th className="text-end">Due</th>
+                          <th className="text-end">Paid</th>
+                          <th className="text-end">Balance</th>
+                          <th className="text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dueMonths.map((month, idx) => {
+                          const item =
+                            typeof month === "string"
+                              ? {
+                                  label: month,
+                                  cycle: "",
+                                  expected: 0,
+                                  paid: 0,
+                                  outstanding: 0,
+                                }
+                              : month;
 
-                  </ul>
+                          return (
+                            <tr key={item.key || `${item.label}-${idx}`}>
+                              <td>
+                                <div className="fw-semibold">{item.label}</div>
+                                {item.dueDate ? (
+                                  <div className="small text-muted">
+                                    Due {item.dueDate}
+                                  </div>
+                                ) : null}
+                              </td>
+                              <td>{item.cycle || "-"}</td>
+                              <td className="text-end">
+                                ₹{Number(item.expected || 0).toLocaleString("en-IN")}
+                              </td>
+                              <td className="text-end">
+                                ₹{Number(item.paid || 0).toLocaleString("en-IN")}
+                              </td>
+                              <td className="text-end fw-semibold text-danger">
+                                ₹{Number(item.outstanding || 0).toLocaleString("en-IN")}
+                              </td>
+                              <td className="text-center">
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-primary"
+                                  disabled={!selectedTenant?._id || item.y == null || item.m == null}
+                                  onClick={() => {
+                                    setShowDueModal(false);
+                                    openEditForTenantMonth(
+                                      selectedTenant._id,
+                                      item.m,
+                                      item.y
+                                    );
+                                  }}
+                                >
+                                  Add Rent
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
                   <p className="text-success">No dues!</p>
                 )}
@@ -7109,9 +9214,16 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                   className="form-control"
                   value={editTenantData.joiningDate?.split("T")[0] || ""}
                   onChange={(e) =>
-                    setEditTenantData({
-                      ...editTenantData,
-                      joiningDate: e.target.value,
+                    setEditTenantData((prev) => {
+                      const nextStatus = String(prev?.firstRentStatus || "NOT_PAID").trim();
+                      return {
+                        ...prev,
+                        joiningDate: e.target.value,
+                        firstRentMonth: getFirstRentMonthForStatus(
+                          e.target.value,
+                          nextStatus
+                        ),
+                      };
                     })
                   }
                 />
@@ -7119,9 +9231,20 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 
               {isEditRentAtJoiningVisible && (
                 <div className="col-12 col-md-6">
+                
                   <label className="form-label fw-semibold d-block">
                     Rent at Joining
                   </label>
+                  <small className="text-muted mt-1 d-block">
+                    Current payment cycle:{" "}
+                    <strong>
+                      {(editTenantData.firstRentStatus || "ADVANCE_PAID") ===
+                      "ADVANCE_PAID"
+                        ? "Paid at Joining (Advance)"
+                        : "Not Paid (Normal cycle)"}
+                    </strong>
+                    .
+                  </small>
                   <div className="btn-group w-100" role="group" aria-label="Rent at Joining">
                     <label className={`btn btn-outline-primary ${
                       (editTenantData.firstRentStatus || "ADVANCE_PAID") ===
@@ -7129,6 +9252,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                         ? "active"
                         : ""
                     }`}>
+                    
                       <input
                         type="radio"
                         name="rentAtJoining"
@@ -7142,6 +9266,10 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                           setEditTenantData((prev) => ({
                             ...prev,
                             firstRentStatus: value,
+                            firstRentMonth: getFirstRentMonthForStatus(
+                              prev?.joiningDate,
+                              value
+                            ),
                             firstRentPaidDate:
                               value === "ADVANCE_PAID"
                                 ? new Date().toISOString().slice(0, 10)
@@ -7171,6 +9299,10 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                           setEditTenantData((prev) => ({
                             ...prev,
                             firstRentStatus: value,
+                            firstRentMonth: getFirstRentMonthForStatus(
+                              prev?.joiningDate,
+                              value
+                            ),
                             firstRentPaidDate: "",
                           }));
                         }}
@@ -7178,10 +9310,9 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       />
                       Not Paid (Normal cycle)
                     </label>
+                 
                   </div>
-                  <small className="text-muted mt-1 d-block">
-                    • Visible only during the first month after joining.
-                  </small>
+                
                 </div>
               )}
 
@@ -7561,6 +9692,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     setShowShiftModal(false);
                     setShiftTenant(null);
                     setShiftTargetKey("");
+                    setShiftEffectiveDate("");
                   }}
                 >
                   x
@@ -7593,6 +9725,16 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                   </select>
                 </div>
 
+                <div className="mb-3">
+                  <label className="form-label">Shift effective date</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={shiftEffectiveDate}
+                    onChange={(e) => setShiftEffectiveDate(e.target.value)}
+                  />
+                </div>
+
                 <p className="small text-muted">
                   Current: Room {shiftTenant.roomNo}, Bed {shiftTenant.bedNo}
                 </p>
@@ -7605,13 +9747,14 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     setShowShiftModal(false);
                     setShiftTenant(null);
                     setShiftTargetKey("");
+                    setShiftEffectiveDate("");
                   }}
                 >
                   Cancel
                 </button>
                 <button
                   className="btn btn-primary"
-                  disabled={!shiftTargetKey}
+                  disabled={!shiftTargetKey || !shiftEffectiveDate}
                   onClick={handleShiftSave}
                 >
                   Shift
@@ -7716,6 +9859,94 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 )}
 
 
+
+
+{showUpcomingModal && (
+  <div
+    className="modal d-block"
+    tabIndex="-1"
+    style={{
+      background: "rgba(0,0,0,0.5)",
+      position: "fixed",
+      inset: 0,
+      zIndex: 9999,
+      overflowY: "auto",
+    }}
+  >
+    <div className="modal-dialog modal-lg modal-dialog-centered">
+      <div className="modal-content">
+        <div className="modal-header">
+          <h5 className="modal-title">Upcoming Rents ({upcomingRentEntries.length})</h5>
+          <button
+            type="button"
+            className="modal-x-btn"
+            onClick={() => setShowUpcomingModal(false)}
+            aria-label="Close"
+          >
+          x
+          </button>
+        </div>
+
+        <div className="modal-body">
+          {upcomingRentEntries.length === 0 ? (
+            <div className="text-success">No upcoming rents found 🎉</div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-bordered align-middle">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Room/Bed</th>
+                    <th>Month</th>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {upcomingRentEntries.map((item) => (
+                    <tr key={item.key}>
+                      <td>{item.tenant?.name}</td>
+                      <td>
+                        {item.tenant?.roomNo} / {item.tenant?.bedNo}
+                      </td>
+                      <td>{item.monthText}</td>
+                      <td className="fw-semibold text-primary">{item.dateStr}</td>
+                      <td className="fw-bold">
+                        ₹{Number(item.amount || 0).toLocaleString("en-IN")}
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-sm btn-outline-primary"
+                          onClick={() => {
+                            setShowUpcomingModal(false);
+                            openEditForTenantMonth(
+                              item.tenant?._id,
+                              item.billMonth,
+                              item.billYear
+                            );
+                          }}
+                        >
+                          Edit Rent
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={() => setShowUpcomingModal(false)}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
 
 
       {showFModal && (
@@ -8135,6 +10366,36 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     onChange={(e) => setEditRentAmount(e.target.value)}
                   />
                 </div>
+                <div className="mb-3">
+                  <label className="form-label">Update Type</label>
+                  <div className="d-flex gap-3 flex-wrap">
+                    <label className="form-check-label">
+                      <input
+                        type="radio"
+                        className="form-check-input me-2 form-check-input1"
+                        name="rentUpdateMode"
+                        value="add"
+                        checked={rentUpdateMode === "add"}
+                        onChange={(e) => setRentUpdateMode(e.target.value)}
+                      />
+                      Add to existing
+                    </label>
+                    <label className="form-check-label">
+                      <input
+                        type="radio"
+                        className="form-check-input me-2 form-check-input1"
+                        name="rentUpdateMode"
+                        value="replace"
+                        checked={rentUpdateMode === "replace"}
+                        onChange={(e) => setRentUpdateMode(e.target.value)}
+                      />
+                      Replace final value
+                    </label>
+                  </div>
+                  <small className="text-muted">
+                    Use replace when duplicate rent was added and this amount should be the final paid value for the month.
+                  </small>
+                </div>
                 {/* <div className="mb-3">
   <label className="form-label">Note (optional)</label>
   <input
@@ -8211,6 +10472,98 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
         </div>
       )}
 
+      {undoBedModal.show && (
+        <div
+          className="modal d-block"
+          tabIndex="-1"
+          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+        >
+          <div className="modal-dialog">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Select Vacant Bed</h5>
+                <button
+                  type="button"
+                  className="btn-close p-0"
+                  disabled={undoBedModal.busy}
+                  onClick={() =>
+                    setUndoBedModal({
+                      show: false,
+                      tenantId: "",
+                      message: "",
+                      vacantBeds: [],
+                      selectedIndex: "",
+                      busy: false,
+                    })
+                  }
+                >
+                  x
+                </button>
+              </div>
+              <div className="modal-body">
+                <div className="alert alert-warning mb-3">
+                  {undoBedModal.message}
+                </div>
+                <label className="form-label fw-semibold">
+                  Choose another vacant bed
+                </label>
+                <select
+                  className="form-select"
+                  value={undoBedModal.selectedIndex}
+                  disabled={undoBedModal.busy}
+                  onChange={(e) =>
+                    setUndoBedModal((prev) => ({
+                      ...prev,
+                      selectedIndex: e.target.value,
+                    }))
+                  }
+                >
+                  <option value="">Select vacant bed</option>
+                  {undoBedModal.vacantBeds.map((bed, index) => (
+                    <option
+                      key={`${bed.roomNo}-${bed.bedNo}-${index}`}
+                      value={String(index)}
+                    >
+                      {formatVacantBedOption(bed)}
+                    </option>
+                  ))}
+                </select>
+                <div className="small text-muted mt-2">
+                  The tenant will be restored to the Rent & Deposit Tracker only after this vacant bed is assigned.
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={undoBedModal.busy}
+                  onClick={() =>
+                    setUndoBedModal({
+                      show: false,
+                      tenantId: "",
+                      message: "",
+                      vacantBeds: [],
+                      selectedIndex: "",
+                      busy: false,
+                    })
+                  }
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={undoBedModal.busy || undoBedModal.selectedIndex === ""}
+                  onClick={handleConfirmUndoWithSelectedBed}
+                >
+                  {undoBedModal.busy ? "Assigning..." : "Assign Bed & Undo"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showLeaveModal && (
         <div
           className="modal d-block"
@@ -8224,7 +10577,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                 <button
                   type="button"
                   className="btn-close p-0"
-                  onClick={() => setShowLeaveModal(false)}
+                  onClick={closeLeaveModal}
                 >x</button>
               </div>
               <div className="modal-body">
@@ -8232,12 +10585,162 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                   type="date"
                   className="form-control"
                   value={selectedLeaveDate}
-                  onChange={(e) => setSelectedLeaveDate(e.target.value)}
+                  onChange={(e) => {
+                    const nextDate = e.target.value;
+                    setSelectedLeaveDate(nextDate);
+                    if (leaveDeductFromDeposit) {
+                      const nextMonths = getLeaveSettlementMonths(
+                        currentLeaveTenant,
+                        nextDate
+                      );
+                      setLeaveSelectedMonths(nextMonths.map((month) => month.key));
+                    }
+                  }}
                 />
                 <p className="mt-3">
                   Are you sure you want <strong>{currentLeaveName}</strong> to
                   leave on <strong>{selectedLeaveDate || "..."}</strong>?
                 </p>
+                <div className="border rounded p-3 mt-3">
+                  <label className="form-label fw-semibold d-block mb-2">
+                    Will you cut pending rent from deposit?
+                  </label>
+                  <div className="btn-group w-100" role="group" aria-label="Deposit deduction">
+                    <button
+                      type="button"
+                      className={`btn ${leaveDeductFromDeposit ? "btn-outline-secondary" : "btn-primary"}`}
+                      onClick={() => {
+                        setLeaveDeductFromDeposit(false);
+                        setLeaveSelectedMonths([]);
+                      }}
+                    >
+                      No
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn ${leaveDeductFromDeposit ? "btn-primary" : "btn-outline-secondary"}`}
+                      onClick={() => {
+                        setLeaveDeductFromDeposit(true);
+                        setLeaveSelectedMonths(
+                          leaveSettlementMonths.map((month) => month.key)
+                        );
+                      }}
+                    >
+                      Yes
+                    </button>
+                  </div>
+                  <div className="mt-2 small text-muted">
+                    If the deductions are higher than the deposit, the
+                    remaining balance will be shown as an additional amount to
+                    receive from the tenant.
+                  </div>
+
+                  {leaveDeductFromDeposit && (
+                    <div className="mt-3">
+                      <div className="small text-muted mb-2">
+                        Select the pending months to deduct from the deposit.
+                      </div>
+                      {leaveSettlementMonths.length > 0 ? (
+                        <div className="d-grid gap-2">
+                          {leaveSettlementMonths.map((month) => {
+                            const checked = leaveSelectedMonths.includes(month.key);
+                            return (
+                              <label
+                                key={month.key}
+                                className="d-flex align-items-center justify-content-between border rounded p-2"
+                              >
+                                <span>
+                                  <input
+                                    type="checkbox"
+                                    className="form-check-input me-2"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      const next = e.target.checked
+                                        ? [...leaveSelectedMonths, month.key]
+                                        : leaveSelectedMonths.filter((k) => k !== month.key);
+                                      setLeaveSelectedMonths(next);
+                                    }}
+                                  />
+                                  {month.label}
+                                </span>
+                                <strong>
+                                  ₹{Number(month.amount || 0).toLocaleString("en-IN")}
+                                </strong>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-success small">
+                          No pending months found for deduction.
+                        </div>
+                      )}
+
+                      {leaveExtraDaysDeduction && (
+                        <div className="border rounded p-2 mt-3">
+                          <div className="d-flex align-items-center justify-content-between">
+                            <div>
+                              <div className="fw-semibold">
+                                {leaveExtraDaysDeduction.label}
+                              </div>
+                              <div className="small text-muted">
+                                {leaveExtraDaysDeduction.cycleRange} | Rs.{" "}
+                                {Math.round(
+                                  Number(leaveExtraDaysDeduction.dailyRent || 0)
+                                ).toLocaleString("en-IN")}{" "}
+                                per day
+                              </div>
+                            </div>
+                            <strong>
+                              Rs.{" "}
+                              {Number(
+                                leaveExtraDaysDeduction.amount || 0
+                              ).toLocaleString("en-IN")}
+                            </strong>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="mt-3 small">
+                        <div>
+                          Gross Deposit: ₹{Number(leaveSettlementSummary.grossDeposit || 0).toLocaleString("en-IN")}
+                        </div>
+                        <div>
+                          Deduction: ₹
+                          {Number(leaveSettlementSummary.totalDeduction || 0).toLocaleString("en-IN")}
+                        </div>
+                        <div className="text-muted">
+                          Full Month Deduction: Rs.{" "}
+                          {Number(leaveSettlementSummary.monthDeduction || 0).toLocaleString("en-IN")}
+                        </div>
+                        {leaveSettlementSummary.extraDaysDeduction > 0 && (
+                          <div className="text-muted">
+                            Extra Days Deduction: Rs.{" "}
+                            {Number(leaveSettlementSummary.extraDaysDeduction || 0).toLocaleString("en-IN")}
+                          </div>
+                        )}
+                        {leaveSettlementSummary.amountDueFromTenant > 0 ? (
+                          <>
+                            <div className="fw-semibold text-danger">
+                              Additional Amount to Receive: ₹
+                              {Number(
+                                leaveSettlementSummary.amountDueFromTenant || 0
+                              ).toLocaleString("en-IN")}
+                            </div>
+                            <div>Refundable Deposit: ₹0</div>
+                          </>
+                        ) : (
+                          <div className="fw-semibold">
+                            Refundable Deposit: ₹
+                            {Number(
+                              leaveSettlementSummary.refundableDeposit || 0
+                            ).toLocaleString("en-IN")}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="modal-footer">
                 {/* <button
@@ -8264,7 +10767,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">
-                  Last 3 Rents - {selectedTenantName}
+                  All Rents / Status - {selectedTenantName}
                 </h5>
                 <button
                   type="button"
@@ -8274,8 +10777,47 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
               </div>
               <div className="modal-body">
                 {selectedRentDetails.length > 0 ? (
-                  <ul className="list-group">
-                 {selectedRentDetails.map((rent, index) => (
+                  <>
+                    <div className="fw-semibold mb-3">
+                      Total Paid: Rs.{" "}
+                      {selectedRentDetails
+                        .reduce((sum, rent) => sum + Number(rent?.rentAmount || 0), 0)
+                        .toLocaleString("en-IN")}
+                    </div>
+                    <div className="d-grid gap-2">
+                      {selectedRentDetails.map((rent, index) => {
+                        const amount = Number(rent?.rentAmount || 0);
+                        const paidDate = rent?.date ? new Date(rent.date) : null;
+                        return (
+                          <div
+                            className="border rounded px-2 py-2 small"
+                            key={`${amount}-${rent?.month || ""}-${rent?.date || index}`}
+                          >
+                            <span
+                              className={
+                                amount > 0
+                                  ? "text-success fw-semibold"
+                                  : "text-danger fw-semibold"
+                              }
+                            >
+                              {amount > 0 ? "Paid" : "Due"}
+                            </span>
+                            {" | "}
+                            {rent?.month || "Month -"}
+                            {" | Rs. "}
+                            {amount.toLocaleString("en-IN")}
+                            {" | "}
+                            {paidDate && !isNaN(paidDate)
+                              ? paidDate.toLocaleDateString("en-IN")
+                              : "No date"}
+                            {rent?.paymentMode ? ` | ${rent.paymentMode}` : ""}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  {/* legacy hidden list */}
+                  <div className="d-none">
+                 {false && selectedRentDetails.map((rent, index) => (
                       <li className="list-group-item" key={index}>
                         ₹{Number(rent.rentAmount).toLocaleString("en-IN")} –{" "}
                         {new Date(rent.date).toLocaleDateString()}
@@ -8290,7 +10832,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
   </li>
 ))}
 
-                  </ul>
+                  </div>
+                  </>
                 ) : (
                   <p>No rent data available.</p>
                 )}
@@ -8654,3 +11197,4 @@ const style = {
 };
 
 export default NewComponant;
+

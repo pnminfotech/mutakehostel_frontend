@@ -18,7 +18,7 @@
 // export const TOKEN_KEY = "tenantToken";
 
 // // ✅ always HTTPS
-// const ORIGIN = "   http://localhost:8000";
+// const ORIGIN = "   https://mutakegirlshostel-0ko7.onrender.com";
 // export const API = `${ORIGIN}/api`;
 
 // export function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
@@ -61,15 +61,16 @@
 
 // src/tenant/tenantApi.js
 import axios from "axios";
+import { API_BASE, API_ORIGIN } from "../api";
 
 export const TOKEN_KEY = "tenantToken";
 
 // Switch this between local and deployed as you need.
 const ORIGIN =
   process.env.REACT_APP_API_ORIGIN ||
-  "   http://localhost:8000"; // e.g. "   http://localhost:8000"
+  API_ORIGIN;
 
-export const API = `${ORIGIN}/api`;
+export const API = API_BASE || `${String(ORIGIN).trim().replace(/\/+$/, "")}/api`;
 
 export function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }
 export function getToken(){ return localStorage.getItem(TOKEN_KEY); }

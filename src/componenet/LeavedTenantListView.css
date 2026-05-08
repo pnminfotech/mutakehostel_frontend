@@ -163,6 +163,12 @@
   color: #166534;
 }
 
+.leaved-mobile-action.undo:disabled {
+  background: #f1f5f9;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
 .leaved-mobile-action.download {
   background: #dbeafe;
   color: #1d4ed8;
