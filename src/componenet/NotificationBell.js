@@ -18,7 +18,7 @@ const adminAuthHeader = () => {
 };
 
 export default function NotificationBell({
-  apiUrl = "   https://mutakegirlshostel-0ko7.onrender.com/api/",
+  apiUrl = "  http://localhost:8000/api/",
   onApproved,
   onLeaveApproved,
 }) {

@@ -207,10 +207,6 @@
 }
 
 @media (max-width: 768px) {
-  .expense-tabs-wrapper {
-    display: none !important;
-  }
-
   .mobile-section-trigger-wrap {
     display: flex;
   }

@@ -61,7 +61,7 @@ const openAddModal = () => {
   setShowAddModal(true);
 };
 
-  const apiUrl = '   https://mutakegirlshostel-0ko7.onrender.com/api/';
+  const apiUrl = '  http://localhost:8000/api/';
 
   useEffect(() => {
     axios

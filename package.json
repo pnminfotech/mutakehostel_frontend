@@ -1,8 +1,8 @@
 {
-  "name": "mutakegirlshostel",
+  "name": "hosteldemo",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://pnminfotech.com/mutakegirlshostel",
+  "homepage": "https://pnminfotech.com/hosteldemo",
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
@@ -33,10 +33,10 @@
     "xlsx": "^0.18.5"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "start": "node ./node_modules/react-scripts/bin/react-scripts.js start",
+    "build": "node ./node_modules/react-scripts/bin/react-scripts.js build",
+    "test": "node ./node_modules/react-scripts/bin/react-scripts.js test",
+    "eject": "node ./node_modules/react-scripts/bin/react-scripts.js eject"
   },
   "eslintConfig": {
     "extends": [

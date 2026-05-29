@@ -4,14 +4,18 @@ import "./RentTracker.css";
 
 function RentHeaderBar({
   title = "Rent & Deposit Tracker",
+  eyebrow = "Bed-wise Rent and Deposit Tracker",
   notificationSlot,
   selectedYear,
   years = [],
   searchText,
+  searchPlaceholder = "Search room, bed, name, mobile...",
   onYearChange,
   onSearchChange,
   onManageRooms,
+  manageRoomsLabel = "Manage Rooms",
   onAddTenant,
+  addTenantLabel = "Add Tenant",
   onDownloadExcel,
   onOpenHistory,
   isHistoryView = false,
@@ -20,7 +24,7 @@ function RentHeaderBar({
     <div className="rent-header-card">
       <div className="rent-header-top">
         <div>
-          <div className="rent-header-eyebrow">Bed-wise Rent and Deposit Tracker</div>
+          <div className="rent-header-eyebrow">{eyebrow}</div>
           <h3 className="rent-header-title">{title}</h3>
         </div>
 
@@ -56,7 +60,7 @@ function RentHeaderBar({
           />
           <input
             type="text"
-            placeholder="  Search room, bed, name, mobile..."
+            placeholder={`  ${searchPlaceholder}`}
             className="form-control ps-4"
             value={searchText}
             onChange={onSearchChange}
@@ -64,22 +68,25 @@ function RentHeaderBar({
         </div>
 
         <button
+          type="button"
           className="btn me-2 rent-toolbar-action"
           style={{ backgroundColor: "#5f7dfc", color: "white" }}
           onClick={onManageRooms}
         >
-          <FaPlus className="me-1" /> Manage Rooms
+          <FaPlus className="me-1" /> {manageRoomsLabel}
         </button>
 
         <button
+          type="button"
           className="btn me-2 rent-toolbar-action"
           style={{ backgroundColor: "#5f7dfc", color: "white" }}
           onClick={onAddTenant}
         >
-          <FaPlus className="me-1" /> Add Tenant
+          <FaPlus className="me-1" /> {addTenantLabel}
         </button>
 
         <button
+          type="button"
           className="btn me-2 rent-toolbar-action"
           style={{ backgroundColor: "#5f7dfc", color: "white" }}
           onClick={onDownloadExcel}
@@ -89,6 +96,7 @@ function RentHeaderBar({
         </button>
 
         <button
+          type="button"
           className="btn me-2 rent-toolbar-action"
           style={{ backgroundColor: "#5f7dfc", color: "white" }}
           onClick={onOpenHistory}

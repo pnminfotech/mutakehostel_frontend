@@ -42,13 +42,78 @@ import RoomManager from "./RoomManager"; // adjust path if needed
 // import { useNavigate } from 'react-router-dom';
 import { FaMoneyBillWave, FaPhoneAlt, FaCalendarAlt } from "react-icons/fa";
 import { API_BASE } from "../api";
+
+const TRACKER_TYPES = ["bed", "room", "shop"];
+
+function normalizeTrackerType(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  return TRACKER_TYPES.includes(raw) ? raw : "bed";
+}
+
+function getTrackerTypeFromLocation(location) {
+  const stateType = normalizeTrackerType(location?.state?.trackerType);
+  if (location?.state?.trackerType) return stateType;
+
+  const path = String(location?.pathname || "").toLowerCase();
+  if (path.includes("/tracker/room")) return "room";
+  if (path.includes("/tracker/shop")) return "shop";
+  return "bed";
+}
+
+function normalizeRoomPropertyType(room) {
+  const explicitType = String(room?.propertyType || room?.unitType || "").trim().toLowerCase();
+  if (TRACKER_TYPES.includes(explicitType)) {
+    return explicitType;
+  }
+
+  const bedNos = Array.isArray(room?.beds)
+    ? room.beds.map((bed) => String(bed?.bedNo || "").trim().toUpperCase())
+    : [];
+
+  if (bedNos.some((bedNo) => bedNo === "SHOP-1")) return "shop";
+  if (bedNos.some((bedNo) => bedNo === "ROOM-1")) return "room";
+
+  return "bed";
+}
+
 function NewComponant() {
   console.log("[NewComponant] loaded at", new Date().toISOString());
   const location = useLocation();
+  const trackerTypeFromLocation = useMemo(() => getTrackerTypeFromLocation(location), [location]);
+  const [trackerType, setTrackerType] = useState(trackerTypeFromLocation);
+  const trackerGroupLabel = trackerType === "bed" ? "Hostel" : "Other Property";
+  const trackerLabel = trackerType === "shop"
+    ? "Other Property Shop-wise"
+    : trackerType === "room"
+      ? "Other Property Room-wise"
+      : "Hostel Bed-wise";
+  const trackerUnitLabel = trackerType === "shop" ? "Shop" : trackerType === "room" ? "Room" : "Room / Bed";
+  const manageUnitsPath = trackerType === "bed" ? "/roommanager" : "/commercial-manager";
+  const appBasePath = useMemo(() => {
+    try {
+      const baseUrl = process.env.PUBLIC_URL || "/mutakegirlhostel";
+      return new URL(baseUrl, window.location.origin).pathname.replace(/\/$/, "");
+    } catch (_error) {
+      return "/hosteldemo";
+    }
+  }, []);
+  const formatTrackerUnit = useCallback(
+    (roomNo, bedNo) => {
+      const roomValue = String(roomNo || "").trim() || "-";
+      const bedValue = String(bedNo || "").trim();
+
+      if (trackerType === "shop") return `Shop ${roomValue}`;
+      if (trackerType === "room") return `Room ${roomValue}`;
+      return `Room ${roomValue}${bedValue ? ` - Bed ${bedValue}` : ""}`;
+    },
+    [trackerType]
+  );
   const [formData, setFormData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [roomsData, setRoomsData] = useState([]);
+  const [allRoomsData, setAllRoomsData] = useState([]);
+  const [allTenantsData, setAllTenantsData] = useState([]);
 // 📌 New state for Aadhaar + Photo
 const [selfAadharFile, setSelfAadharFile] = useState(null);
 const [parentAadharFile, setParentAadharFile] = useState(null);
@@ -59,7 +124,7 @@ const [editParentAadharFile, setEditParentAadharFile] = useState(null);
 const [editPhotoFile, setEditPhotoFile] = useState(null);
 const [editDocMsg, setEditDocMsg] = useState("");
 // For Staff & Other Expenses
-const [showExpensesModal, setShowExpensesModal] = useState(false);
+  const [showExpensesModal, setShowExpensesModal] = useState(false);
 const [expensesForm, setExpensesForm] = useState({
   type: "Employee",      // Employee / Cleaning Lady / Other
   name: "",
@@ -118,6 +183,7 @@ const [rentUpdateMode, setRentUpdateMode] = useState("add");
   const [shiftEffectiveDate, setShiftEffectiveDate] = useState("");
 
   const [rentStart, setRentStart] = useState(null); // shared 3-month window start
+  const [rowMonthStarts, setRowMonthStarts] = useState({});
   const [docs, setDocs] = useState([]);
   const [editingTenant, setEditingTenant] = useState(null);
 const [editRentAmount, setEditRentAmount] = useState("");
@@ -151,6 +217,7 @@ const [editRentAmount, setEditRentAmount] = useState("");
   // const [selectedTenantName, setSelectedTenantName] = useState('');
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState(null);
+  const [documentPreview, setDocumentPreview] = useState(null);
   ////form
   const [mobileSelectedTenant, setMobileSelectedTenant] = useState(null);
   const [showMobileLeavedTenants, setShowMobileLeavedTenants] = useState(false);
@@ -254,7 +321,7 @@ const openAdmissionForm = (tenant) => {
   setShowFormModal(true);
 };
 
-const totalBeds = roomsData.reduce(
+const totalBeds = (Array.isArray(roomsData) ? roomsData : []).reduce(
   (sum, room) => sum + (room.beds?.length || 0),
   0
 );
@@ -262,9 +329,11 @@ const totalBeds = roomsData.reduce(
 
  const sectionItems = [
     { key: "dashboard", label: "Dashboard", icon: <MdDashboard size={20} />, onClick: () => handleNavigation("/maindashboard") },
-    { key: "rent", label: "Rent & Deposit", icon: <MdOutlineBedroomParent /> },
-    { key: "light", label: "Light Bill", icon: <MdLightbulbOutline /> },
-    { key: "other-expense", label: "Other Expense", icon: <MdOutlineReceiptLong /> },
+    { key: "rent", label: `${trackerLabel} Tracker`, icon: <MdOutlineBedroomParent /> },
+    { key: "light-hostel", label: "Light Bill Hostel", icon: <MdLightbulbOutline /> },
+    { key: "light-room-shop", label: "Light Bill Room + Shop", icon: <MdLightbulbOutline /> },
+    { key: "expenses-hostel", label: "Expenses Hostel", icon: <MdOutlineReceiptLong /> },
+    { key: "expenses-room-shop", label: "Expenses Room + Shop", icon: <MdOutlineReceiptLong /> },
     { key: "staff", label: "Staff", icon: <MdPerson /> },
     // { key: "holiday", label: "Holiday Management", icon: <MdCalendarToday /> },
     // { key: "canteen-expenses", label: "Canteen Portal", icon: <FaUtensils /> },
@@ -294,8 +363,15 @@ const addRoomFromTenantModal = async () => {
   const category = (quickRoom.category || "").trim();
   const floorNo = (quickRoom.floorNo || "").trim();
   const roomNo = (quickRoom.roomNo || "").trim();
-  const bedNo = (quickRoom.bedNo || "").trim();
-  const bedCategory = (quickRoom.bedCategory || "").trim();
+  const isBedTracker = trackerType === "bed";
+
+  if (!isBedTracker) {
+    setQuickRoomMsg("Use the Commercial Manager for rooms and shops.");
+    return;
+  }
+
+  const bedNo = isBedTracker ? (quickRoom.bedNo || "").trim() : "";
+  const bedCategory = isBedTracker ? (quickRoom.bedCategory || "").trim() : "";
   const bedPriceStr = quickRoom.bedPrice;
 
   if (!category || !floorNo || !roomNo) {
@@ -322,23 +398,33 @@ const toNum = (v) => {
     setQuickRoomMsg("");
 
     // 1) create room
-    const created = await axios.post(ROOMS_API, { category, floorNo, roomNo });
+    const created = await axios.post(ROOMS_API, {
+      category,
+      floorNo,
+      roomNo,
+      propertyType: trackerType,
+    });
     const room = created.data;
 
-    // 2) create first bed if bedNo provided
-    if (bedNo) {
+    // 2) create first bed only for hostel tracker
+    if (isBedTracker && bedNo) {
       await axios.post(`${ROOMS_API}/${room._id}/bed`, {
         bedNo,
         bedCategory,
         price: priceProvided ? bedPrice : null,
       });
+    } else if (!isBedTracker && priceProvided) {
+      await axios.put(
+        `${ROOMS_API}/${room._id}/bed/${getPrimaryUnitBedNo(trackerType)}`,
+        { price: bedPrice }
+      );
     }
 
     // 3) refresh rooms list (same as your fetchRoomsData / getRooms)
     // 🔁 Use your existing function if you already have it:
     // await fetchRoomsData();
     const res = await axios.get(ROOMS_API);
-    setRoomsData(res.data || []);
+    setRoomsData(filterRoomsForTracker(res.data || []));
 
     // 4) auto-select this created room in tenant form
     setNewTenant((prev) => ({
@@ -346,7 +432,7 @@ const toNum = (v) => {
       roomId: room._id,         // ✅ NEW
       roomNo: room.roomNo,      // keep if your tenant schema needs roomNo
       floorNo: room.floorNo || "",
-      bedNo: bedNo ? bedNo : "",
+      bedNo: isBedTracker ? (bedNo ? bedNo : "") : getPrimaryUnitBedNo(trackerType),
       baseRent: priceProvided ? bedPrice : "",
       rentAmount: priceProvided ? bedPrice : "",
       newBedNo: "",
@@ -533,6 +619,7 @@ const roomHasVacantBed = (room) => {
     (bed) => !occupiedBedSet.has(makeOccKey(roomNo, bed?.bedNo))
   );
 };
+const getPrimaryUnitBedNo = (type) => (type === "shop" ? "SHOP-1" : "ROOM-1");
 
 
 
@@ -1010,30 +1097,370 @@ const existingForm = formData?.find(
   const apiUrl = `${API_BASE}/`;
 
 const ROOMS_API = `${apiUrl}rooms`;
+const COMMERCIAL_UNITS_API = `${apiUrl}commercial-units`;
+
+  const mapCommercialUnitToTrackerRoom = useCallback((unit) => {
+    const propertyType = String(unit?.unitType || "").trim().toLowerCase() === "shop" ? "shop" : "room";
+    return {
+      _id: unit?._id,
+      propertyType,
+      category: String(unit?.buildingName || unit?.category || "").trim(),
+      commercialCategory: String(unit?.category || "").trim(),
+      buildingName: String(unit?.buildingName || "").trim(),
+      floorNo: String(unit?.floorNo || "").trim(),
+      roomNo: String(unit?.unitNo || "").trim(),
+      beds: [
+        {
+          bedNo: getPrimaryUnitBedNo(propertyType),
+          bedCategory: "Primary",
+          price: unit?.price ?? null,
+        },
+      ],
+    };
+  }, []);
+
+  const filterRoomsForTracker = useCallback(
+    (rooms = []) =>
+      (Array.isArray(rooms) ? rooms : []).filter((room) => {
+        return normalizeRoomPropertyType(room) === trackerType;
+      }),
+    [trackerType]
+  );
+
+  const filterTenantsForTracker = useCallback(
+    (tenants = [], rooms = allRoomsData) => {
+      const scopedRooms = filterRoomsForTracker(Array.isArray(rooms) ? rooms : []);
+
+      return (Array.isArray(tenants) ? tenants : []).filter((tenant) => {
+        const tenantCategory = String(tenant?.category || "").trim().toLowerCase();
+        const tenantRoom = scopedRooms.find((room) => {
+          const tenantRoomId = tenant?.roomId?._id || tenant?.roomId;
+          if (tenantRoomId && String(room?._id) === String(tenantRoomId)) {
+            return true;
+          }
+          if (tenant?.roomNo && String(room?.roomNo) === String(tenant.roomNo)) {
+            if (!tenantCategory) return true;
+            return String(room?.category || "").trim().toLowerCase() === tenantCategory;
+          }
+          if (tenant?.roomNo && tenantCategory) {
+            return (
+              String(room?.roomNo) === String(tenant.roomNo) &&
+              String(room?.category || "").trim().toLowerCase() === tenantCategory
+            );
+          }
+          return false;
+        });
+
+        if (!tenantRoom) return false;
+        return normalizeRoomPropertyType(tenantRoom) === trackerType;
+      });
+    },
+    [allRoomsData, filterRoomsForTracker, trackerType]
+  );
+
+  const fetchTrackerUnits = useCallback(async () => {
+    if (trackerType === "bed") {
+      const { data } = await axios.get(`${apiUrl}rooms`);
+      return Array.isArray(data) ? data : [];
+    }
+
+    const { data } = await axios.get(COMMERCIAL_UNITS_API);
+    return (Array.isArray(data) ? data : []).map(mapCommercialUnitToTrackerRoom);
+  }, [apiUrl, COMMERCIAL_UNITS_API, mapCommercialUnitToTrackerRoom, trackerType]);
+  const fetchAllUnits = useCallback(async () => {
+    const [hostelRes, commercialRes] = await Promise.all([
+      axios.get(`${apiUrl}rooms`),
+      axios.get(COMMERCIAL_UNITS_API),
+    ]);
+
+    const hostelUnits = Array.isArray(hostelRes?.data) ? hostelRes.data : [];
+    const commercialUnits = Array.isArray(commercialRes?.data)
+      ? commercialRes.data.map(mapCommercialUnitToTrackerRoom)
+      : [];
+
+    return [...hostelUnits, ...commercialUnits];
+  }, [apiUrl, COMMERCIAL_UNITS_API, mapCommercialUnitToTrackerRoom]);
 
   const refreshTenants = React.useCallback(async () => {
     try {
       const { data } = await axios.get(`${apiUrl}forms`);
-      setFormData(Array.isArray(data) ? data : []);
+      setAllTenantsData(Array.isArray(data) ? data : []);
+      setFormData(filterTenantsForTracker(data));
     } catch (e) {
       console.error("Failed to refresh tenants:", e);
     }
-  }, [apiUrl]);
+  }, [apiUrl, filterTenantsForTracker]);
 
   const refreshRooms = useCallback(async () => {
     try {
-      const { data } = await axios.get(`${apiUrl}rooms`);
-      setRoomsData(Array.isArray(data) ? data : []);
+      const [trackerUnits, allUnits] = await Promise.all([
+        fetchTrackerUnits(),
+        fetchAllUnits(),
+      ]);
+      setAllRoomsData(allUnits);
+      setRoomsData(filterRoomsForTracker(trackerUnits));
     } catch (e) {
       console.error("Failed to refresh rooms:", e);
     }
-  }, [apiUrl]);
+  }, [fetchAllUnits, fetchTrackerUnits, filterRoomsForTracker]);
 
-  const refreshAllData = useCallback(async () => {
-    await Promise.all([refreshTenants(), refreshRooms()]);
-  }, [refreshTenants, refreshRooms]);
+const refreshAllData = useCallback(async () => {
+    try {
+      const [trackerUnits, allUnits, { data: allTenants }] = await Promise.all([
+        fetchTrackerUnits(),
+        fetchAllUnits(),
+        axios.get(`${apiUrl}forms`),
+      ]);
+
+      setAllRoomsData(Array.isArray(allUnits) ? allUnits : []);
+      setAllTenantsData(Array.isArray(allTenants) ? allTenants : []);
+      const scopedRooms = filterRoomsForTracker(trackerUnits);
+      setRoomsData(scopedRooms);
+      setFormData(filterTenantsForTracker(allTenants, scopedRooms));
+      setLoading(false);
+    } catch (e) {
+      console.error("Failed to refresh tracker data:", e);
+      setError("Failed to fetch data");
+      setLoading(false);
+    }
+  }, [apiUrl, fetchAllUnits, fetchTrackerUnits, filterRoomsForTracker, filterTenantsForTracker]);
+
+  const updateBedPriceInRoomLists = useCallback((roomId, bedNo, price) => {
+    const applyBedPrice = (rooms = []) =>
+      (Array.isArray(rooms) ? rooms : []).map((room) => {
+        if (String(room?._id) !== String(roomId)) return room;
+        return {
+          ...room,
+          beds: (Array.isArray(room?.beds) ? room.beds : []).map((bed) =>
+            String(bed?.bedNo) === String(bedNo) ? { ...bed, price } : bed
+          ),
+        };
+      });
+
+    setRoomsData((prev) => applyBedPrice(prev));
+    setAllRoomsData((prev) => applyBedPrice(prev));
+  }, []);
+
+  useEffect(() => {
+    if (!Array.isArray(allRoomsData) && !Array.isArray(allTenantsData)) return;
+
+    const scopedRooms = filterRoomsForTracker(Array.isArray(allRoomsData) ? allRoomsData : []);
+    setRoomsData(scopedRooms);
+    setFormData(filterTenantsForTracker(Array.isArray(allTenantsData) ? allTenantsData : [], scopedRooms));
+    setLoading(false);
+  }, [allRoomsData, allTenantsData, filterRoomsForTracker, filterTenantsForTracker]);
 
   const lastModalStateRef = useRef(null);
+  const getScopedRoomNosByType = useCallback(
+    (type) =>
+      (Array.isArray(allRoomsData) ? allRoomsData : [])
+        .filter((room) => normalizeRoomPropertyType(room) === type)
+        .map((room) => String(room.roomNo || ""))
+        .filter(Boolean),
+    [allRoomsData]
+  );
+  const getScopedRoomOptionLabelsByType = useCallback(
+    (type, labelPrefix) =>
+      Object.fromEntries(
+        (Array.isArray(allRoomsData) ? allRoomsData : [])
+          .filter((room) => normalizeRoomPropertyType(room) === type)
+          .map((room) => {
+            const roomNo = String(room.roomNo || "").trim();
+            return roomNo ? [roomNo, `${labelPrefix} ${roomNo}`] : null;
+          })
+          .filter(Boolean)
+      ),
+    [allRoomsData]
+  );
+  const getScopedRoomTypeMap = useCallback(
+    (types) => {
+      const allowedTypes = Array.isArray(types) ? types : [types];
+      return Object.fromEntries(
+        (Array.isArray(allRoomsData) ? allRoomsData : [])
+          .filter((room) => allowedTypes.includes(normalizeRoomPropertyType(room)))
+          .map((room) => {
+            const roomNo = String(room.roomNo || "").trim();
+            const type = normalizeRoomPropertyType(room);
+            return roomNo ? [roomNo, type] : null;
+          })
+          .filter(Boolean)
+      );
+    },
+    [allRoomsData]
+  );
+  const getScopedRoomCategoryMap = useCallback(
+    (types) => {
+      const allowedTypes = Array.isArray(types) ? types : [types];
+      return Object.fromEntries(
+        (allRoomsData || [])
+          .filter((room) => allowedTypes.includes(normalizeRoomPropertyType(room)))
+          .map((room) => {
+            const roomNo = String(room.roomNo || "").trim();
+            const category = String(room.category || "").trim();
+            return roomNo ? [roomNo, category] : null;
+          })
+          .filter(Boolean)
+      );
+    },
+    [allRoomsData]
+  );
+  const getScopedCategoriesByType = useCallback(
+    (types) =>
+      Array.from(
+        new Set(
+          (Array.isArray(allRoomsData) ? allRoomsData : [])
+            .filter((room) => {
+              const allowedTypes = Array.isArray(types) ? types : [types];
+              return allowedTypes.includes(normalizeRoomPropertyType(room));
+            })
+            .map((room) => String(room.category || "").trim())
+            .filter(Boolean)
+        )
+      ),
+    [allRoomsData]
+  );
+  const lightBillPropertyScope = useMemo(() => {
+    const roomNosByType = {
+      bed: getScopedRoomNosByType("bed"),
+      room: getScopedRoomNosByType("room"),
+      shop: getScopedRoomNosByType("shop"),
+    };
+
+    if (activeTab === "light-hostel") {
+      return {
+        type: "bed",
+        label: "Hostel-wise",
+        roomNos: roomNosByType.bed,
+        optionLabels: getScopedRoomOptionLabelsByType("bed", "Room"),
+        roomTypeMap: getScopedRoomTypeMap("bed"),
+        roomCategoryMap: getScopedRoomCategoryMap("bed"),
+        categories: getScopedCategoriesByType("bed"),
+        roomNosByType,
+      };
+    }
+
+    if (activeTab === "light-room") {
+      return {
+        type: "room",
+        label: "Room-wise",
+        roomNos: roomNosByType.room,
+        optionLabels: getScopedRoomOptionLabelsByType("room", "Room"),
+        roomTypeMap: getScopedRoomTypeMap("room"),
+        roomCategoryMap: getScopedRoomCategoryMap("room"),
+        categories: getScopedCategoriesByType("room"),
+        roomNosByType,
+      };
+    }
+
+    if (activeTab === "light-room-shop") {
+      return {
+        type: "mixed",
+        label: "Room & Shop-wise",
+        roomNos: [
+          ...roomNosByType.room,
+          ...roomNosByType.shop,
+        ],
+        optionLabels: {
+          ...getScopedRoomOptionLabelsByType("room", "Room"),
+          ...getScopedRoomOptionLabelsByType("shop", "Shop"),
+        },
+        roomTypeMap: getScopedRoomTypeMap(["room", "shop"]),
+        roomCategoryMap: getScopedRoomCategoryMap(["room", "shop"]),
+        categories: getScopedCategoriesByType(["room", "shop"]),
+        roomNosByType,
+      };
+    }
+
+    if (activeTab === "light-shop") {
+      return {
+        type: "shop",
+        label: "Shop-wise",
+        roomNos: roomNosByType.shop,
+        optionLabels: getScopedRoomOptionLabelsByType("shop", "Shop"),
+        roomTypeMap: getScopedRoomTypeMap("shop"),
+        roomCategoryMap: getScopedRoomCategoryMap("shop"),
+        categories: getScopedCategoriesByType("shop"),
+        roomNosByType,
+      };
+    }
+
+    return {
+      type: trackerType,
+      label: trackerLabel,
+      roomNos: (roomsData || []).map((room) => String(room.roomNo || "")).filter(Boolean),
+      optionLabels: {},
+      roomTypeMap: getScopedRoomTypeMap(trackerType),
+      roomCategoryMap: getScopedRoomCategoryMap(trackerType),
+      categories: getScopedCategoriesByType(trackerType),
+      roomNosByType,
+    };
+  }, [activeTab, getScopedCategoriesByType, getScopedRoomCategoryMap, getScopedRoomNosByType, getScopedRoomOptionLabelsByType, getScopedRoomTypeMap, roomsData, trackerLabel, trackerType]);
+  const expensePropertyScope = useMemo(() => {
+    const roomNosByType = {
+      bed: getScopedRoomNosByType("bed"),
+      room: getScopedRoomNosByType("room"),
+      shop: getScopedRoomNosByType("shop"),
+    };
+
+    if (activeTab === "expenses-hostel") {
+      return {
+        type: "bed",
+        label: "Hostel-wise",
+        roomNos: roomNosByType.bed,
+        optionLabels: getScopedRoomOptionLabelsByType("bed", "Room"),
+        roomTypeMap: getScopedRoomTypeMap("bed"),
+        roomNosByType,
+      };
+    }
+
+    if (activeTab === "expenses-room-shop") {
+      return {
+        type: "mixed",
+        label: "Room & Shop-wise",
+        roomNos: [
+          ...roomNosByType.room,
+          ...roomNosByType.shop,
+        ],
+        optionLabels: {
+          ...getScopedRoomOptionLabelsByType("room", "Room"),
+          ...getScopedRoomOptionLabelsByType("shop", "Shop"),
+        },
+        roomTypeMap: getScopedRoomTypeMap(["room", "shop"]),
+        roomNosByType,
+      };
+    }
+
+    if (activeTab === "expenses-room") {
+      return {
+        type: "room",
+        label: "Room-wise",
+        roomNos: roomNosByType.room,
+        optionLabels: getScopedRoomOptionLabelsByType("room", "Room"),
+        roomTypeMap: getScopedRoomTypeMap("room"),
+        roomNosByType,
+      };
+    }
+
+    if (activeTab === "expenses-shop") {
+      return {
+        type: "shop",
+        label: "Shop-wise",
+        roomNos: roomNosByType.shop,
+        optionLabels: getScopedRoomOptionLabelsByType("shop", "Shop"),
+        roomTypeMap: getScopedRoomTypeMap("shop"),
+        roomNosByType,
+      };
+    }
+
+    return {
+      type: trackerType,
+      label: trackerLabel,
+      roomNos: (roomsData || []).map((room) => String(room.roomNo || "")).filter(Boolean),
+      optionLabels: {},
+      roomTypeMap: getScopedRoomTypeMap(trackerType),
+      roomNosByType,
+    };
+  }, [activeTab, getScopedRoomNosByType, getScopedRoomOptionLabelsByType, getScopedRoomTypeMap, roomsData, trackerLabel, trackerType]);
 
   useEffect(() => {
     const modalState = {
@@ -1235,7 +1662,7 @@ const handleApprovedFromBell = React.useCallback((payload) => {
   // Build a shareable URL for the tenant intake page, prefilled + locked
  const buildTenantFormUrl = React.useCallback(() => {
     const base = new URL(
-      "/mutakegirlshostel/tenant-intake",
+      "/hosteldemo/tenant-intake",
       window.location.origin
     );
     const p = new URLSearchParams(base.search);
@@ -1325,8 +1752,16 @@ useEffect(() => {
 
 const handleShareAddTenantModal = React.useCallback(async () => {
   // basic validation
-  if (!newTenant.roomNo || !newTenant.bedNo || newTenant.bedNo === "__other__") {
-    alert("Please select a Room and a Bed before sharing the form.");
+  if (
+    !newTenant.roomNo ||
+    (trackerType === "bed" &&
+      (!newTenant.bedNo || newTenant.bedNo === "__other__"))
+  ) {
+    alert(
+      trackerType === "bed"
+        ? "Please select a Room and a Bed before sharing the form."
+        : `Please select a ${trackerType === "shop" ? "Shop" : "Room"} before sharing the form.`
+    );
     return;
   }
 
@@ -1340,7 +1775,8 @@ const handleShareAddTenantModal = React.useCallback(async () => {
         ? newTenant.baseRent
         : newTenant.rentAmount;
 
-    const payload = {
+      const payload = {
+      roomId: newTenant.roomId || pickedRoom?._id || undefined,
       category: (newTenant.category || pickedRoom?.category || "").trim() || undefined,
       name: (newTenant.name || "").trim(),
       phoneNo: (newTenant.phoneNo || "").trim(),
@@ -1408,7 +1844,7 @@ setInviteToken(res.data?.token || null);
     console.error("Share failed:", err.response?.data || err);
     alert(err.response?.data?.message || "Share failed. Check console.");
   }
-}, [newTenant]);
+}, [newTenant, trackerType, roomsData]);
 
 
 
@@ -1567,6 +2003,12 @@ const isMediaDoc = (d) => {
     ct.startsWith("video/") ||
     /\.(png|jpe?g|webp|gif|heic|heif|avif|mp4|mov|webm)$/i.test(name)
   );
+};
+
+const isImageDoc = (d) => {
+  const ct = String(d?.contentType || "").toLowerCase();
+  const name = String(d?.fileName || "").toLowerCase();
+  return ct.startsWith("image/") || /\.(png|jpe?g|webp|gif|heic|heif|avif)$/i.test(name);
 };
 
 const docRel = (d) => String(d?.relation || "").trim().toLowerCase();
@@ -1991,6 +2433,7 @@ if (firstRentStatus === "ADVANCE_PAID") {
     fd.append("relative2Phone", newTenant.relative2Phone || "");
 
     fd.append("roomNo", newTenant.roomNo || "");
+    if (newTenant.roomId) fd.append("roomId", String(newTenant.roomId));
     fd.append("firstRentStatus", firstRentStatus);
     fd.append("firstRentMonth", firstRentMonth);
     fd.append(
@@ -2243,9 +2686,32 @@ const closeAddTenantModal = () => {
   const canLeft = start > 0;
   const canRight = start + PAGE < months.length;
   const visibleMonths = months.slice(start, start + PAGE);
+  const getRowWindowStart = useCallback(
+    (rowKey) => {
+      if (!rowKey) return start;
+      return rowMonthStarts[rowKey] ?? start;
+    },
+    [rowMonthStarts, start]
+  );
+  const getVisibleMonthsForRow = useCallback(
+    (rowKey) => {
+      const rowStart = getRowWindowStart(rowKey);
+      return months.slice(rowStart, rowStart + PAGE);
+    },
+    [getRowWindowStart, months]
+  );
+  const canRowGoLeft = useCallback(
+    (rowKey) => getRowWindowStart(rowKey) > 0,
+    [getRowWindowStart]
+  );
+  const canRowGoRight = useCallback(
+    (rowKey) => getRowWindowStart(rowKey) + PAGE < months.length,
+    [getRowWindowStart, months.length]
+  );
 
   useEffect(() => {
     setRentStart(null);
+    setRowMonthStarts({});
   }, [timelineYear]);
 
   const goLeft = (e) => {
@@ -2263,26 +2729,47 @@ const closeAddTenantModal = () => {
     });
   };
 
-  const renderMonthWindowNav = (index) => (
+  const goRowLeft = useCallback(
+    (rowKey, e) => {
+      e?.stopPropagation?.();
+      setRowMonthStarts((prev) => {
+        const cur = prev[rowKey] ?? start;
+        return { ...prev, [rowKey]: Math.max(0, cur - 1) };
+      });
+    },
+    [start]
+  );
+  const goRowRight = useCallback(
+    (rowKey, e) => {
+      e?.stopPropagation?.();
+      setRowMonthStarts((prev) => {
+        const cur = prev[rowKey] ?? start;
+        return { ...prev, [rowKey]: Math.min(maxStart, cur + 1) };
+      });
+    },
+    [maxStart, start]
+  );
+
+  const renderMonthWindowNav = (index, rowKey, rowMonths) => (
     <>
       {index === 0 && (
         <button
           type="button"
           className="month-inline-nav month-inline-nav-prev"
-          disabled={!canLeft}
-          onClick={goLeft}
+          disabled={!canRowGoLeft(rowKey)}
+          onClick={(e) => goRowLeft(rowKey, e)}
           title="Previous months"
           aria-label="Previous months"
         >
           &lsaquo;
         </button>
       )}
-      {index === visibleMonths.length - 1 && (
+      {index === rowMonths.length - 1 && (
         <button
           type="button"
           className="month-inline-nav month-inline-nav-next"
-          disabled={!canRight}
-          onClick={goRight}
+          disabled={!canRowGoRight(rowKey)}
+          onClick={(e) => goRowRight(rowKey, e)}
           title="Newer months"
           aria-label="Newer months"
         >
@@ -2390,6 +2877,22 @@ const closeAddTenantModal = () => {
   return 0;
  };
 
+ const getLatestShiftCutoffDate = (tenant) => {
+  const direct = tenant?.shiftEffectiveFrom || tenant?.shiftDate || tenant?.effectiveFrom;
+  if (direct) {
+    const parsed = new Date(direct);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+
+  const history = Array.isArray(tenant?.rentHistory) ? tenant.rentHistory : [];
+  const latestShift = history
+    .map((entry) => normalizeRentSnapshot(entry))
+    .filter((entry) => entry && entry.source === "shift")
+    .sort((a, b) => b.effectiveFrom - a.effectiveFrom)[0];
+
+  return latestShift?.effectiveFrom || null;
+ };
+
  const expectFromTenant = (tenant, roomsData) => {
   // 1️⃣ Always prefer NEW updated bed/room price from roomsData
   if (roomsData && tenant?.roomNo && tenant?.bedNo) {
@@ -2449,9 +2952,39 @@ const normalizeRentSnapshot = (entry = {}) => {
   return {
     effectiveFrom: parsed,
     amount,
+    roomNo: entry?.roomNo != null ? String(entry.roomNo) : "",
+    bedNo: entry?.bedNo != null ? String(entry.bedNo) : "",
     previousAmount: toNum(entry?.previousBaseRent) || toNum(entry?.previousRentAmount),
     source: entry?.source || "",
   };
+};
+
+const pruneConflictingFutureSnapshots = (snapshots = [], tenant = {}) => {
+  const currentRoomNo = tenant?.roomNo != null ? String(tenant.roomNo) : "";
+  const currentBedNo = tenant?.bedNo != null ? String(tenant.bedNo) : "";
+  if (!currentRoomNo || !currentBedNo || !Array.isArray(snapshots) || !snapshots.length) {
+    return snapshots;
+  }
+
+  let anchorIndex = -1;
+  snapshots.forEach((snap, index) => {
+    if (
+      String(snap?.roomNo || "") === currentRoomNo &&
+      String(snap?.bedNo || "") === currentBedNo
+    ) {
+      anchorIndex = index;
+    }
+  });
+
+  if (anchorIndex === -1) return snapshots;
+
+  return snapshots.filter((snap, index) => {
+    if (index <= anchorIndex) return true;
+    return (
+      String(snap?.roomNo || "") === currentRoomNo &&
+      String(snap?.bedNo || "") === currentBedNo
+    );
+  });
 };
 
 const getCycleStartForMonth = (tenant, y, m) => {
@@ -2535,7 +3068,42 @@ const buildRentSnapshots = (tenant, roomsData) => {
     snapshots.unshift({
       effectiveFrom: joinDate,
       amount: previousAmount,
+      roomNo: tenant?.roomNo != null ? String(tenant.roomNo) : "",
+      bedNo: tenant?.bedNo != null ? String(tenant.bedNo) : "",
     });
+    }
+  }
+
+  if (!snapshots.length) {
+    const shiftStart =
+      tenant?.shiftEffectiveFrom || tenant?.shiftDate || tenant?.effectiveFrom;
+    const parsedShiftStart = shiftStart ? new Date(shiftStart) : null;
+    const latestPaid = latestPaidRentAmount(tenant);
+    const currentRent = expectFromTenant(tenant, roomsData);
+
+    if (
+      parsedShiftStart &&
+      !Number.isNaN(parsedShiftStart.getTime()) &&
+      joinDate &&
+      !Number.isNaN(joinDate.getTime()) &&
+      latestPaid > 0 &&
+      currentRent > 0 &&
+      latestPaid !== currentRent
+    ) {
+      snapshots.push({
+        effectiveFrom: joinDate,
+        amount: latestPaid,
+        roomNo: tenant?.roomNo != null ? String(tenant.roomNo) : "",
+        bedNo: tenant?.bedNo != null ? String(tenant.bedNo) : "",
+        source: "reconstructed-before-shift",
+      });
+      snapshots.push({
+        effectiveFrom: parsedShiftStart,
+        amount: currentRent,
+        roomNo: tenant?.roomNo != null ? String(tenant.roomNo) : "",
+        bedNo: tenant?.bedNo != null ? String(tenant.bedNo) : "",
+        source: "reconstructed-shift",
+      });
     }
   }
 
@@ -2546,6 +3114,8 @@ const buildRentSnapshots = (tenant, roomsData) => {
       snapshots.push({
         effectiveFrom: Number.isNaN(joinDate.getTime()) ? new Date() : joinDate,
         amount: fallback,
+        roomNo: tenant?.roomNo != null ? String(tenant.roomNo) : "",
+        bedNo: tenant?.bedNo != null ? String(tenant.bedNo) : "",
       });
     }
   }
@@ -2556,10 +3126,13 @@ const buildRentSnapshots = (tenant, roomsData) => {
     snapshots.push({
       effectiveFrom: new Date(),
       amount: currentAmount,
+      roomNo: tenant?.roomNo != null ? String(tenant.roomNo) : "",
+      bedNo: tenant?.bedNo != null ? String(tenant.bedNo) : "",
     });
   }
 
-  return snapshots.sort((a, b) => a.effectiveFrom - b.effectiveFrom);
+  const sorted = snapshots.sort((a, b) => a.effectiveFrom - b.effectiveFrom);
+  return pruneConflictingFutureSnapshots(sorted, tenant);
 };
 
 const getExpectedRentForMonth = (tenant, y, m, roomsData) => {
@@ -2596,7 +3169,26 @@ const getExpectedRentForMonth = (tenant, y, m, roomsData) => {
     }
   }
 
-  return expected || expectFromTenant(tenant, roomsData);
+  let resolved = expected || expectFromTenant(tenant, roomsData);
+  const parsedShiftCutoff = getLatestShiftCutoffDate(tenant);
+  const paidAmount = (tenant?.rents || []).reduce((sum, rent) => {
+    const ym = getYMFromRecord(rent);
+    if (!ym || ym.y !== y || ym.m !== m) return sum;
+    return sum + Number(rent?.rentAmount || 0);
+  }, 0);
+
+  // Do not retroactively raise older paid cycles after a later bed shift.
+  if (
+    parsedShiftCutoff &&
+    !Number.isNaN(parsedShiftCutoff.getTime()) &&
+    cycleEnd <= parsedShiftCutoff &&
+    paidAmount > 0 &&
+    paidAmount < resolved
+  ) {
+    resolved = paidAmount;
+  }
+
+  return resolved;
 };
 
 
@@ -2763,17 +3355,8 @@ const getRentStatusLabelForSort = (tenant) => {
 };
 
   useEffect(() => {
-    axios
-      .get(`${apiUrl}forms`)
-      .then((response) => {
-        setFormData(Array.isArray(response.data) ? response.data : []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("Failed to fetch data");
-        setLoading(false);
-      });
-  }, [apiUrl]);
+    refreshAllData();
+  }, [refreshAllData]);
 
   useEffect(() => {
     axios
@@ -2799,14 +3382,10 @@ const getRentStatusLabelForSort = (tenant) => {
   // }, []);
   // useEffect(() => {
   //   axios
-  //     .get("   https://mutakegirlshostel-0ko7.onrender.com/api/rooms")
+  //     .get("  http://localhost:8000/api/rooms")
   //     .then((response) => setRoomsData(response.data))
   //     .catch((err) => console.error("Failed to fetch rooms:", err));
   // }, []);
-
-  useEffect(() => {
-    refreshRooms();
-  }, [refreshRooms]);
 
   const renderTenantPhoto = (tenant) => {
     const photoUrl = getTenantPhotoUrl(tenant);
@@ -3151,7 +3730,7 @@ const getLeaveSettlementMonths = (tenant, cutoffDate) => {
     .filter(Boolean);
 };
 
-const getLeaveExtraDaysDeduction = (tenant, cutoffDate) => {
+const getLeaveProratedAdjustment = (tenant, cutoffDate) => {
   const cutoff = cutoffDate ? new Date(cutoffDate) : null;
   if (!tenant?.joiningDate || !cutoff || Number.isNaN(cutoff.getTime())) return null;
 
@@ -3161,22 +3740,31 @@ const getLeaveExtraDaysDeduction = (tenant, cutoffDate) => {
   if (Number.isNaN(joinDate.getTime())) return null;
   joinDate.setHours(0, 0, 0, 0);
 
-  const months = getBillingMonthsUpToDate(tenant, cutoffDate);
   const firstBillYM = getFirstBillYM(tenant);
-  const active = months
-    .map(({ y, m }) => {
-      const cycleIndex = y * 12 + m - firstBillYM;
-      const periodStart = new Date(joinDate);
-      periodStart.setMonth(periodStart.getMonth() + cycleIndex);
-      periodStart.setHours(0, 0, 0, 0);
+  let active = null;
 
-      const periodEnd = new Date(periodStart);
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-      periodEnd.setHours(0, 0, 0, 0);
+  for (let cycleIndex = 0; cycleIndex < 240; cycleIndex++) {
+    const periodStart = new Date(joinDate);
+    periodStart.setMonth(periodStart.getMonth() + cycleIndex);
+    periodStart.setHours(0, 0, 0, 0);
 
-      return { y, m, periodStart, periodEnd };
-    })
-    .find(({ periodStart, periodEnd }) => cutoff > periodStart && cutoff < periodEnd);
+    const periodEnd = new Date(periodStart);
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+    periodEnd.setHours(0, 0, 0, 0);
+
+    if (cutoff >= periodStart && cutoff < periodEnd) {
+      const ym = firstBillYM + cycleIndex;
+      active = {
+        y: Math.floor(ym / 12),
+        m: ym % 12,
+        periodStart,
+        periodEnd,
+      };
+      break;
+    }
+
+    if (periodStart > cutoff) break;
+  }
 
   if (!active) return null;
 
@@ -3185,21 +3773,26 @@ const getLeaveExtraDaysDeduction = (tenant, cutoffDate) => {
 
   const msPerDay = 1000 * 60 * 60 * 24;
   const cycleDays = Math.max(1, Math.round((active.periodEnd - active.periodStart) / msPerDay));
-  const extraDays = Math.max(0, Math.round((cutoff - active.periodStart) / msPerDay));
-  if (extraDays <= 0 || extraDays >= cycleDays) return null;
+  const occupiedDays = Math.max(1, Math.round((cutoff - active.periodStart) / msPerDay) + 1);
+  if (occupiedDays <= 0 || occupiedDays > cycleDays) return null;
 
   const cell = getMonthCell(tenant, active.y, active.m);
   const alreadyPaid = Number(cell?.amountPaid || 0);
-  const proratedAmount = Math.round((expectedRent / cycleDays) * extraDays);
-  const amount = Math.max(0, proratedAmount - alreadyPaid);
-  if (amount <= 0) return null;
+  const proratedAmount = Math.round((expectedRent / cycleDays) * occupiedDays);
+  const deductionAmount = Math.max(0, proratedAmount - alreadyPaid);
+  const refundAmount = Math.max(0, alreadyPaid - proratedAmount);
+  if (deductionAmount <= 0 && refundAmount <= 0) return null;
 
   return {
-    key: "extra-days-rent",
-    label: `Extra days rent (${extraDays} day${extraDays === 1 ? "" : "s"})`,
-    amount,
-    days: extraDays,
+    key: "prorated-rent-adjustment",
+    label: `Stayed rent (${occupiedDays} day${occupiedDays === 1 ? "" : "s"})`,
+    deductionAmount,
+    refundAmount,
+    occupiedDays,
     dailyRent: expectedRent / cycleDays,
+    monthlyRent: expectedRent,
+    paidAmount: alreadyPaid,
+    proratedAmount,
     cycleRange: `${fmtDM(active.periodStart)} - ${fmtDM(active.periodEnd)}`,
   };
 };
@@ -3241,8 +3834,8 @@ const compareRoomBed = (a, b) => {
     [leaveSettlementMonths, leaveSelectedMonths]
   );
 
-  const leaveExtraDaysDeduction = useMemo(
-    () => getLeaveExtraDaysDeduction(currentLeaveTenant, selectedLeaveDate),
+  const leaveProratedAdjustment = useMemo(
+    () => getLeaveProratedAdjustment(currentLeaveTenant, selectedLeaveDate),
     [currentLeaveTenant, roomsData, selectedLeaveDate]
   );
 
@@ -3252,18 +3845,21 @@ const compareRoomBed = (a, b) => {
       (sum, month) => sum + Number(month.amount || 0),
       0
     );
-    const extraDaysDeduction = Number(leaveExtraDaysDeduction?.amount || 0);
-    const totalDeduction = monthDeduction + extraDaysDeduction;
+    const proratedDeduction = Number(leaveProratedAdjustment?.deductionAmount || 0);
+    const rentRefund = Number(leaveProratedAdjustment?.refundAmount || 0);
+    const totalDeduction = monthDeduction + proratedDeduction;
+    const totalReturnable = grossDeposit + rentRefund;
 
     return {
       grossDeposit,
       monthDeduction,
-      extraDaysDeduction,
+      proratedDeduction,
+      rentRefund,
       totalDeduction,
-      refundableDeposit: Math.max(0, grossDeposit - totalDeduction),
-      amountDueFromTenant: Math.max(0, totalDeduction - grossDeposit),
+      refundableDeposit: Math.max(0, totalReturnable - totalDeduction),
+      amountDueFromTenant: Math.max(0, totalDeduction - totalReturnable),
     };
-  }, [currentLeaveTenant, selectedLeaveSettlementMonths, leaveExtraDaysDeduction]);
+  }, [currentLeaveTenant, selectedLeaveSettlementMonths, leaveProratedAdjustment]);
 
   // Tenants to show in the main table (hide those who have left)
   const visibleTenants = useMemo(() => {
@@ -3360,6 +3956,10 @@ return sorted;
 
   // Vacant slots = slots that are not currently occupied (by a visible, non-leaved tenant)
   const extraVacantSlots = useMemo(() => {
+    if (trackerType !== "bed" && visibleTenants.length === 0) {
+      return [];
+    }
+
     const activeKeys = new Set(
       (formData || [])
         .filter((t) => {
@@ -3387,7 +3987,7 @@ return sorted;
   })
   .sort(compareRoomBed); // ✅ vacant flow
 
-  }, [slots, formData, leaveDates, searchText, selectedYear]);
+  }, [slots, formData, leaveDates, searchText, selectedYear, trackerType, visibleTenants]);
 
   // Build combined rows (occupied + vacant) in room-wise flow when no sorting selected
   const combinedRows = useMemo(() => {
@@ -4072,9 +4672,15 @@ const handleDownloadExcel = () => {
 
   
 const sectionHeadingMap = {
-  rent: "Bed-wise Rent and Deposit Tracker",
-  light: "Light Bill",
-  expenses: "Other Expenses",
+  rent: `${trackerLabel} Rent and Deposit Tracker`,
+  "light-hostel": "Light Bill Hostel",
+  "light-room-shop": "Light Bill Room + Shop",
+  "light-room": "Light Bill Room",
+  "light-shop": "Light Bill Shop",
+  "expenses-hostel": "Expenses Hostel",
+  "expenses-room-shop": "Expenses Room + Shop",
+  "expenses-room": "Expenses Room",
+  "expenses-shop": "Expenses Shop",
   staff: "Staff Expenses",
   holiday: "Holiday Management",
   canteen: "Canteen Portal",
@@ -4082,7 +4688,13 @@ const sectionHeadingMap = {
 };
 
 const currentSectionHeading =
-  sectionHeadingMap[activeTab] || "Bed-wise Rent and Deposit Tracker";
+  sectionHeadingMap[activeTab] || `${trackerLabel} Rent and Deposit Tracker`;
+useEffect(() => {
+  setTrackerType((prev) =>
+    prev === trackerTypeFromLocation ? prev : trackerTypeFromLocation
+  );
+}, [trackerTypeFromLocation]);
+
 useEffect(() => {
   if (location.state?.tab) {
     setActiveTab(location.state.tab);
@@ -4090,7 +4702,15 @@ useEffect(() => {
 }, [location.state?.tab]);
 
 const openNewComponantSection = (tab) => {
-  navigate("/NewComponant", { state: { tab } });
+  navigate(`/tracker/${trackerType}`, { state: { tab, trackerType } });
+};
+
+const openTrackerView = (nextTrackerType, tab = activeTab) => {
+  const normalizedType = normalizeTrackerType(nextTrackerType);
+  setTrackerType(normalizedType);
+  navigate(`/tracker/${normalizedType}`, {
+    state: { tab, trackerType: normalizedType },
+  });
 };
 
 const handleMobileSectionSelect = (key) => {
@@ -4106,13 +4726,13 @@ const handleMobileSectionSelect = (key) => {
     return;
   }
 
-  if (key === "light") {
-    openNewComponantSection("light");
+  if (key === "light-hostel" || key === "light-room-shop" || key === "light-room" || key === "light-shop") {
+    openNewComponantSection(key);
     return;
   }
 
-  if (key === "other-expense") {
-    openNewComponantSection("expenses");
+  if (key === "expenses-hostel" || key === "expenses-room-shop" || key === "expenses-room" || key === "expenses-shop") {
+    openNewComponantSection(key);
     return;
   }
 
@@ -4155,7 +4775,7 @@ const handleMobileSectionSelect = (key) => {
     leaveDeductFromDeposit &&
     settlementMonths.length > 0 &&
     selectedSettlementMonths.length === 0 &&
-    !leaveExtraDaysDeduction
+    !leaveProratedAdjustment
   ) {
     alert("Please select at least one month to deduct, or turn off deposit deduction.");
     return;
@@ -4176,14 +4796,25 @@ const handleMobileSectionSelect = (key) => {
           month: month.label,
           amount: Number(month.amount || 0),
         })),
-        ...(leaveExtraDaysDeduction
+        ...(leaveProratedAdjustment?.deductionAmount
           ? [
               {
-                month: leaveExtraDaysDeduction.label,
-                amount: Number(leaveExtraDaysDeduction.amount || 0),
-                days: leaveExtraDaysDeduction.days,
-                dailyRent: Math.round(Number(leaveExtraDaysDeduction.dailyRent || 0)),
-                cycleRange: leaveExtraDaysDeduction.cycleRange,
+                month: leaveProratedAdjustment.label,
+                amount: Number(leaveProratedAdjustment.deductionAmount || 0),
+                days: leaveProratedAdjustment.occupiedDays,
+                dailyRent: Math.round(Number(leaveProratedAdjustment.dailyRent || 0)),
+                cycleRange: leaveProratedAdjustment.cycleRange,
+              },
+            ]
+          : []),
+        ...(leaveProratedAdjustment?.refundAmount
+          ? [
+              {
+                month: "Unused prepaid rent refund",
+                amount: -Number(leaveProratedAdjustment.refundAmount || 0),
+                days: leaveProratedAdjustment.occupiedDays,
+                dailyRent: Math.round(Number(leaveProratedAdjustment.dailyRent || 0)),
+                cycleRange: leaveProratedAdjustment.cycleRange,
               },
             ]
           : []),
@@ -4362,7 +4993,7 @@ const getAllPendingMonths = (tenant) => {
 
       // Refresh data after delete
       const response = await axios.get(apiUrl);
-      setFormData(response.data);
+      setFormData(filterTenantsForTracker(response.data));
     } catch (error) {
       alert(
         "Failed to delete rent: " +
@@ -4374,14 +5005,83 @@ const getAllPendingMonths = (tenant) => {
   // formupdate
 
  const formatVacantBedOption = (bed) =>
-  `Room ${bed.roomNo} - Bed ${bed.bedNo}` +
-  `${bed.category ? ` - ${bed.category}` : ""}` +
-  `${bed.floorNo ? ` - Floor ${bed.floorNo}` : ""}` +
-  `${bed.price != null ? ` - Rs. ${bed.price}` : ""}`;
+  `${formatTrackerUnit(bed.roomNo, bed.bedNo)}`;
+
+ const getTrackerVacancyNoun = useCallback(() => {
+  if (trackerType === "shop") return "shop";
+  if (trackerType === "room") return "room";
+  return "bed";
+ }, [trackerType]);
+
+ const buildUndoLeaveConflictMessage = useCallback(
+  (data = {}) => {
+    if (trackerType === "shop") {
+      const shopNo = data?.occupant?.roomNo || data?.roomNo || "";
+      const occupantName = data?.occupant?.name || "another tenant";
+      return `Old shop ${shopNo} is already occupied by ${occupantName}. Select another vacant shop to undo leave.`;
+    }
+
+    if (trackerType === "room") {
+      const roomNo = data?.occupant?.roomNo || data?.roomNo || "";
+      const occupantName = data?.occupant?.name || "another tenant";
+      return `Old room ${roomNo} is already occupied by ${occupantName}. Select another vacant room to undo leave.`;
+    }
+
+    return data?.message || "Please select another vacant bed.";
+  },
+  [trackerType]
+ );
+
+ const filterVacantSlotsForCurrentTracker = useCallback(
+  (vacantSlots = []) => {
+    const allowedRoomNos = new Set(
+      (roomsData || [])
+        .map((room) => String(room?.roomNo ?? "").trim())
+        .filter(Boolean)
+    );
+
+    const occupiedRoomNos = new Set(
+      (formData || [])
+        .filter((tenant) => isActiveTenant(tenant))
+        .map((tenant) => String(tenant?.roomNo ?? "").trim())
+        .filter(Boolean)
+    );
+
+    const seenKeys = new Set();
+
+    return (Array.isArray(vacantSlots) ? vacantSlots : []).filter((slot) => {
+      const roomNo = String(slot?.roomNo ?? "").trim();
+      const bedNo = String(slot?.bedNo ?? "").trim();
+
+      if (!allowedRoomNos.has(roomNo)) return false;
+
+      if (trackerType !== "bed" && occupiedRoomNos.has(roomNo)) return false;
+
+      const dedupeKey = trackerType === "bed" ? `${roomNo}__${bedNo}` : roomNo;
+      if (seenKeys.has(dedupeKey)) return false;
+      seenKeys.add(dedupeKey);
+
+      return true;
+    });
+  },
+  [roomsData, formData, trackerType, today0]
+ );
+
+
 
  const openUndoBedModal = (tenantId, message, vacantBeds = []) => {
-  if (!vacantBeds.length) {
-    alert(`${message}\n\nNo vacant beds are available right now.`);
+  const filteredVacantBeds = filterVacantSlotsForCurrentTracker(vacantBeds);
+
+  if (!filteredVacantBeds.length) {
+    const trackerLabel =
+      trackerType === "shop" ? "shop" : trackerType === "room" ? "room" : "bed";
+    alert(
+      `${message}\n\nNo vacant ${trackerLabel}s are available right now. ${
+        trackerType === "bed"
+          ? "Please free another bed first."
+          : `Please add or free another ${trackerLabel} first.`
+      }`
+    );
     return;
   }
 
@@ -4389,7 +5089,7 @@ const getAllPendingMonths = (tenant) => {
     show: true,
     tenantId,
     message,
-    vacantBeds,
+    vacantBeds: filteredVacantBeds,
     selectedIndex: "",
     busy: false,
   });
@@ -4410,7 +5110,7 @@ const getAllPendingMonths = (tenant) => {
   const selectedIndex = Number(undoBedModal.selectedIndex);
   const pickedBed = undoBedModal.vacantBeds[selectedIndex];
   if (!pickedBed) {
-    alert("Please select a vacant bed.");
+    alert(`Please select a vacant ${getTrackerVacancyNoun()}.`);
     return;
   }
 
@@ -4420,7 +5120,7 @@ const getAllPendingMonths = (tenant) => {
     if (retryRes.data?.success) {
       const restored = retryRes.data?.form;
       alert(
-        `Leave undone successfully.\nAssigned bed: Room ${restored?.roomNo || pickedBed.roomNo}, Bed ${restored?.bedNo || pickedBed.bedNo}`
+        `Leave undone successfully.\nAssigned: ${formatTrackerUnit(restored?.roomNo || pickedBed.roomNo, restored?.bedNo || pickedBed.bedNo)}`
       );
       setUndoBedModal({
         show: false,
@@ -4449,7 +5149,7 @@ const getAllPendingMonths = (tenant) => {
     if (res.data?.success) {
       const restored = res.data?.form;
       alert(
-        `Leave undone successfully.\nAssigned bed: Room ${restored?.roomNo || "-"}, Bed ${restored?.bedNo || "-"}`
+        `Leave undone successfully.\nAssigned: ${formatTrackerUnit(restored?.roomNo || "-", restored?.bedNo || "-")}`
       );
       await refreshTenants?.();
       return;
@@ -4459,7 +5159,13 @@ const getAllPendingMonths = (tenant) => {
   } catch (error) {
     const data = error?.response?.data;
     if (error?.response?.status === 409 && (data?.code === "BED_OCCUPIED" || data?.code === "BED_REQUIRED")) {
-      openUndoBedModal(tenantId, data.message || "Please select another vacant bed.", data.vacantBeds || []);
+      openUndoBedModal(
+        tenantId,
+        data?.code === "BED_OCCUPIED"
+          ? buildUndoLeaveConflictMessage(data)
+          : `Please select another vacant ${getTrackerVacancyNoun()}.`,
+        data.vacantBeds || []
+      );
       return;
     }
 
@@ -5422,8 +6128,16 @@ const handleSave = async () => {
 
 
   const navigate = useNavigate();
+  const handleManageUnitsNavigation = useCallback((event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const targetPath = `${appBasePath}${manageUnitsPath}`;
+    if (window.location.pathname === targetPath) return;
+    window.location.assign(targetPath);
+  }, [appBasePath, manageUnitsPath]);
   const handleNavigation = (path) => {
-    navigate(path);
+    const shouldReplace = path === "/maindashboard" || path === "/maindashbaord";
+    navigate(path, shouldReplace ? { replace: true } : undefined);
   };
 
   const handleLogout = () => {
@@ -5609,7 +6323,9 @@ const isTodayOrFuture = (iso) => {
     <div className="modal-dialog modal-lg modal-dialog-centered">
       <div className="modal-content">
         <div className="modal-header">
-          <h5 className="modal-title">Vacant Beds</h5>
+          <h5 className="modal-title">
+            {trackerType === "shop" ? "Vacant Shops" : trackerType === "room" ? "Vacant Rooms" : "Vacant Beds"}
+          </h5>
           <button
             type="button"
             className="modal-x-btn"
@@ -5627,8 +6343,8 @@ const isTodayOrFuture = (iso) => {
             <table className="table table-bordered">
               <thead>
                 <tr>
-                  <th>Room No</th>
-                  <th>Bed No</th>
+                  <th>{trackerType === "shop" ? "Shop Number" : "Room No"}</th>
+                  {trackerType === "bed" && <th>Bed No</th>}
                   <th>Floor No</th>
                   <th>Category</th>
                   <th>Action</th>
@@ -5639,7 +6355,7 @@ const isTodayOrFuture = (iso) => {
                 {vacantBedsList.map((b, i) => (
                   <tr key={i}>
                     <td>{b.roomNo}</td>
-                    <td>{b.bedNo}</td>
+                    {trackerType === "bed" && <td>{b.bedNo}</td>}
                     <td>{b.floorNo}</td>
                     <td>{b.category}</td>
                     <td>
@@ -5779,24 +6495,38 @@ const isTodayOrFuture = (iso) => {
 </button>
 
   <button
-    className={`tab-pill ${activeTab === "light" ? "active" : ""}`}
-    onClick={() => setActiveTab("light")}
+    className={`tab-pill ${activeTab === "light-hostel" ? "active" : ""}`}
+    onClick={() => setActiveTab("light-hostel")}
   >
-    🔌 Light Bill
+    Light Bill Hostel
   </button>
 
   <button
-    className={`tab-pill ${activeTab === "expenses" ? "active" : ""}`}
-    onClick={() => setActiveTab("expenses")}
+    className={`tab-pill ${activeTab === "light-room-shop" ? "active" : ""}`}
+    onClick={() => setActiveTab("light-room-shop")}
   >
-    📄 Expenses
+    Light Bill Room + Shop
   </button>
 
   <button
-    className={`tab-pill ${activeTab === "staff" ? "active" : ""}`}
-    onClick={() => setActiveTab("staff")}
+    className={`tab-pill ${activeTab === "expenses-hostel" ? "active" : ""}`}
+    onClick={() => setActiveTab("expenses-hostel")}
   >
-    🧑‍🔧 Staff
+    Expenses Hostel
+  </button>
+
+  <button
+    className={`tab-pill ${activeTab === "expenses-room-shop" ? "active" : ""}`}
+    onClick={() => setActiveTab("expenses-room-shop")}
+  >
+    Expenses Room + Shop
+  </button>
+
+  <button
+    className={`tab-pill ${activeTab === 'staff' ? 'active' : ''}`}
+    onClick={() => setActiveTab('staff')}
+  >
+    Staff
   </button>
 
 </div>
@@ -5807,7 +6537,7 @@ const isTodayOrFuture = (iso) => {
 
 {/* ---------------- LIGHT BILL TAB ---------------- */}
 {/* ---------- LIGHT BILL TAB ---------- */}
-{activeTab === "light" && (
+{['light-hostel', 'light-room-shop', 'light-room', 'light-shop'].includes(activeTab) && (
   <>
     {/* BACK BUTTON */}
     {/* <div className="mb-3 d-flex">
@@ -5818,18 +6548,20 @@ const isTodayOrFuture = (iso) => {
         ← Back
       </button>
     </div> */}
-
     {/* FULL LIGHT BILL UI INSIDE CARD */}
     <div className="card  p-3 mb-4 lightbill-card">
-      <LightBill embedded={true} />
+      <LightBill
+        embedded={true}
+        propertyScope={lightBillPropertyScope}
+      />
     </div>
-  </>
+  </> 
 )}
 
 
 {/* ---------------- OTHER EXPENSE TAB ---------------- */}
 {/* ---------------- OTHER EXPENSE TAB ---------------- */}
-{activeTab === "expenses" && (
+{["expenses-hostel", "expenses-room-shop", "expenses-room", "expenses-shop"].includes(activeTab) && (
   <>
     {/* BACK BUTTON */}
     {/* <div className="mb-3 d-flex">
@@ -5843,7 +6575,10 @@ const isTodayOrFuture = (iso) => {
 
 
     <div className="card  p-3 mb-4 lightbill-card">
-      <OtherExpense embedded={true} />
+      <OtherExpense
+        embedded={true}
+        propertyScope={expensePropertyScope}
+      />
     </div>
   </>
 )}
@@ -5900,11 +6635,21 @@ const isTodayOrFuture = (iso) => {
     <FaThLarge />
   </span>
   <span className="section-text section-text1 ">
-    Bed-wise Rent and Deposit Tracker 
+    {trackerLabel} Rent and Deposit Tracker
   </span>
 </div>
 <RentHeaderBar
-  title="Rent & Deposit Tracker"
+  eyebrow={`${trackerGroupLabel} Data`}
+  title={
+    trackerType === "shop"
+      ? "Other Property Shop Rent & Deposit Tracker"
+      : trackerType === "room"
+        ? "Other Property Room Rent & Deposit Tracker"
+        : "Hostel Rent & Deposit Tracker"
+  }
+  searchPlaceholder={trackerType === "bed" ? "Search room, bed, name, mobile..." : "Search room, tenant, mobile..."}
+  manageRoomsLabel={trackerType === "shop" ? "Manage Shops" : trackerType === "room" ? "Manage Rooms" : "Manage Rooms"}
+  addTenantLabel={trackerType === "shop" ? "Add Shop Tenant" : trackerType === "room" ? "Add Room Tenant" : "Add Tenant"}
   notificationSlot={
     <NotificationBell
       apiUrl={apiUrl}
@@ -5923,20 +6668,34 @@ const isTodayOrFuture = (iso) => {
   searchText={searchText}
   onYearChange={handleRentYearChange}
   onSearchChange={handleRentSearchChange}
-  onManageRooms={() => navigate("/roommanager")}
+  onManageRooms={handleManageUnitsNavigation}
   onAddTenant={openAddModal}
   onDownloadExcel={handleDownloadExcel}
   onOpenHistory={() => setShowLeavedHistoryView((prev) => !prev)}
   isHistoryView={showLeavedHistoryView}
 />
 
+<div className="d-flex flex-wrap gap-2 mb-3">
+  {TRACKER_TYPES.map((type) => (
+    <button
+      key={type}
+      type="button"
+      className={`btn btn-sm ${trackerType === type ? "btn-primary" : "btn-outline-primary"}`}
+      onClick={() => openTrackerView(type)}
+    >
+      {type === "shop" ? "Other Property Shop" : type === "room" ? "Other Property Room" : "Hostel Bed"}
+    </button>
+  ))}
+</div>
+
 {/* Rent-only summary cards */}
 <RentSummaryCards
-  totalBeds={roomsData.reduce((sum, room) => sum + (room.beds?.length || 0), 0)}
+  totalBeds={(Array.isArray(roomsData) ? roomsData : []).reduce((sum, room) => sum + (room.beds?.length || 0), 0)}
   occupiedBeds={formData.filter((d) => !hasLeaveDatePassed(d?.leaveDate)).length}
   vacantBeds={vacantCount}
   pendingRents={pendingRents}
   upcomingRents={upcomingRentEntries.length}
+  trackerType={trackerType}
   onVacantClick={() => setShowVacantModal(true)}
   onPendingClick={() => setShowPendingModal(true)}
   onUpcomingClick={() => setShowUpcomingModal(true)}
@@ -5947,6 +6706,15 @@ const isTodayOrFuture = (iso) => {
       beds={vacantBedsList}
       onAddTenant={openAddForSlot}
       onBack={closeMobileVacantBeds}
+      trackerType={trackerType}
+      title={trackerType === "shop" ? "Vacant Shops" : trackerType === "room" ? "Vacant Rooms" : "Vacant Beds"}
+      subtitle={
+        trackerType === "shop"
+          ? "Tap a shop to add a tenant"
+          : trackerType === "room"
+          ? "Tap a room to add a tenant"
+          : "Tap a bed to add a tenant"
+      }
     />
   ) : showMobileLeavedTenants ? (
     <LeavedTenantScreen
@@ -5985,7 +6753,7 @@ const isTodayOrFuture = (iso) => {
       // onHoliday={handleHoliday}
       onOpenLeavedTenants={openMobileLeavedTenants}
       onOpenVacantBeds={openMobileVacantBeds}
-      onManageRooms={() => navigate("/roommanager")}
+      onManageRooms={handleManageUnitsNavigation}
       onAddTenant={openAddModal}
       onDownloadExcel={handleDownloadExcel}
     />
@@ -6019,7 +6787,7 @@ const isTodayOrFuture = (iso) => {
         onOpenDueMonths={openDueMonthsModal}
         onOpenAdmissionForm={openAdmissionForm}
         onEditPhoto={openPhotoEditor}
-        onManageRooms={() => navigate("/roommanager")}
+        onManageRooms={handleManageUnitsNavigation}
         onAddTenant={openAddModal}
         onDownloadExcel={handleDownloadExcel}
         onOpenLeavedTenants={openMobileLeavedTenants}
@@ -6114,6 +6882,20 @@ const isTodayOrFuture = (iso) => {
 
 
               <tbody>
+                {combinedRows?.length === 0 && visibleTenants.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={visibleMonths.length + 4}
+                      className="text-center text-muted py-4"
+                    >
+                      {trackerType === "room"
+                        ? "No other property room data found."
+                        : trackerType === "shop"
+                          ? "No other property shop data found."
+                          : "No hostel bed data found."}
+                    </td>
+                  </tr>
+                )}
                 {/* Occupied + Vacant rows (room-wise flow) */}
                 {combinedRows
                   ? combinedRows.map((row, rowIdx) => {
@@ -6131,6 +6913,8 @@ const isTodayOrFuture = (iso) => {
                       const rowClassName = isRoomEnd ? "room-separator" : undefined;
                       if (row.type === "tenant") {
                         const tenant = row.tenant;
+                        const rowKey = `tenant-${tenant._id}`;
+                        const rowVisibleMonths = getVisibleMonthsForRow(rowKey);
                  const dueAmount = calculateDue(
   tenant.rents,
   tenant.joiningDate,
@@ -6160,7 +6944,7 @@ const isTodayOrFuture = (iso) => {
       }}
     >
       <FaExchangeAlt className="me-1" />
-      Shift Bed
+      {trackerType === "shop" ? "Shift Shop" : trackerType === "room" ? "Shift Room" : "Shift Bed"}
     </button>
 
     {/* CLICKABLE AREA */}
@@ -6196,8 +6980,8 @@ const isTodayOrFuture = (iso) => {
         ) : null}
         
         <span className="room-pill">
-  {tenant.roomNo || "—"}
-  {((tenant.bedNo || tenant.bed?.bedNo) && ` - ${tenant.bedNo || tenant.bed?.bedNo}`) || ""}
+  {formatTrackerUnit(tenant.roomNo, tenant.bedNo || tenant.bed?.bedNo)}
+
 </span>
 
       </div>
@@ -6209,7 +6993,7 @@ const isTodayOrFuture = (iso) => {
 
 
                       {/* Month cells */}
-                 {visibleMonths.map((m, i) => {
+                 {rowVisibleMonths.map((m, i) => {
   const c = getMonthCell(tenant, m.y, m.m);
   const extraNum = Number(c.extra || 0);
 
@@ -6222,10 +7006,10 @@ if (cellYM < firstBillYM) {
     <td
       key={`${tenant._id}-${m.y}-${m.m}-${i}`}
       className={`text-center text-muted rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
-        i === visibleMonths.length - 1 ? "has-next-nav" : ""
+        i === rowVisibleMonths.length - 1 ? "has-next-nav" : ""
       }`}
     >
-      {renderMonthWindowNav(i)}
+      {renderMonthWindowNav(i, rowKey, rowVisibleMonths)}
       —
     </td>
   );
@@ -6241,10 +7025,10 @@ const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
     <td
       key={`${tenant._id}-${m.y}-${m.m}-${i}`}
       className={`text-center rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
-        i === visibleMonths.length - 1 ? "has-next-nav" : ""
+        i === rowVisibleMonths.length - 1 ? "has-next-nav" : ""
       }`}
     >
-      {renderMonthWindowNav(i)}
+      {renderMonthWindowNav(i, rowKey, rowVisibleMonths)}
       <div
         style={{ cursor: "pointer" }}
         onClick={() => openEditForTenantMonth(tenant._id, m.m, m.y)}
@@ -6457,7 +7241,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
   >
     <FaEdit />
   </button>
-  {/* Shift Room / Bed */}
+  {/* Shift Unit */}
   {/* <button
     className="btn btn-sm btn-outline-secondary me-2"
     onClick={() => {
@@ -6531,6 +7315,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       if (row.type === "vacant") {
                         const slot = row.slot;
                         const key = `${slot.roomNo}-${slot.bedNo}`;
+                        const rowKey = `vacant-${key}`;
+                        const rowVisibleMonths = getVisibleMonthsForRow(rowKey);
                         return (
                           <tr key={`vacant-${key}`} className={rowClassName}>
                       <td className="text-muted">{rowNumber}</td>
@@ -6538,7 +7324,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                         <div>
                           <div className="fw-semibold text-danger " >Empty</div>
                           <div className="text-muted small">
-                            Room {slot.roomNo} • Bed {slot.bedNo}{" "}
+                            {formatTrackerUnit(slot.roomNo, slot.bedNo)}{" "}
                             {slot.category ? `• ${slot.category}` : ""}
                           </div>
                           {toNum(slot.price) > 0 && (
@@ -6550,7 +7336,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                         </div>
                       </td>
 
-                      {/* {visibleMonths.map((m, idx) => (
+                      {/* {rowVisibleMonths.map((m, idx) => (
                         <td
                           key={`${key}-${m.y}-${m.m}-${idx}`}
                           className="text-center"
@@ -6568,14 +7354,14 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                           )}
                         </td>
                       ))} */}
-{visibleMonths.map((m, idx) => (
+{rowVisibleMonths.map((m, idx) => (
   <td
     key={`${key}-${m.y}-${m.m}-${idx}`}
     className={`text-center text-muted rent-month-window-cell ${idx === 0 ? "has-prev-nav" : ""} ${
-      idx === visibleMonths.length - 1 ? "has-next-nav" : ""
+      idx === rowVisibleMonths.length - 1 ? "has-next-nav" : ""
     }`}
   >
-    {renderMonthWindowNav(idx)}
+    {renderMonthWindowNav(idx, rowKey, rowVisibleMonths)}
     —{/* vacant beds show no monthly status */}
   </td>
 ))}
@@ -6601,6 +7387,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       return null;
                     })
                   : visibleTenants.map((tenant, rowIdx) => {
+                      const rowKey = `tenant-${tenant._id}`;
+                      const rowVisibleMonths = getVisibleMonthsForRow(rowKey);
                       const dueAmount = calculateDue(
                         tenant.rents,
                         tenant.joiningDate,
@@ -6627,7 +7415,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                                 }}
                               >
                                 <FaExchangeAlt className="me-1" />
-                                Shift Bed
+                                {trackerType === "shop" ? "Shift Shop" : trackerType === "room" ? "Shift Room" : "Shift Bed"}
                               </button>
 
                               {/* CLICKABLE AREA */}
@@ -6659,8 +7447,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                                   ) : null}
 
                                   <span className="room-pill">
-                                    {tenant.roomNo || "—"}
-                                    {((tenant.bedNo || tenant.bed?.bedNo) && ` - ${tenant.bedNo || tenant.bed?.bedNo}`) || ""}
+                                    {formatTrackerUnit(tenant.roomNo, tenant.bedNo || tenant.bed?.bedNo)}
+
                                   </span>
                                 </div>
                               </div>
@@ -6668,7 +7456,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                           </td>
 
                           {/* Month cells */}
-                          {visibleMonths.map((m, i) => {
+                          {rowVisibleMonths.map((m, i) => {
                             const c = getMonthCell(tenant, m.y, m.m);
                             const extraNum = Number(c.extra || 0);
 
@@ -6680,10 +7468,10 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                                 <td
                                   key={`${tenant._id}-${m.y}-${m.m}-${i}`}
                                   className={`text-center text-muted rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
-                                    i === visibleMonths.length - 1 ? "has-next-nav" : ""
+                                    i === rowVisibleMonths.length - 1 ? "has-next-nav" : ""
                                   }`}
                                 >
-                                  {renderMonthWindowNav(i)}
+                                  {renderMonthWindowNav(i, rowKey, rowVisibleMonths)}
                                   —
                                 </td>
                               );
@@ -6696,10 +7484,10 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                               <td
                                 key={`${tenant._id}-${m.y}-${m.m}-${i}`}
                                 className={`text-center rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
-                                  i === visibleMonths.length - 1 ? "has-next-nav" : ""
+                                  i === rowVisibleMonths.length - 1 ? "has-next-nav" : ""
                                 }`}
                               >
-                                {renderMonthWindowNav(i)}
+                                {renderMonthWindowNav(i, rowKey, rowVisibleMonths)}
                                 <div
                                   style={{ cursor: "pointer" }}
                                   onClick={() => openEditForTenantMonth(tenant._id, m.m, m.y)}
@@ -6903,7 +7691,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
       <table className="table table-bordered">
         <thead>
           <tr>
-            <th>Room No</th>
+            <th>{trackerType === "shop" ? "Shop" : "Room No"}</th>
             <th>Name</th>
             <th>Joining Date</th>
             <th>Leave Date</th>
@@ -6928,9 +7716,9 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
             return (
               <tr key={tenant._id || index}>
                 <td>
-                  {tenant.roomNo}
-                  <div className="text-muted small">bed {tenant.bedNo}</div>
+                  {formatTrackerUnit(tenant.roomNo, tenant.bedNo)}
                 </td>
+
 
                 <td
                   style={{ cursor: "pointer" }}
@@ -6988,7 +7776,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                 <thead>
                   <tr>
                     <th>Tenant</th>
-                    <th>Room / Bed</th>
+                    <th>{trackerUnitLabel}</th>
                     <th>Dates</th>
                     <th>Contact</th>
                     <th>Deposit</th>
@@ -7031,8 +7819,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                           <div className="fw-semibold text-primary">{tenant.name || "-"}</div>
                         </td>
                         <td>
-                          <div>Room {tenant.roomNo || "-"}</div>
-                          <div className="text-muted small">Bed {tenant.bedNo || "-"}</div>
+                          <div>{formatTrackerUnit(tenant.roomNo, tenant.bedNo)}</div>
+
                           {tenant.category && (
                             <div className="text-muted small">{tenant.category}</div>
                           )}
@@ -7458,7 +8246,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
              {/* Room + Bed */}
 <div className="col-12 col-md-6">
   <label className="form-label">
-    Room <span className="text-danger">*</span>
+    {trackerType === "shop" ? "Shop" : "Room"} <span className="text-danger">*</span>
   </label>
 
   <select
@@ -7467,16 +8255,23 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
    onChange={(e) => {
   const roomId = e.target.value;
   const selectedRoom = roomsData.find((r) => String(r._id) === String(roomId));
+  const autoSlot =
+    trackerType !== "bed"
+      ? (selectedRoom?.beds || []).find(
+          (bed) => !occupiedBeds.has(occKey(selectedRoom?.roomNo, bed.bedNo))
+        )
+      : null;
 
   setNewTenant((prev) => ({
     ...prev,
     roomId,
     roomNo: selectedRoom?.roomNo || "",
     category: selectedRoom?.category || "",   // ✅ AUTO CATEGORY FROM ROOM
-    bedNo: "",
+    bedNo: autoSlot?.bedNo || "",
     floorNo: selectedRoom?.floorNo || "",
-    baseRent: "",
-    rentAmount: "",
+    baseRent: autoSlot?.price ?? "",
+    rentAmount: autoSlot?.price ?? "",
+    bedPrice: autoSlot?.price ?? "",
     newBedNo: "",
     newBedPrice: "",
     newBedCategory: "",
@@ -7486,7 +8281,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 }}
 
   >
-    <option value="">Select Room</option>
+    <option value="">{trackerType === "shop" ? "Select Shop" : "Select Room"}</option>
 {roomsData
   .filter(roomHasVacantBed) // ✅ only rooms with at least 1 vacant bed
   .map((room) => (
@@ -7499,7 +8294,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
   </select>
 </div>
 
-{/* Bed No */}
+{trackerType === "bed" && (
 <div className="col-12 col-md-6">
   <label className="form-label">
     Bed No <span className="text-danger">*</span>
@@ -7565,7 +8360,15 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
     }}
   >
     <option value="">
-      {newTenant.roomId ? "Select Bed" : "Select a Room first"}
+      {trackerType === "bed"
+        ? newTenant.roomId
+          ? "Select Bed"
+          : "Select a Room first"
+        : newTenant.roomId
+        ? "Unit auto-selected"
+        : trackerType === "shop"
+        ? "Select a shop first"
+        : "Select a room first"}
     </option>
 
     {roomsData
@@ -7591,6 +8394,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
     )}
   </select>
 </div>
+)}
 
 {/* ✅ NEW: Bed Price field (separate + update option) */}
 <div className="col-12 col-md-12">
@@ -7688,19 +8492,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                   price: priceNum,
                 });
 
-                setRoomsData((prev) =>
-                  prev.map((r) => {
-                    if (String(r._id) !== String(roomId)) return r;
-                    return {
-                      ...r,
-                      beds: (r.beds || []).map((b) =>
-                        String(b.bedNo) === String(bedNo)
-                          ? { ...b, price: priceNum }
-                          : b
-                      ),
-                    };
-                  })
-                );
+                updateBedPriceInRoomLists(roomId, bedNo, priceNum);
 
                 setNewTenant((prev) => ({
                   ...prev,
@@ -7760,7 +8552,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 
 
 {/* Inline "Other" Bed */}
-{newTenant.bedNo === "__other__" && (
+{trackerType === "bed" && newTenant.bedNo === "__other__" && (
   <div className="col-12">
     <div className="mt-1 p-3 border rounded bg-light">
       <div className="row g-2">
@@ -8403,6 +9195,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
           : undefined;
 
       const invitePayload = {
+        roomId: newTenant.roomId || pickedRoom?._id || undefined,
         category,
         roomNo,
         bedNo,
@@ -8442,11 +9235,11 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
       // ✅ validations
       if (!invitePayload.category) { alert("Category missing. Select Room again."); setCreatingInvite(false); return; }
       if (!invitePayload.roomNo) { alert("Room No missing. Please select a Room."); setCreatingInvite(false); return; }
-      if (!invitePayload.bedNo || invitePayload.bedNo === "__other__") { alert("Select valid Bed."); setCreatingInvite(false); return; }
+      if (trackerType === "bed" && (!invitePayload.bedNo || invitePayload.bedNo === "__other__")) { alert("Select valid Bed."); setCreatingInvite(false); return; }
       if (invitePayload.phoneNo && invitePayload.phoneNo.length !== 10) { alert("Phone number must be 10 digits."); setCreatingInvite(false); return; }
 
       // ✅ IMPORTANT: idempotency key (prevents duplicates)
-      const idempotencyKey = `${invitePayload.roomNo}-${invitePayload.bedNo}-${invitePayload.phoneNo || "noPhone"}-${invitePayload.joiningDate || "noDate"}`;
+      const idempotencyKey = `${invitePayload.roomNo}-${invitePayload.bedNo || trackerType}-${invitePayload.phoneNo || "noPhone"}-${invitePayload.joiningDate || "noDate"}`;
 
       const res = await axios.post(INVITES_URL, invitePayload, {
         headers: {
@@ -8613,20 +9406,31 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     <label className="form-label">Room No</label>
                     <select
                       className="form-control"
-                      value={newTenant.roomNo || ""}
+                      value={newTenant.roomId || ""}
                       onChange={(e) => {
-                        const roomNo = e.target.value;
+                        const roomId = e.target.value;
                         const selectedRoom = roomsData.find(
-                          (room) => String(room.roomNo) === String(roomNo)
+                          (room) => String(room._id) === String(roomId)
                         );
+                        const autoSlot =
+                          trackerType !== "bed"
+                            ? (selectedRoom?.beds || []).find(
+                                (bed) =>
+                                  !occupiedBeds.has(
+                                    occKey(selectedRoom?.roomNo, bed.bedNo)
+                                  )
+                              )
+                            : null;
 
                         setNewTenant((prev) => ({
                           ...prev,
-                          roomNo,
-                          bedNo: "", // reset bed
+                          roomId,
+                          roomNo: selectedRoom?.roomNo || "",
+                          category: selectedRoom?.category || prev.category || "",
+                          bedNo: autoSlot?.bedNo || "", // reset bed
                           floorNo: selectedRoom?.floorNo || "",
-                          baseRent: "", // reset base rent too
-                          rentAmount: "", // reset rent
+                          baseRent: autoSlot?.price ?? "", // reset base rent too
+                          rentAmount: autoSlot?.price ?? "", // reset rent
                           newBedNo: "", // reset inline form fields (if any)
                           newBedPrice: "",
                         }));
@@ -8634,7 +9438,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     >
                       <option value="">Select Room</option>
                      {roomsData.map((room) => (
-  <option key={`room-${room._id || room.roomNo}`} value={room.roomNo}>
+  <option key={`room-${room._id || room.roomNo}`} value={room._id || room.roomNo}>
     {room.roomNo} (Floor {room.floorNo})
   </option>
 ))}
@@ -8643,6 +9447,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                   </div>
 
                   {/* Bed No Dropdown + inline "Other" form (price optional) */}
+                  {trackerType === "bed" && (
                   <div className="col-md-6">
                     <label className="form-label">Bed No</label>
                     <select
@@ -8691,7 +9496,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 
                       {roomsData
                         .find(
-                          (r) => String(r.roomNo) === String(newTenant.roomNo)
+                          (r) => String(r._id) === String(newTenant.roomId)
                         )
                         ?.beds.filter(
                           (bed) => !occupiedBeds.has(occKey(newTenant.roomNo, bed.bedNo))
@@ -8858,6 +9663,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       </div>
                     )}
                   </div>
+                  )}
 
                   {/* <div className="col-md-6">
                     <label className="form-label">
@@ -9040,7 +9846,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 
 
   <div className="d-flex flex-wrap gap-2 align-items-center">
-    {/* Shift Room / Bed */}
+    {/* Shift Unit */}
     {/* <button
       className="btn btn-outline-secondary btn-sm"
       onClick={() => {
@@ -9049,7 +9855,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
         setShowShiftModal(true);
       }}
     >
-      <FaExchangeAlt /> Shift Bed
+      <FaExchangeAlt /> {trackerType === "shop" ? "Shift Shop" : trackerType === "room" ? "Shift Room" : "Shift Bed"}
     </button> */}
 
     {/* View Details */}
@@ -9373,14 +10179,23 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     const selectedRoom = roomsData.find(
                       (r) => String(r.roomNo) === String(roomNo)
                     );
+                    const autoSlot =
+                      trackerType !== "bed"
+                        ? (selectedRoom?.beds || []).find(
+                            (bed) =>
+                              !occupiedBeds.has(
+                                occKey(selectedRoom?.roomNo, bed.bedNo)
+                              )
+                          )
+                        : null;
 
                     setEditTenantData((prev) => ({
                       ...prev,
                       roomNo,
-                      bedNo: "",
+                      bedNo: autoSlot?.bedNo || "",
                       floorNo: selectedRoom?.floorNo || "",
-                      baseRent: "",
-                      rentAmount: "",
+                      baseRent: autoSlot?.price ?? "",
+                      rentAmount: autoSlot?.price ?? "",
                     }));
                   }}
                 >
@@ -9395,6 +10210,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
               </div>
 
               {/* BED */}
+              {trackerType === "bed" && (
               <div className="col-12 col-md-6">
                 <label className="form-label">Bed No</label>
                 <select
@@ -9428,6 +10244,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     ))}
                 </select>
               </div>
+              )}
 
               {/* RENT */}
               <div className="col-12 col-md-6">
@@ -9702,19 +10519,29 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
               <div className="modal-body">
                 <div className="mb-3">
                   <label className="form-label">
-                    Select Vacant Room / Bed
+                    {trackerType === "shop"
+                      ? "Select Vacant Shop"
+                      : trackerType === "room"
+                      ? "Select Vacant Room"
+                      : "Select Vacant Bed"}
                   </label>
                   <select
                     className="form-select"
                     value={shiftTargetKey}
                     onChange={(e) => setShiftTargetKey(e.target.value)}
                   >
-                    <option value="">-- Select vacant bed --</option>
+                    <option value="">
+                      {trackerType === "shop"
+                        ? "-- Select shop --"
+                        : trackerType === "room"
+                        ? "-- Select vacant room --"
+                        : "-- Select vacant bed --"}
+                    </option>
                     {allVacantSlots.map((slot) => {
                       const key = `${slot.roomNo}-${slot.bedNo}`;
                       return (
                         <option key={key} value={key}>
-                          Room {slot.roomNo} • Bed {slot.bedNo}
+                          {formatVacantBedOption(slot)}
                           {slot.category ? ` • ${slot.category}` : ""}{" "}
                           {slot.price
                             ? ` • ₹${toNum(slot.price).toLocaleString("en-IN")}`
@@ -9736,7 +10563,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                 </div>
 
                 <p className="small text-muted">
-                  Current: Room {shiftTenant.roomNo}, Bed {shiftTenant.bedNo}
+                  Current: {formatTrackerUnit(shiftTenant.roomNo, shiftTenant.bedNo)}
                 </p>
               </div>
 
@@ -9804,7 +10631,13 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Room/Bed</th>
+                    <th>
+                      {trackerType === "shop"
+                        ? "Shop"
+                        : trackerType === "room"
+                        ? "Room No"
+                        : "Room/Bed"}
+                    </th>
                     <th>Month</th>
                     <th>Due</th>
                     <th>Action</th>
@@ -9815,7 +10648,9 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     <tr key={p.tenant?._id}>
                       <td>{p.tenant?.name}</td>
                       <td>
-                        {p.tenant?.roomNo} / {p.tenant?.bedNo}
+                        {trackerType === "bed"
+                          ? `${p.tenant?.roomNo || "-"} / ${p.tenant?.bedNo || "-"}`
+                          : p.tenant?.roomNo || "-"}
                       </td>
                       <td>{p.reason}</td>
                       <td className="fw-bold text-danger">
@@ -9896,7 +10731,13 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                 <thead>
                   <tr>
                     <th>Name</th>
-                    <th>Room/Bed</th>
+                    <th>
+                      {trackerType === "shop"
+                        ? "Shop"
+                        : trackerType === "room"
+                        ? "Room No"
+                        : "Room/Bed"}
+                    </th>
                     <th>Month</th>
                     <th>Date</th>
                     <th>Amount</th>
@@ -9908,7 +10749,9 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     <tr key={item.key}>
                       <td>{item.tenant?.name}</td>
                       <td>
-                        {item.tenant?.roomNo} / {item.tenant?.bedNo}
+                        {trackerType === "bed"
+                          ? `${item.tenant?.roomNo || "-"} / ${item.tenant?.bedNo || "-"}`
+                          : item.tenant?.roomNo || "-"}
                       </td>
                       <td>{item.monthText}</td>
                       <td className="fw-semibold text-primary">{item.dateStr}</td>
@@ -10003,7 +10846,10 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                 </h5>
                 <button
                   className="btn-close p-0"
-                  onClick={() => setShowDetailsModal(false)}
+                  onClick={() => {
+                    setShowDetailsModal(false);
+                    setDocumentPreview(null);
+                  }}
                 >x</button>
               </div>
 
@@ -10057,9 +10903,11 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       <li className="list-group-item">
                         Room No: {selectedTenant.roomNo}
                       </li>
-                      <li className="list-group-item">
-                        Bed No: {selectedTenant.bedNo}
-                      </li>
+                      {trackerType === "bed" && (
+                        <li className="list-group-item">
+                          Bed No: {selectedTenant.bedNo}
+                        </li>
+                      )}
                       <li className="list-group-item">
                         Phone: {selectedTenant.phoneNo}
                       </li>
@@ -10130,7 +10978,11 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     <h6>Uploaded Documents</h6>
                                     {selectedTenant.documents?.length > 0 ? (
   <ul className="list-group mb-3">
-    {selectedTenant.documents.map((doc, i) => (
+    {selectedTenant.documents.map((doc, i) => {
+      const url = docHrefSafe(doc);
+      const imageDoc = isImageDoc(doc) && !!url;
+
+      return (
       <li
         key={i}
         className="list-group-item d-flex justify-content-between align-items-center"
@@ -10144,17 +10996,24 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
           <button
             type="button"
             className="btn btn-sm btn-outline-primary"
+            title={imageDoc ? "Zoom document" : "View document"}
             onClick={(e) => {
               e.stopPropagation();
-              const url = getDocHref(doc);
-              if (!url || url === "#") {
+              if (!url) {
                 alert("No file URL available for this document.");
+                return;
+              }
+              if (imageDoc) {
+                setDocumentPreview({
+                  src: url,
+                  title: doc.relation || doc.fileName || `Document ${i + 1}`,
+                });
                 return;
               }
               window.open(url, "_blank", "noopener,noreferrer");
             }}
           >
-            View
+            {imageDoc ? "Zoom" : "View"}
           </button>
 
           {/* ✅ Download Button (ImageKit-safe) */}
@@ -10163,8 +11022,7 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
             className="btn btn-sm btn-outline-success"
             onClick={(e) => {
               e.stopPropagation();
-              const url = getDocHref(doc);
-              if (!url || url === "#") {
+              if (!url) {
                 alert("No file URL available for download.");
                 return;
               }
@@ -10181,7 +11039,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
           </button>
         </div>
       </li>
-    ))}
+      );
+    })}
   </ul>
 ) : (
   <p className="text-muted">No documents uploaded</p>
@@ -10337,6 +11196,34 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
         </div>
       )}
 
+      {documentPreview?.src && (
+        <div
+          className="tenant-document-preview-backdrop"
+          onClick={() => setDocumentPreview(null)}
+        >
+          <div
+            className="tenant-document-preview-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="modal-x-btn tenant-document-preview-close"
+              onClick={() => setDocumentPreview(null)}
+            >
+              x
+            </button>
+            <div className="tenant-document-preview-title">
+              {documentPreview.title}
+            </div>
+            <img
+              src={documentPreview.src}
+              alt={documentPreview.title || "Document preview"}
+              className="tenant-document-preview-image"
+            />
+          </div>
+        </div>
+      )}
+
       {/* editmodel */}
       {editingTenant && (
         <div
@@ -10481,7 +11368,13 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
           <div className="modal-dialog">
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Select Vacant Bed</h5>
+                <h5 className="modal-title">
+                  {trackerType === "shop"
+                    ? "Select Vacant Shop"
+                    : trackerType === "room"
+                    ? "Select Vacant Room"
+                    : "Select Vacant Bed"}
+                </h5>
                 <button
                   type="button"
                   className="btn-close p-0"
@@ -10505,7 +11398,11 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                   {undoBedModal.message}
                 </div>
                 <label className="form-label fw-semibold">
-                  Choose another vacant bed
+                  {trackerType === "shop"
+                    ? "Choose another vacant shop"
+                    : trackerType === "room"
+                    ? "Choose another vacant room"
+                    : "Choose another vacant bed"}
                 </label>
                 <select
                   className="form-select"
@@ -10518,7 +11415,13 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     }))
                   }
                 >
-                  <option value="">Select vacant bed</option>
+                  <option value="">
+                    {trackerType === "shop"
+                      ? "Select vacant shop"
+                      : trackerType === "room"
+                      ? "Select vacant room"
+                      : "Select vacant bed"}
+                  </option>
                   {undoBedModal.vacantBeds.map((bed, index) => (
                     <option
                       key={`${bed.roomNo}-${bed.bedNo}-${index}`}
@@ -10529,7 +11432,12 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                   ))}
                 </select>
                 <div className="small text-muted mt-2">
-                  The tenant will be restored to the Rent & Deposit Tracker only after this vacant bed is assigned.
+                  The tenant will be restored to the Rent & Deposit Tracker only after this vacant
+                  {trackerType === "shop"
+                    ? " shop"
+                    : trackerType === "room"
+                    ? " room"
+                    : " bed"} is assigned.
                 </div>
               </div>
               <div className="modal-footer">
@@ -10556,7 +11464,13 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                   disabled={undoBedModal.busy || undoBedModal.selectedIndex === ""}
                   onClick={handleConfirmUndoWithSelectedBed}
                 >
-                  {undoBedModal.busy ? "Assigning..." : "Assign Bed & Undo"}
+                  {undoBedModal.busy
+                    ? "Assigning..."
+                    : trackerType === "shop"
+                    ? "Assign Shop & Undo"
+                    : trackerType === "room"
+                    ? "Assign Room & Undo"
+                    : "Assign Bed & Undo"}
                 </button>
               </div>
             </div>
@@ -10676,27 +11590,55 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                         </div>
                       )}
 
-                      {leaveExtraDaysDeduction && (
+                      {leaveProratedAdjustment && (
                         <div className="border rounded p-2 mt-3">
                           <div className="d-flex align-items-center justify-content-between">
                             <div>
                               <div className="fw-semibold">
-                                {leaveExtraDaysDeduction.label}
+                                {leaveProratedAdjustment.label}
                               </div>
                               <div className="small text-muted">
-                                {leaveExtraDaysDeduction.cycleRange} | Rs.{" "}
+                                {leaveProratedAdjustment.cycleRange} | Rs.{" "}
                                 {Math.round(
-                                  Number(leaveExtraDaysDeduction.dailyRent || 0)
+                                  Number(leaveProratedAdjustment.dailyRent || 0)
                                 ).toLocaleString("en-IN")}{" "}
                                 per day
                               </div>
+                              <div className="small text-muted">
+                                Monthly Rent: Rs.{" "}
+                                {Number(
+                                  leaveProratedAdjustment.monthlyRent || 0
+                                ).toLocaleString("en-IN")}{" "}
+                                | Paid: Rs.{" "}
+                                {Number(
+                                  leaveProratedAdjustment.paidAmount || 0
+                                ).toLocaleString("en-IN")}
+                              </div>
                             </div>
-                            <strong>
-                              Rs.{" "}
-                              {Number(
-                                leaveExtraDaysDeduction.amount || 0
-                              ).toLocaleString("en-IN")}
-                            </strong>
+                            <div className="text-end">
+                              <strong className="d-block">
+                                Charge: Rs.{" "}
+                                {Number(
+                                  leaveProratedAdjustment.proratedAmount || 0
+                                ).toLocaleString("en-IN")}
+                              </strong>
+                              {leaveProratedAdjustment.refundAmount > 0 && (
+                                <div className="text-success small">
+                                  Unused Rent Refund: Rs.{" "}
+                                  {Number(
+                                    leaveProratedAdjustment.refundAmount || 0
+                                  ).toLocaleString("en-IN")}
+                                </div>
+                              )}
+                              {leaveProratedAdjustment.deductionAmount > 0 && (
+                                <div className="text-danger small">
+                                  Deduction From Deposit: Rs.{" "}
+                                  {Number(
+                                    leaveProratedAdjustment.deductionAmount || 0
+                                  ).toLocaleString("en-IN")}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -10713,10 +11655,16 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                           Full Month Deduction: Rs.{" "}
                           {Number(leaveSettlementSummary.monthDeduction || 0).toLocaleString("en-IN")}
                         </div>
-                        {leaveSettlementSummary.extraDaysDeduction > 0 && (
+                        {leaveSettlementSummary.proratedDeduction > 0 && (
                           <div className="text-muted">
-                            Extra Days Deduction: Rs.{" "}
-                            {Number(leaveSettlementSummary.extraDaysDeduction || 0).toLocaleString("en-IN")}
+                            Prorated Stay Deduction: Rs.{" "}
+                            {Number(leaveSettlementSummary.proratedDeduction || 0).toLocaleString("en-IN")}
+                          </div>
+                        )}
+                        {leaveSettlementSummary.rentRefund > 0 && (
+                          <div className="text-success">
+                            Unused Rent Refund: Rs.{" "}
+                            {Number(leaveSettlementSummary.rentRefund || 0).toLocaleString("en-IN")}
                           </div>
                         )}
                         {leaveSettlementSummary.amountDueFromTenant > 0 ? (
@@ -10727,11 +11675,11 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                                 leaveSettlementSummary.amountDueFromTenant || 0
                               ).toLocaleString("en-IN")}
                             </div>
-                            <div>Refundable Deposit: ₹0</div>
+                            <div>Return Amount: ₹0</div>
                           </>
                         ) : (
                           <div className="fw-semibold">
-                            Refundable Deposit: ₹
+                            Return Amount: ₹
                             {Number(
                               leaveSettlementSummary.refundableDeposit || 0
                             ).toLocaleString("en-IN")}
@@ -11197,4 +12145,5 @@ const style = {
 };
 
 export default NewComponant;
+
 

@@ -13,8 +13,10 @@ function VacantBedListView({
   subtitle = "Tap a bed to add a tenant",
   onAddTenant,
   onBack,
+  trackerType = "bed",
 }) {
   const bedList = Array.isArray(beds) ? beds : [];
+  const isShop = trackerType === "shop";
 
   return (
     <section className="vacant-mobile-section">
@@ -33,7 +35,9 @@ function VacantBedListView({
           <div className="vacant-mobile-subtitle">{subtitle}</div>
         </div>
 
-        <div className="vacant-mobile-count">{bedList.length} beds</div>
+        <div className="vacant-mobile-count">
+          {bedList.length} {isShop ? "shops" : "beds"}
+        </div>
       </div>
 
       <div className="vacant-mobile-list">
@@ -48,8 +52,8 @@ function VacantBedListView({
                   <div className="vacant-mobile-room">
                     <FaBed />
                     <span>
-                      Room {bed.roomNo || "-"}
-                      {bed.bedNo ? ` - Bed ${bed.bedNo}` : ""}
+                      {isShop ? "Shop" : "Room"} {bed.roomNo || "-"}
+                      {!isShop && bed.bedNo ? ` - Bed ${bed.bedNo}` : ""}
                     </span>
                   </div>
                   <span className="vacant-mobile-status">Vacant</span>

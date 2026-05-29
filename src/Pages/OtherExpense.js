@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { FaPlus, FaDownload, FaEdit, FaClipboardList, FaRedoAlt } from "react-icons/fa";
 import { MdMiscellaneousServices } from "react-icons/md";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -10,8 +10,65 @@ import { useNavigate } from "react-router-dom";
 import "../Pages/lightbill.css";
 import "../componenet/RentTracker.css";
 
-const OtherExpense = ({ embedded = false }) => {
+const OtherExpense = ({ embedded = false, propertyScope = null }) => {
   const navigate = useNavigate();
+  const scopedRoomNos = (propertyScope?.roomNos || []).map((roomNo) => String(roomNo));
+  const scopedOptionLabels = propertyScope?.optionLabels || {};
+  const scopedRoomTypeMap = propertyScope?.roomTypeMap || {};
+  const scopedRoomNosByType = {
+    bed: new Set((propertyScope?.roomNosByType?.bed || []).map((roomNo) => String(roomNo).trim())),
+    room: new Set((propertyScope?.roomNosByType?.room || []).map((roomNo) => String(roomNo).trim())),
+    shop: new Set((propertyScope?.roomNosByType?.shop || []).map((roomNo) => String(roomNo).trim())),
+  };
+  const hasRoomScope = scopedRoomNos.length > 0;
+  const scopeLabel = propertyScope?.label || "Bed-wise";
+  const scopeType = String(propertyScope?.type || "").toLowerCase();
+  const shouldSelectUnit = hasRoomScope && scopeType !== "bed";
+  const scopeUnitLabel =
+    scopeType === "shop" ? "Shop" : scopeType === "mixed" ? "Room / Shop" : "Room";
+  const getScopedDisplayLabel = (roomNo) => {
+    const key = String(roomNo || "").trim();
+    if (!key) return "-";
+    return scopedOptionLabels[key] || key;
+  };
+  const propertyTypeLabels = {
+    bed: "Hostel",
+    room: "Room",
+    shop: "Shop",
+  };
+  const getRoomNosForPropertyType = (type) => {
+    const normalizedType = String(type || "").trim().toLowerCase();
+    return Array.from(scopedRoomNosByType[normalizedType] || []);
+  };
+  const getUnitLabelForPropertyType = (type) => {
+    const normalizedType = String(type || "").trim().toLowerCase();
+    return normalizedType === "shop" ? "Shop" : "Room";
+  };
+  const availablePropertyTypes = ["bed", "room", "shop"].filter(
+    (type) => type === "bed" || getRoomNosForPropertyType(type).length > 0
+  );
+  const normalizeExpensePropertyType = (expense = {}) => {
+    const explicitType = String(expense?.propertyType || "").trim().toLowerCase();
+    if (explicitType === "bed" || explicitType === "room" || explicitType === "shop") {
+      return explicitType;
+    }
+
+    const roomNo = String(expense?.roomNo || "").trim();
+    if (!roomNo) return "bed";
+
+    const isBed = scopedRoomNosByType.bed.has(roomNo);
+    const isRoom = scopedRoomNosByType.room.has(roomNo);
+    const isShop = scopedRoomNosByType.shop.has(roomNo);
+
+    if (isBed && !isRoom && !isShop) return "bed";
+    if (isRoom && !isBed && !isShop) return "room";
+    if (isShop && !isBed && !isRoom) return "shop";
+
+    // Prefer hostel for old ambiguous records so they do not leak into other-property tabs.
+    if (isBed && (isRoom || isShop)) return "bed";
+
+    return String(scopedRoomTypeMap[roomNo] || "").trim().toLowerCase() || "bed";
+  };
 
   const [otherExpenses, setOtherExpenses] = useState([]);
   const [isMobile, setIsMobile] = useState(
@@ -31,6 +88,7 @@ const OtherExpense = ({ embedded = false }) => {
 
   // New entry
   const [newEntry, setNewEntry] = useState({
+    roomNo: "",
     mainAmount: "",
     expenses: [""],
     date: "",
@@ -42,6 +100,8 @@ const OtherExpense = ({ embedded = false }) => {
   const [updatedExpenses, setUpdatedExpenses] = useState("");
   const [updatedDate, setUpdatedDate] = useState("");
   const [updatedStatus, setUpdatedStatus] = useState("");
+  const [updatedPropertyType, setUpdatedPropertyType] = useState("bed");
+  const [updatedRoomNo, setUpdatedRoomNo] = useState("");
 
   // Month + Year list
   const months = [
@@ -76,9 +136,16 @@ const OtherExpense = ({ embedded = false }) => {
 
   const fetchExpenses = async () => {
     try {
-      const res = await fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/other-expense/all");
+      const res = await fetch("http://localhost:8000/api/other-expense/all");
       const data = await res.json();
-      setOtherExpenses(data);
+      setOtherExpenses(
+        Array.isArray(data)
+          ? data.map((item) => ({
+              ...item,
+              propertyType: normalizeExpensePropertyType(item),
+            }))
+          : []
+      );
     } catch (err) {
       console.error(err);
     }
@@ -86,25 +153,42 @@ const OtherExpense = ({ embedded = false }) => {
 
   // Filtered list
   const filteredExpenses = otherExpenses.filter((item) => {
+    const propertyType = normalizeExpensePropertyType(item);
+    const matchesScope =
+      scopeType === "mixed"
+        ? propertyType === "room" || propertyType === "shop"
+        : propertyType === scopeType;
     const dt = new Date(item.date);
     const matchesYear = dt.getFullYear() === selectedYear;
     const matchesMonth =
       selectedMonth === 0 || dt.getMonth() + 1 === selectedMonth;
 
-    return matchesYear && matchesMonth;
+    return matchesScope && matchesYear && matchesMonth;
   });
 
   // Add new expense
   const handleAddExpense = async () => {
     try {
+      if (shouldSelectUnit && !String(newEntry.roomNo || "").trim()) {
+        return alert(`Select ${scopeUnitLabel}`);
+      }
+      const propertyType =
+        scopeType === "mixed"
+          ? String(scopedRoomTypeMap[String(newEntry.roomNo || "").trim()] || "").trim().toLowerCase()
+          : scopeType;
+      if ((scopeType === "mixed" || scopeType === "room" || scopeType === "shop") && !propertyType) {
+        return alert("Select a valid room or shop");
+      }
       const payload = {
+        roomNo: shouldSelectUnit ? newEntry.roomNo : "",
+        propertyType,
         mainAmount: newEntry.mainAmount,
         expenses: newEntry.expenses.filter((e) => e.trim() !== ""),
         date: newEntry.date,
         status: newEntry.status,
       };
 
-      const res = await fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/other-expense", {
+      const res = await fetch("http://localhost:8000/api/other-expense", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -116,6 +200,7 @@ const OtherExpense = ({ embedded = false }) => {
       setShowAddModal(false);
 
       setNewEntry({
+        roomNo: "",
         mainAmount: "",
         expenses: [""],
         date: "",
@@ -130,20 +215,31 @@ const OtherExpense = ({ embedded = false }) => {
 
   // Edit
   const handleEdit = (exp) => {
+    const normalizedPropertyType = normalizeExpensePropertyType(exp);
     setSelectedExpense(exp);
 
     setUpdatedMainAmount(exp.mainAmount);
     setUpdatedExpenses(exp.expenses?.join(", ") || "");
     setUpdatedDate(exp.date?.slice(0, 10));
     setUpdatedStatus(exp.status);
+    setUpdatedPropertyType(normalizedPropertyType);
+    setUpdatedRoomNo(exp.roomNo || "");
 
     setShowEditModal(true);
   };
 
   const handleUpdateSubmit = async () => {
     try {
+      const normalizedPropertyType = String(updatedPropertyType || "").trim().toLowerCase();
+      const normalizedRoomNo = String(updatedRoomNo || "").trim();
+      if ((normalizedPropertyType === "room" || normalizedPropertyType === "shop") && !normalizedRoomNo) {
+        return alert(`Select ${getUnitLabelForPropertyType(normalizedPropertyType)}`);
+      }
+
       const payload = {
         ...selectedExpense,
+        roomNo: normalizedPropertyType === "bed" ? "" : normalizedRoomNo,
+        propertyType: normalizedPropertyType || normalizeExpensePropertyType(selectedExpense),
         mainAmount: updatedMainAmount,
         expenses: updatedExpenses.split(",").map((e) => e.trim()),
         date: updatedDate,
@@ -151,7 +247,7 @@ const OtherExpense = ({ embedded = false }) => {
       };
 
       const res = await fetch(
-        ` https://mutakegirlshostel-0ko7.onrender.com/api/other-expense/${selectedExpense._id}`,
+        `http://localhost:8000/api/other-expense/${selectedExpense._id}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -174,7 +270,7 @@ const OtherExpense = ({ embedded = false }) => {
 
     try {
       const res = await fetch(
-        ` https://mutakegirlshostel-0ko7.onrender.com/api/other-expense/${exp._id}`,
+        `http://localhost:8000/api/other-expense/${exp._id}`,
         {
           method: "DELETE",
         }
@@ -193,6 +289,7 @@ const OtherExpense = ({ embedded = false }) => {
   const downloadExcel = () => {
     const formatted = filteredExpenses.map((item, idx) => ({
       "Sr No.": idx + 1,
+      [scopeUnitLabel]: getScopedDisplayLabel(item.roomNo),
       "Main Amount": item.mainAmount,
       Expenses: item.expenses?.join(", ") || "",
       Date: new Date(item.date).toLocaleDateString(),
@@ -220,6 +317,55 @@ const OtherExpense = ({ embedded = false }) => {
     if (s === "pending") return "pend";
     return "due";
   };
+  const roomShopExpenseSummary = useMemo(() => {
+    return filteredExpenses.reduce(
+      (acc, item) => {
+        const unitType = normalizeExpensePropertyType(item);
+        if (unitType !== "room" && unitType !== "shop") return acc;
+
+        const amount = Number(item?.mainAmount || 0);
+        if (!Number.isFinite(amount)) return acc;
+
+        if (unitType === "room") {
+          acc.totalRoom += amount;
+          if (String(item?.status || "").toLowerCase() !== "paid") {
+            acc.pendingRoom += amount;
+          }
+        }
+
+        if (unitType === "shop") {
+          acc.totalShop += amount;
+          if (String(item?.status || "").toLowerCase() !== "paid") {
+            acc.pendingShop += amount;
+          }
+        }
+
+        return acc;
+      },
+      {
+        totalRoom: 0,
+        totalShop: 0,
+        pendingRoom: 0,
+        pendingShop: 0,
+      }
+    );
+  }, [filteredExpenses, scopedRoomTypeMap]);
+  const hostelExpenseSummary = useMemo(() => {
+    return filteredExpenses.reduce(
+      (acc, item) => {
+        const amount = Number(item?.mainAmount || 0);
+        if (!Number.isFinite(amount)) return acc;
+
+        acc.total += amount;
+        if (String(item?.status || "").toLowerCase() !== "paid") {
+          acc.pending += amount;
+        }
+
+        return acc;
+      },
+      { total: 0, pending: 0 }
+    );
+  }, [filteredExpenses]);
 
   if (isMobile) {
     return (
@@ -244,7 +390,7 @@ const OtherExpense = ({ embedded = false }) => {
 
             <div className="rent-mobile-section-title section-text1">
               <div>
-                <h5>Other Expenses</h5>
+                <h5>{scopeLabel} Other Expenses</h5>
                 <div className="rent-mobile-badge">Tap a card to edit</div>
               </div>
               <div className="rent-mobile-badge">
@@ -303,6 +449,11 @@ const OtherExpense = ({ embedded = false }) => {
                             <div className="rent-mobile-tenant-name">
                               Other Expense #{idx + 1}
                             </div>
+                            {item.roomNo && (
+                              <div className="rent-mobile-tenant-meta">
+                                {scopeUnitLabel}: {getScopedDisplayLabel(item.roomNo)}
+                              </div>
+                            )}
                             <div className="rent-mobile-tenant-meta">
                               <FaClipboardList className="me-1" />
                               {item.expenses?.join(", ") || "-"}
@@ -406,6 +557,25 @@ const OtherExpense = ({ embedded = false }) => {
                   </div>
 
                   <div className="modal-body">
+                    {shouldSelectUnit && (
+                      <>
+                        <label>{scopeUnitLabel} No</label>
+                        <select
+                          className="form-select mb-2"
+                          value={newEntry.roomNo}
+                          onChange={(e) =>
+                            setNewEntry({ ...newEntry, roomNo: e.target.value })
+                          }
+                        >
+                          <option value="">Select {scopeUnitLabel}</option>
+                          {scopedRoomNos.map((roomNo) => (
+                            <option key={roomNo} value={roomNo}>
+                              {getScopedDisplayLabel(roomNo)}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
                     <label>Main Amount</label>
                     <input
                       type="number"
@@ -510,6 +680,52 @@ const OtherExpense = ({ embedded = false }) => {
                   </div>
 
                   <div className="modal-body">
+                    {availablePropertyTypes.length > 1 && (
+                      <>
+                        <label>Expense Scope</label>
+                        <select
+                          className="form-select mb-2"
+                          value={updatedPropertyType}
+                          onChange={(e) => {
+                            const nextType = e.target.value;
+                            setUpdatedPropertyType(nextType);
+                            if (nextType === "bed") {
+                              setUpdatedRoomNo("");
+                            } else {
+                              const allowedRoomNos = getRoomNosForPropertyType(nextType);
+                              if (!allowedRoomNos.includes(String(updatedRoomNo || "").trim())) {
+                                setUpdatedRoomNo("");
+                              }
+                            }
+                          }}
+                        >
+                          {availablePropertyTypes.map((type) => (
+                            <option key={type} value={type}>
+                              {propertyTypeLabels[type]}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
+
+                    {(updatedPropertyType === "room" || updatedPropertyType === "shop") && (
+                      <>
+                        <label>{getUnitLabelForPropertyType(updatedPropertyType)} No</label>
+                        <select
+                          className="form-select mb-2"
+                          value={updatedRoomNo}
+                          onChange={(e) => setUpdatedRoomNo(e.target.value)}
+                        >
+                          <option value="">Select {getUnitLabelForPropertyType(updatedPropertyType)}</option>
+                          {getRoomNosForPropertyType(updatedPropertyType).map((roomNo) => (
+                            <option key={roomNo} value={roomNo}>
+                              {getScopedDisplayLabel(roomNo)}
+                            </option>
+                          ))}
+                        </select>
+                      </>
+                    )}
+
                     <label>Status</label>
                     <select
                       className="form-select mb-2"
@@ -583,7 +799,7 @@ const OtherExpense = ({ embedded = false }) => {
     <FaClipboardList />
   </div>
   <div className="section-text">
-    Maintenance & Other Expenses
+    {scopeLabel} Maintenance & Other Expenses
   </div>
 </div>
 
@@ -669,6 +885,64 @@ const OtherExpense = ({ embedded = false }) => {
         )}
       </div>
 
+      {scopeType === "bed" && (
+        <div className="row g-3 mb-4 justify-content-start">
+          <div className="col-12 col-sm-6 col-lg-4 col-xl-3">
+            <div className="bg-white border rounded shadow-sm p-3 text-center">
+              <h6 className="text-muted mb-1">Total Hostel Expense</h6>
+              <h4 className="fw-bold mb-0">
+                ₹{Number(hostelExpenseSummary.total || 0).toLocaleString("en-IN")}
+              </h4>
+            </div>
+          </div>
+          <div className="col-12 col-sm-6 col-lg-4 col-xl-3">
+            <div className="bg-white border rounded shadow-sm p-3 text-center">
+              <h6 className="text-muted mb-1">Pending Hostel Expense</h6>
+              <h4 className="fw-bold text-danger mb-0">
+                ₹{Number(hostelExpenseSummary.pending || 0).toLocaleString("en-IN")}
+              </h4>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {scopeType === "mixed" && (
+        <div className="row g-3 mb-4">
+          <div className="col-12 col-md-6 col-xl-3">
+            <div className="bg-white border rounded shadow-sm p-3 text-center">
+              <h6 className="text-muted mb-1">Total Room Expense</h6>
+              <h4 className="fw-bold mb-0">
+                ₹{Number(roomShopExpenseSummary.totalRoom || 0).toLocaleString("en-IN")}
+              </h4>
+            </div>
+          </div>
+          <div className="col-12 col-md-6 col-xl-3">
+            <div className="bg-white border rounded shadow-sm p-3 text-center">
+              <h6 className="text-muted mb-1">Total Shop Expense</h6>
+              <h4 className="fw-bold mb-0">
+                ₹{Number(roomShopExpenseSummary.totalShop || 0).toLocaleString("en-IN")}
+              </h4>
+            </div>
+          </div>
+          <div className="col-12 col-md-6 col-xl-3">
+            <div className="bg-white border rounded shadow-sm p-3 text-center">
+              <h6 className="text-muted mb-1">Pending Room Expense</h6>
+              <h4 className="fw-bold text-danger mb-0">
+                ₹{Number(roomShopExpenseSummary.pendingRoom || 0).toLocaleString("en-IN")}
+              </h4>
+            </div>
+          </div>
+          <div className="col-12 col-md-6 col-xl-3">
+            <div className="bg-white border rounded shadow-sm p-3 text-center">
+              <h6 className="text-muted mb-1">Pending Shop Expense</h6>
+              <h4 className="fw-bold text-danger mb-0">
+                ₹{Number(roomShopExpenseSummary.pendingShop || 0).toLocaleString("en-IN")}
+              </h4>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* TABLE */}
     <div className="table-responsive mt-3">
   <div className="light-table-wrapper">
@@ -677,6 +951,7 @@ const OtherExpense = ({ embedded = false }) => {
           <thead className="table-light">
             <tr>
               <th>#</th>
+              {shouldSelectUnit && <th>{scopeUnitLabel}</th>}
               <th>Date</th>
               <th>Expenses</th>
               <th>Main Amount</th>
@@ -688,7 +963,7 @@ const OtherExpense = ({ embedded = false }) => {
           <tbody>
             {filteredExpenses.length === 0 ? (
               <tr>
-                <td colSpan="6" className="text-center">
+                <td colSpan={shouldSelectUnit ? "7" : "6"} className="text-center">
                   No data found
                 </td>
               </tr>
@@ -696,6 +971,7 @@ const OtherExpense = ({ embedded = false }) => {
               filteredExpenses.map((item, idx) => (
                 <tr key={item._id}>
                   <td>{idx + 1}</td>
+                  {shouldSelectUnit && <td>{getScopedDisplayLabel(item.roomNo)}</td>}
                   <td>{new Date(item.date).toLocaleDateString()}</td>
                   <td>{item.expenses?.join(", ") || "-"}</td>
                   <td>₹{item.mainAmount?.toLocaleString()}</td>
@@ -749,6 +1025,25 @@ const OtherExpense = ({ embedded = false }) => {
               </div>
 
               <div className="modal-body">
+                {shouldSelectUnit && (
+                  <>
+                    <label>{scopeUnitLabel} No</label>
+                    <select
+                      className="form-select mb-2"
+                      value={newEntry.roomNo}
+                      onChange={(e) =>
+                        setNewEntry({ ...newEntry, roomNo: e.target.value })
+                      }
+                    >
+                      <option value="">Select {scopeUnitLabel}</option>
+                      {scopedRoomNos.map((roomNo) => (
+                        <option key={roomNo} value={roomNo}>
+                          {getScopedDisplayLabel(roomNo)}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
                 {/* Main Amount */}
                 <label>Main Amount</label>
                 <input

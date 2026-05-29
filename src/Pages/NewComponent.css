@@ -2360,3 +2360,46 @@
     min-width: 0;
   }
 }
+
+.tenant-document-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.tenant-document-preview-dialog {
+  position: relative;
+  max-width: min(92vw, 920px);
+  max-height: 88vh;
+  padding: 18px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+}
+
+.tenant-document-preview-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.tenant-document-preview-title {
+  margin: 0 42px 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.tenant-document-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(88vh - 72px);
+  margin: 0 auto;
+  object-fit: contain;
+  border-radius: 8px;
+}

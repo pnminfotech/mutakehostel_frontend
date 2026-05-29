@@ -2,7 +2,7 @@
 import React from 'react';
 import './App.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import TenantIntake from './Pages/TenantIntake';
 import Form from './componenet/form';
@@ -35,6 +35,7 @@ import NewComponantOriginal from './componenet/NewComponantOriginal';
 import LightBillMatrixView from './componenet/Maintanace/LightBillMatrixView';
 import LightbillOtherExpenses from './componenet/Maintanace/LightbillOtherExpenses';
 import RoomManager from './componenet/RoomManager';
+import CommercialManager from './componenet/CommercialManager';
 import FormSubmitted from './componenet/FormSubmitted';
 import OtherExpense from "./Pages/OtherExpense";
 import LightBill from "./Pages/LightBill";
@@ -92,10 +93,15 @@ function Layout() {
         <Route path="/lightbillmaintance" element={<ProtectedRoute><LightbillMaintenace /></ProtectedRoute>} />
         <Route path="/lightbillotherexpenses" element={<ProtectedRoute><LightbillOtherExpenses /></ProtectedRoute>} />
         <Route path="/NewComponant" element={<ProtectedRoute><NewComponant /></ProtectedRoute>} />
+        <Route path="/tracker/bed" element={<ProtectedRoute><NewComponant /></ProtectedRoute>} />
+        <Route path="/tracker/room" element={<ProtectedRoute><NewComponant /></ProtectedRoute>} />
+        <Route path="/tracker/shop" element={<ProtectedRoute><NewComponant /></ProtectedRoute>} />
         <Route path="/NewComponantOriginal" element={<ProtectedRoute><NewComponantOriginal /></ProtectedRoute>} />
         <Route path="/maindashboard" element={<ProtectedRoute><MainDashboard /></ProtectedRoute>} />
+        <Route path="/maindashbaord" element={<Navigate to="/maindashboard" replace />} />
         <Route path="/LightBillMatrixView" element={<ProtectedRoute><LightBillMatrixView /></ProtectedRoute>} />
         <Route path="/roommanager" element={<ProtectedRoute><RoomManager /></ProtectedRoute>} />
+        <Route path="/commercial-manager" element={<ProtectedRoute><CommercialManager /></ProtectedRoute>} />
         <Route path="/formdownload" element={<ProtectedRoute><FormDownload /></ProtectedRoute>} />
 
 
@@ -114,7 +120,7 @@ function Layout() {
 
 function App() {
   return (
-    <BrowserRouter basename="/mutakegirlshostel">
+    <BrowserRouter basename="/hosteldemo">
       <Layout />
     </BrowserRouter>
   );

@@ -98,7 +98,7 @@ const openAddModal = () => {
   setShowAddModal(true);
 };
 
-  const apiUrl = '   https://mutakegirlshostel-0ko7.onrender.com/api/';
+  const apiUrl = '  http://localhost:8000/api/';
 const correctPassword = "987654";
 
   useEffect(() => {
@@ -133,7 +133,7 @@ useEffect(() => {
     .catch(err => console.error("Error fetching archived tenants:", err));
 }, []);
 useEffect(() => {
-  axios.get('   https://mutakegirlshostel-0ko7.onrender.com/api/rooms')
+  axios.get('  http://localhost:8000/api/rooms')
     .then(response => setRoomsData(response.data))
     .catch(err => console.error("Failed to fetch rooms:", err));
 }, []);

@@ -44,7 +44,7 @@ const LightBillMatrixView = () => {
   }, []);
 
   const fetchAll = async () => {
-    const res = await fetch("   https://mutakegirlshostel-0ko7.onrender.com/api/light-bill/all");
+    const res = await fetch("  http://localhost:8000/api/light-bill/all");
     const json = await res.json();
     setData(json);
   };
@@ -87,7 +87,7 @@ const LightBillMatrixView = () => {
       date: formattedDate,
     };
 
-    const res = await fetch("   https://mutakegirlshostel-0ko7.onrender.com/api/light-bill", {
+    const res = await fetch("  http://localhost:8000/api/light-bill", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

@@ -2,6 +2,11 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { User } from "lucide-react";
 import { FaDatabase, FaWarehouse, FaClipboard, FaTachometerAlt, FaTools} from "react-icons/fa";
+import {
+  MdOutlineBedroomParent,
+  MdLightbulbOutline,
+  MdOutlineReceiptLong,
+} from "react-icons/md";
 import { useNavigate } from "react-router-dom";
 import "../Pages/khata.css";
 
@@ -14,7 +19,7 @@ const Sidebar = () => {
         const token = localStorage.getItem("authToken");
         if (!token) return;
 
-        const response = await axios.get("   https://mutakegirlshostel-0ko7.onrender.com/api/user", {
+        const response = await axios.get("  http://localhost:8000/api/user", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -28,8 +33,8 @@ const Sidebar = () => {
   }, []);
 
   const navigate = useNavigate();
-  const handleNavigation = (path) => {
-    navigate(path);
+  const handleNavigation = (path, state) => {
+    navigate(path, state ? { state } : undefined);
   };
 
   return (
@@ -49,6 +54,30 @@ const Sidebar = () => {
       <div className="flex flex-col gap-3">
         <div className="sidebar-item" onClick={() => handleNavigation("/dashboard")}>
           <FaTachometerAlt className="icon" /> Dashboard
+        </div>
+        <div className="sidebar-item" onClick={() => handleNavigation("/tracker/bed", { tab: "rent", trackerType: "bed" })}>
+          <MdOutlineBedroomParent className="icon" /> Hostel Bed
+        </div>
+        <div className="sidebar-item" onClick={() => handleNavigation("/tracker/room", { tab: "rent", trackerType: "room" })}>
+          <MdOutlineBedroomParent className="icon" /> Other Property Room
+        </div>
+        <div className="sidebar-item" onClick={() => handleNavigation("/tracker/shop", { tab: "rent", trackerType: "shop" })}>
+          <MdOutlineBedroomParent className="icon" /> Other Property Shop
+        </div>
+        <div className="sidebar-item" onClick={() => handleNavigation("/tracker/bed", { tab: "light-hostel", trackerType: "bed" })}>
+          <MdLightbulbOutline className="icon" /> Light Bill Hostel
+        </div>
+        <div className="sidebar-item" onClick={() => handleNavigation("/tracker/room", { tab: "light-room-shop", trackerType: "room" })}>
+          <MdLightbulbOutline className="icon" /> Light Bill Room + Shop
+        </div>
+        <div className="sidebar-item" onClick={() => handleNavigation("/tracker/bed", { tab: "expenses-hostel", trackerType: "bed" })}>
+          <MdOutlineReceiptLong className="icon" /> Expenses Hostel
+        </div>
+        <div className="sidebar-item" onClick={() => handleNavigation("/tracker/room", { tab: "expenses-room-shop", trackerType: "room" })}>
+          <MdOutlineReceiptLong className="icon" /> Expenses Room + Shop
+        </div>
+        <div className="sidebar-item" onClick={() => handleNavigation("/tracker/bed", { tab: "staff", trackerType: "bed" })}>
+          <MdOutlineReceiptLong className="icon" /> Staff
         </div>
         <div className="sidebar-item" onClick={() => handleNavigation("/suppliers")}>
           <FaWarehouse className="icon" /> Suppliers

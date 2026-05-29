@@ -47,28 +47,52 @@ const MainDashboard = () => {
   const menuItems = [
     { label: "Dashboard", icon: <FiBarChart2 />, path: "/maindashboard" },
     {
-      label: "Rent & Deposit",
+      label: "Bed Tracker",
       icon: <MdOutlineBedroomParent />,
-      path: "/NewComponant",
-      state: { tab: "rent" },
+      path: "/tracker/bed",
+      state: { tab: "rent", trackerType: "bed" },
     },
     {
-      label: "Light Bill",
+      label: "Room Tracker",
+      icon: <MdOutlineBedroomParent />,
+      path: "/tracker/room",
+      state: { tab: "rent", trackerType: "room" },
+    },
+    {
+      label: "Shop Tracker",
+      icon: <MdOutlineBedroomParent />,
+      path: "/tracker/shop",
+      state: { tab: "rent", trackerType: "shop" },
+    },
+    {
+      label: "Light Bill Hostel",
       icon: <MdLightbulbOutline />,
-      path: "/NewComponant",
-      state: { tab: "light" },
+      path: "/tracker/bed",
+      state: { tab: "light-hostel", trackerType: "bed" },
     },
     {
-      label: "Other Expense",
+      label: "Light Bill Room + Shop",
+      icon: <MdLightbulbOutline />,
+      path: "/tracker/room",
+      state: { tab: "light-room-shop", trackerType: "room" },
+    },
+    {
+      label: "Expenses Hostel",
       icon: <MdOutlineReceiptLong />,
-      path: "/NewComponant",
-      state: { tab: "expenses" },
+      path: "/tracker/bed",
+      state: { tab: "expenses-hostel", trackerType: "bed" },
+    },
+    {
+      label: "Expenses Room + Shop",
+      icon: <MdOutlineReceiptLong />,
+      path: "/tracker/room",
+      state: { tab: "expenses-room-shop", trackerType: "room" },
     },
     {
       label: "Staff",
       icon: <MdOutlineReceiptLong />,
-      path: "/NewComponant",
-      state: { tab: "staff" },
+      path: "/tracker/bed",
+      state: { tab: "staff", trackerType: "bed" },
     },
   ];
 
@@ -618,16 +642,16 @@ const MainDashboard = () => {
   // ---------------------------------------------------------
   useEffect(() => {
     Promise.all([
-      fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/").then((res) =>
+      fetch("http://localhost:8000/api/").then((res) =>
         res.json()
       ),
-      fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/light-bill/all").then(
+      fetch("http://localhost:8000/api/light-bill/all").then(
         (res) => res.json()
       ),
-      fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/other-expense/all").then(
+      fetch("http://localhost:8000/api/other-expense/all").then(
         (res) => res.json()
       ),
-      fetch(" https://mutakegirlshostel-0ko7.onrender.com/api/rooms").then((res) =>
+      fetch("http://localhost:8000/api/rooms").then((res) =>
         res.json()
       ),
     ]).then(([tenants, lightBills, otherExpenses, rooms]) => {

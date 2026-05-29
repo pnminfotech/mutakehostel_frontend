@@ -44,6 +44,7 @@ const apiUrl = `${API_BASE}/rooms`;
 
 /* Editable default categories – used only for filter dropdown & optional limits */
 const DEFAULT_CATEGORIES = ["Category 1", "Category 2", "Category 3", "Other"];
+const NEW_CATEGORY_VALUE = "__new_category__";
 
 const CATEGORY_LIMITS_BY_INDEX = [
   { floors: { "0": 10, "1": 10, "2": 10, "3": 10 } },
@@ -68,6 +69,38 @@ function floorLabelFromKey(k) {
   if (k === "2") return "2nd";
   if (k === "3") return "3rd";
   return k || "Unknown";
+}
+
+function getPrimaryUnitBedNo(propertyType) {
+  return propertyType === "shop" ? "SHOP-1" : "ROOM-1";
+}
+
+function normalizeCategoryName(value) {
+  return String(value || "").trim();
+}
+
+function mergeCategoryNames(...lists) {
+  const seen = new Set();
+  const output = [];
+
+  lists
+    .flat()
+    .map(normalizeCategoryName)
+    .filter(Boolean)
+    .forEach((name) => {
+      const key = name.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      output.push(name);
+    });
+
+  return output;
+}
+
+function normalizePropertyType(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "room" || raw === "shop") return raw;
+  return "bed";
 }
 
 
@@ -120,11 +153,17 @@ function roomColors(room) {
 
 
 export default function RoomManager() {
+  const PROPERTY_TYPE_OPTIONS = [
+    { value: "bed", label: "Bed Wise" },
+    { value: "room", label: "Room Wise" },
+    { value: "shop", label: "Shop Wise" },
+  ];
   const [rooms, setRooms] = useState([]);
-  const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
+  const [categories, setCategories] = useState([]);
 
   // ✅ all typeable, including bedCategory
   const [roomForm, setRoomForm] = useState({
+    propertyType: "bed",
     category: "",
     floorNo: "",
     roomNo: "",
@@ -159,12 +198,20 @@ const [editTarget, setEditTarget] = useState({
     selectedBedNo: "",
     password: "",
   });
+  const [showDeleteRoomModal, setShowDeleteRoomModal] = useState(false);
+  const [deleteRoomState, setDeleteRoomState] = useState({
+    roomId: "",
+    roomNo: "",
+    propertyType: "",
+    password: "",
+  });
 
   const [showCatEditor, setShowCatEditor] = useState(false);
   const [catDrafts, setCatDrafts] = useState([]);
 
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
+  const [propertyFilter, setPropertyFilter] = useState("bed");
   const [mobileSection, setMobileSection] = useState("room");
   const [showQuickAddForm, setShowQuickAddForm] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -174,6 +221,11 @@ const [editTarget, setEditTarget] = useState({
 
   const navigate = useNavigate();
   const handleNavigation = (path) => navigate(path);
+  const persistCategories = (nextCategories) => {
+    const cleaned = mergeCategoryNames(nextCategories);
+    setCategories(cleaned);
+    localStorage.setItem("room_categories", JSON.stringify(cleaned));
+  };
   const scrollToSection = (ref) => {
     ref?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -185,8 +237,8 @@ const [editTarget, setEditTarget] = useState({
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length === DEFAULT_CATEGORIES.length) {
-          setCategories(parsed);
+        if (Array.isArray(parsed)) {
+          setCategories(mergeCategoryNames(parsed));
         }
       } catch (_) {}
     }
@@ -199,10 +251,31 @@ const [editTarget, setEditTarget] = useState({
     }
   }, [search, catFilter]);
 
+  useEffect(() => {
+    setRoomForm((prev) =>
+      prev.propertyType === propertyFilter
+        ? prev
+        : {
+            ...prev,
+            propertyType: propertyFilter,
+            bedNo: propertyFilter === "bed" ? prev.bedNo : "",
+            bedCategory: propertyFilter === "bed" ? prev.bedCategory : "",
+          }
+    );
+  }, [propertyFilter]);
+
   const fetchRooms = async () => {
     try {
       const res = await axios.get(apiUrl);
-      setRooms(res.data || []);
+      const nextRooms = res.data || [];
+      setRooms(nextRooms);
+      const mergedCategories = mergeCategoryNames(
+        categories,
+        nextRooms.map((room) => room?.category)
+      );
+      if (mergedCategories.length !== categories.length) {
+        persistCategories(mergedCategories);
+      }
     } catch (error) {
       console.error("Error fetching rooms:", error);
     }
@@ -217,6 +290,49 @@ const [editTarget, setEditTarget] = useState({
       (c) => (c || "").trim().toLowerCase() === current
     );
   }, [categories, roomForm.category]);
+
+  const buildingOptions = useMemo(() => {
+    const selectedType = normalizePropertyType(roomForm.propertyType);
+    const roomCategoriesForType = rooms
+      .filter((room) => normalizePropertyType(room?.propertyType) === selectedType)
+      .map((room) => room?.category);
+
+    const savedCategoriesForType =
+      selectedType === "bed"
+        ? categories.filter(
+            (category) =>
+              !rooms.some((room) =>
+                normalizePropertyType(room?.propertyType) !== "bed"
+                && String(room?.category || "").trim().toLowerCase() === String(category || "").trim().toLowerCase()
+              )
+          )
+        : categories.filter((category) =>
+            rooms.some((room) =>
+              ["room", "shop"].includes(normalizePropertyType(room?.propertyType))
+              && String(room?.category || "").trim().toLowerCase() === String(category || "").trim().toLowerCase()
+            )
+          );
+
+    return mergeCategoryNames(savedCategoriesForType, roomCategoriesForType);
+  }, [categories, rooms, roomForm.propertyType]);
+
+  const selectedBuildingOption = useMemo(() => {
+    const current = normalizeCategoryName(roomForm.category);
+    if (!current) return "";
+    const matched = buildingOptions.find(
+      (name) => name.toLowerCase() === current.toLowerCase()
+    );
+    return matched || NEW_CATEGORY_VALUE;
+  }, [buildingOptions, roomForm.category]);
+
+  const filterCategoryOptions = useMemo(() => {
+    const selectedType = normalizePropertyType(propertyFilter);
+    return mergeCategoryNames(
+      rooms
+        .filter((room) => normalizePropertyType(room?.propertyType) === selectedType)
+        .map((room) => room?.category)
+    );
+  }, [rooms, propertyFilter]);
 
   const floorKey = useMemo(
     () => normalizeFloorKey(roomForm.floorNo),
@@ -248,15 +364,17 @@ const [editTarget, setEditTarget] = useState({
   /* -------- Add Room (with optional first bed) -------- */
 
  const addRoom = async () => {
-  const category = roomForm.category.trim();
+  const propertyType = String(roomForm.propertyType || "bed").trim().toLowerCase();
+  const category = normalizeCategoryName(roomForm.category);
   const floorNo = roomForm.floorNo.trim();
   const roomNo = roomForm.roomNo.trim();
-  const firstBedNo = roomForm.bedNo.trim();
+  const firstBedNo = propertyType === "bed" ? roomForm.bedNo.trim() : "";
   const firstBedCategory = roomForm.bedCategory.trim();
-  const firstBedPrice = roomForm.bedPrice ? Number(roomForm.bedPrice) : null; // ✅ NEW
+  const priceInput = String(roomForm.bedPrice ?? "").trim();
+  const firstBedPrice = priceInput === "" ? null : Number(priceInput);
 
   if (!category) {
-    alert("Please enter a Category.");
+    alert("Please enter a Building Name.");
     return;
   }
   if (!roomNo) {
@@ -265,6 +383,10 @@ const [editTarget, setEditTarget] = useState({
   }
   if (!floorNo) {
     alert("Please enter a Floor.");
+    return;
+  }
+  if (priceInput !== "" && (Number.isNaN(firstBedPrice) || firstBedPrice < 0)) {
+    alert("Please enter a valid price.");
     return;
   }
 
@@ -313,17 +435,17 @@ const dup = rooms.some(
     String(r.category || "").trim().toLowerCase() === category.toLowerCase()
 );
 if (dup) {
-  alert("Room already exists in this category.");
+  alert("Room already exists in this building.");
   return;
 }
 
 
   try {
     // 1) Create room
-  const created = await axios.post(apiUrl, { category, floorNo, roomNo });
+  const created = await axios.post(apiUrl, { category, floorNo, roomNo, propertyType });
 const createdRoom = created.data; // must include _id
 
-if (firstBedNo) {
+if (propertyType === "bed" && firstBedNo) {
   await axios.post(`${apiUrl}/${createdRoom._id}/bed`, {
     bedNo: firstBedNo,
     bedCategory: firstBedCategory || "",
@@ -331,9 +453,19 @@ if (firstBedNo) {
   });
 }
 
+if (propertyType !== "bed" && firstBedPrice != null) {
+  await axios.put(
+    `${apiUrl}/${createdRoom._id}/bed/${getPrimaryUnitBedNo(propertyType)}`,
+    {
+      price: firstBedPrice,
+    }
+  );
+}
+
 
     // reset form
     setRoomForm({
+      propertyType: "bed",
       category: "",
       floorNo: "",
       roomNo: "",
@@ -341,6 +473,18 @@ if (firstBedNo) {
       bedCategory: "",
       bedPrice: "", // ✅ reset
     });
+
+    persistCategories([...buildingOptions, category]);
+    setRoomForm((prev) => ({
+      ...prev,
+      propertyType,
+      category,
+      floorNo,
+      roomNo: "",
+      bedNo: "",
+      bedCategory: "",
+      bedPrice: "",
+    }));
 
     fetchRooms();
   } catch (error) {
@@ -486,13 +630,12 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
   };
 
   const saveCategoryNames = () => {
-    const cleaned = catDrafts.map((c) => (c || "").trim());
-    if (cleaned.length !== DEFAULT_CATEGORIES.length || cleaned.some((c) => !c)) {
-      alert(`Please provide ${DEFAULT_CATEGORIES.length} non-empty category names.`);
+    const cleaned = mergeCategoryNames(catDrafts);
+    if (!cleaned.length) {
+      alert("Please provide at least one building name.");
       return;
     }
-    setCategories(cleaned);
-    localStorage.setItem("room_categories", JSON.stringify(cleaned));
+    persistCategories(cleaned);
     setShowCatEditor(false);
   };
 
@@ -525,12 +668,62 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         : `Allowed: ${limitForFloor} • Used: ${currentCountOnFloor} • Remaining: ${remainingOnFloor}`
       : "";
 
-  const totalRooms = rooms.length;
-  const totalBeds = rooms.reduce((sum, r) => sum + (r.beds?.length || 0), 0);
+  const scopedRooms = useMemo(
+    () =>
+      rooms.filter(
+        (r) => String(r.propertyType || "bed").trim().toLowerCase() === propertyFilter
+      ),
+    [rooms, propertyFilter]
+  );
+  const scopedRoomCount = scopedRooms.length;
+  const scopedUnitCount = scopedRooms.reduce((sum, r) => sum + (r.beds?.length || 0), 0);
+  const statsMeta = useMemo(() => {
+    if (propertyFilter === "shop") {
+      return {
+        heroLabel: "Shops",
+        heroValue: scopedRoomCount,
+        heroSubtext: `${scopedUnitCount} shop units total`,
+        primaryLabel: "Total Shops",
+        primaryValue: scopedRoomCount,
+        primaryHelp: "Managed shops",
+        secondaryLabel: "Total Shop Units",
+        secondaryValue: scopedUnitCount,
+        secondaryHelp: "Across all shops",
+      };
+    }
+
+    if (propertyFilter === "room") {
+      return {
+        heroLabel: "Rooms",
+        heroValue: scopedRoomCount,
+        heroSubtext: `${scopedUnitCount} room units total`,
+        primaryLabel: "Total Rooms",
+        primaryValue: scopedRoomCount,
+        primaryHelp: "Managed rooms",
+        secondaryLabel: "Total Room Units",
+        secondaryValue: scopedUnitCount,
+        secondaryHelp: "Across all rooms",
+      };
+    }
+
+    return {
+      heroLabel: "Rooms",
+      heroValue: scopedRoomCount,
+      heroSubtext: `${scopedUnitCount} beds total`,
+      primaryLabel: "Total Rooms",
+      primaryValue: scopedRoomCount,
+      primaryHelp: "Managed rooms",
+      secondaryLabel: "Total Beds",
+      secondaryValue: scopedUnitCount,
+      secondaryHelp: "Across all floors",
+    };
+  }, [propertyFilter, scopedRoomCount, scopedUnitCount]);
 
   const baseFiltered = useMemo(() => {
     const q = (search || "").toLowerCase();
-    let list = rooms;
+    let list = rooms.filter(
+      (r) => String(r.propertyType || "bed").trim().toLowerCase() === propertyFilter
+    );
 
     if (catFilter) {
       list = list.filter((r) => (r.category || "") === catFilter);
@@ -551,15 +744,63 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
       );
       return inRoom || inFloor || inCat || inBeds;
     });
-  }, [rooms, search, catFilter]);
+  }, [rooms, search, catFilter, propertyFilter]);
 
   const displayedRooms = baseFiltered;
+  const selectedPropertyMeta =
+    PROPERTY_TYPE_OPTIONS.find((item) => item.value === propertyFilter) ||
+    PROPERTY_TYPE_OPTIONS[0];
   const clearFilters = () => {
     setSearch("");
     setCatFilter("");
   };
+
+  const openDeleteRoomModal = (room) => {
+    setDeleteRoomState({
+      roomId: room?._id || "",
+      roomNo: room?.roomNo || "",
+      propertyType: String(room?.propertyType || "room").trim().toLowerCase(),
+      password: "",
+    });
+    setShowDeleteRoomModal(true);
+  };
+
+  const deleteRoomOrShop = async () => {
+    const propertyLabel = deleteRoomState.propertyType === "shop" ? "shop" : "room";
+
+    if (deleteRoomState.password !== "987654") {
+      alert(`${propertyLabel.charAt(0).toUpperCase() + propertyLabel.slice(1)} not deleted. Invalid password.`);
+      return;
+    }
+
+    try {
+      await axios.delete(`${apiUrl}/${deleteRoomState.roomId}`);
+      setShowDeleteRoomModal(false);
+      setDeleteRoomState({
+        roomId: "",
+        roomNo: "",
+        propertyType: "",
+        password: "",
+      });
+      fetchRooms();
+    } catch (err) {
+      console.error("Failed to delete room/shop:", err.response?.data || err.message);
+      alert(
+        err.response?.data?.message || `Failed to delete ${propertyLabel}.`
+      );
+    }
+  };
   const renderModal = (node) =>
     typeof document !== "undefined" ? createPortal(node, document.body) : node;
+
+  useEffect(() => {
+    setRoomForm((prev) => ({
+      ...prev,
+      propertyType: propertyFilter,
+      bedNo: propertyFilter === "bed" ? prev.bedNo : "",
+      bedCategory: propertyFilter === "bed" ? prev.bedCategory : "",
+    }));
+  }, [propertyFilter]);
 
   /* -------- JSX -------- */
   const editRoomCategoryQuick = async (room) => {
@@ -578,16 +819,23 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
     return;
   }
 
+  const hasConflict = rooms.some(
+    (item) =>
+      String(item?._id || "") !== String(room?._id || "") &&
+      String(item?.roomNo || "").trim().toLowerCase() ===
+        String(room?.roomNo || "").trim().toLowerCase() &&
+      String(item?.category || "").trim().toLowerCase() === category.toLowerCase()
+  );
+  if (hasConflict) {
+    alert(`Room ${room.roomNo} already exists in category ${category}.`);
+    return;
+  }
+
   try {
     // ✅ IMPORTANT: use room._id (not roomNo)
     await axios.put(`${apiUrl}/${room._id}`, { category });
 
-    // optional: keep dropdown categories updated
-    setCategories((prev) =>
-      prev.some((c) => (c || "").trim().toLowerCase() === category.toLowerCase())
-        ? prev
-        : [...prev, category]
-    );
+    persistCategories([...categories, category]);
 
     fetchRooms();
   } catch (err) {
@@ -611,34 +859,34 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
             <span>Back</span>
           </button>
 
-          <div className="room-manager-mobile-topbadge">Rooms &amp; Beds</div>
+          <div className="room-manager-mobile-topbadge">Beds, Rooms &amp; Shops</div>
         </div>
 
         <div className="room-manager-mobile-hero">
           <div className="room-manager-mobile-hero-copy">
             <div className="room-manager-mobile-kicker">Room Manager</div>
-            <h4>Manage rooms and beds</h4>
+            <h4>Manage beds, rooms and shops</h4>
             <p>
-              Add rooms, beds, prices, and categories in a clean mobile app style.
+              Add property units, prices, and categories in a clean mobile app style.
             </p>
           </div>
           <div className="room-manager-mobile-hero-stat">
-            <span>Rooms</span>
-            <strong>{totalRooms}</strong>
-            <small>{totalBeds} beds total</small>
+            <span>{statsMeta.heroLabel}</span>
+            <strong>{statsMeta.heroValue}</strong>
+            <small>{statsMeta.heroSubtext}</small>
           </div>
         </div>
 
         <div className="room-manager-mobile-stats">
           <div className="room-manager-mobile-stat-card">
-            <span>Total Rooms</span>
-            <strong>{totalRooms}</strong>
-            <small>Managed rooms</small>
+            <span>{statsMeta.primaryLabel}</span>
+            <strong>{statsMeta.primaryValue}</strong>
+            <small>{statsMeta.primaryHelp}</small>
           </div>
           <div className="room-manager-mobile-stat-card">
-            <span>Total Beds</span>
-            <strong>{totalBeds}</strong>
-            <small>Across all floors</small>
+            <span>{statsMeta.secondaryLabel}</span>
+            <strong>{statsMeta.secondaryValue}</strong>
+            <small>{statsMeta.secondaryHelp}</small>
           </div>
         </div>
 
@@ -735,7 +983,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                   onChange={(e) => setCatFilter(e.target.value)}
                 >
                   <option value="">All</option>
-                  {categories.map((c, idx) => (
+                  {filterCategoryOptions.map((c, idx) => (
                     <option key={idx} value={c}>
                       {c}
                     </option>
@@ -782,15 +1030,47 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
           </div>
 
           <div className="room-manager-mobile-form-grid">
-            <input
-              type="text"
-              className="form-control"
-              placeholder="Category (e.g., Deluxe, Standard)"
-              value={roomForm.category}
-              onChange={(e) =>
-                setRoomForm((prev) => ({ ...prev, category: e.target.value }))
-              }
-            />
+            <select
+              className="form-select"
+              value={roomForm.propertyType}
+              onChange={(e) => setPropertyFilter(e.target.value)}
+            >
+              <option value="bed">Bed-wise Property</option>
+              <option value="room">Room-wise Property</option>
+              <option value="shop">Shop-wise Property</option>
+            </select>
+
+            <select
+              className="form-select"
+              value={selectedBuildingOption}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                setRoomForm((prev) => ({
+                  ...prev,
+                  category: nextValue === NEW_CATEGORY_VALUE ? "" : nextValue,
+                }));
+              }}
+            >
+              <option value="">Select Building Name</option>
+              {buildingOptions.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+              <option value={NEW_CATEGORY_VALUE}>+ Add New Building</option>
+            </select>
+
+            {selectedBuildingOption === NEW_CATEGORY_VALUE || !roomForm.category ? (
+              <input
+                type="text"
+                className="form-control"
+                placeholder="New Building Name (e.g., Mutake A Wing)"
+                value={roomForm.category}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({ ...prev, category: e.target.value }))
+                }
+              />
+            ) : null}
 
             <input
               type="text"
@@ -805,37 +1085,47 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
             <input
               type="text"
               className="form-control"
-              placeholder="Room No (e.g., 203)"
+              placeholder={roomForm.propertyType === "shop" ? "Shop No (e.g., S-1)" : "Room No (e.g., 203)"}
               value={roomForm.roomNo}
               onChange={(e) =>
                 setRoomForm((prev) => ({ ...prev, roomNo: e.target.value }))
               }
             />
 
-            <input
-              type="text"
-              className="form-control"
-              placeholder="Bed No (e.g., B1)"
-              value={roomForm.bedNo}
-              onChange={(e) =>
-                setRoomForm((prev) => ({ ...prev, bedNo: e.target.value }))
-              }
-            />
+            {roomForm.propertyType === "bed" && (
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Bed No (e.g., B1)"
+                value={roomForm.bedNo}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({ ...prev, bedNo: e.target.value }))
+                }
+              />
+            )}
 
-            <input
-              type="text"
-              className="form-control"
-              placeholder="Bed Category (e.g., Upper, Lower)"
-              value={roomForm.bedCategory}
-              onChange={(e) =>
-                setRoomForm((prev) => ({ ...prev, bedCategory: e.target.value }))
-              }
-            />
+            {roomForm.propertyType === "bed" && (
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Bed Category (e.g., Upper, Lower)"
+                value={roomForm.bedCategory}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({ ...prev, bedCategory: e.target.value }))
+                }
+              />
+            )}
 
             <input
               type="number"
               className="form-control"
-              placeholder="Bed Price (Rs.)"
+              placeholder={
+                roomForm.propertyType === "bed"
+                  ? "Bed Price (Rs.)"
+                  : roomForm.propertyType === "shop"
+                  ? "Shop Price (Rs.)"
+                  : "Room Price (Rs.)"
+              }
               value={roomForm.bedPrice}
               onChange={(e) =>
                 setRoomForm((prev) => ({ ...prev, bedPrice: e.target.value }))
@@ -848,7 +1138,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               onClick={addRoom}
             >
               <FaPlus />
-              <span>Room</span>
+              <span>{roomForm.propertyType === "shop" ? "Shop" : "Room"}</span>
             </button>
           </div>
           </section>
@@ -965,6 +1255,16 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                         <span>Add First Bed</span>
                       </button>
                     )}
+
+                    {(room.propertyType || "bed") !== "bed" && (
+                      <button
+                        type="button"
+                        className="room-manager-mobile-room-action room-manager-mobile-room-action--danger"
+                        onClick={() => openDeleteRoomModal(room)}
+                      >
+                        <span>Delete</span>
+                      </button>
+                    )}
                   </div>
                 </article>
               );
@@ -1022,16 +1322,21 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
       </div>
 
       <div className="d-none d-md-block">
-        <h3 className="fw-bold mb-3 mb-md-4">Room &amp; Bed Management</h3>
+        <div className="mb-4 text-center">
+          <h1 className="fw-bold mb-0" style={{ color: "#13233f", fontSize: "2.25rem" }}>
+            Room &amp; Bed Management
+          </h1>
+        </div>
 
         {/* Toolbar */}
         <div className="card border-0 mb-3" style={{ background: "transparent" }}>
           <div className="card-body p-0">
-            <div className="d-flex flex-wrap align-items-center gap-2">
-              <div className="d-flex align-items-center gap-2">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
+              <div className="d-flex align-items-center gap-3 flex-wrap">
                 <button
+                  type="button"
                   className="btn me-2"
-                  style={{ backgroundColor: "#5f7dfc", color: "white" }}
+                  style={{ backgroundColor: "#5f7dfc", color: "#fff", minWidth: 82 }}
                   onClick={() => handleNavigation("/newcomponant")}
                 >
                   <FaArrowLeft className="me-1" />
@@ -1039,20 +1344,11 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                 </button>
               </div>
 
-              <div className="me-md-auto d-flex align-items-center gap-2">
-                <h4 className="fw-bold mb-0 d-none d-md-block">Manage Rooms</h4>
-                <span className="badge bg-light text-dark border d-none d-md-inline">
+              <div className="me-md-auto d-flex align-items-center gap-2 flex-wrap">
+                <h2 className="fw-bold mb-0" style={{ color: "#13233f" }}>Manage Rooms</h2>
+                <span className="badge bg-light text-dark border">
                   Rooms &amp; Beds
                 </span>
-              </div>
-
-              <div className="w-100 d-md-none">
-                <div className="d-flex align-items-center justify-content-between">
-                  <h5 className="fw-bold mb-0">Manage Rooms</h5>
-                  <span className="badge bg-light text-dark border">
-                    Rooms &amp; Beds
-                  </span>
-                </div>
               </div>
 
               <div className="ms-md-auto flex-grow-1" style={{ maxWidth: 420 }}>
@@ -1071,7 +1367,8 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               </div>
 
               <button
-                className="btn btn-sm btn-outline-secondary ms-auto ms-md-0"
+                type="button"
+                className="btn btn-outline-secondary ms-auto ms-md-0"
                 onClick={openCategoryEditor}
                 title="Edit category names"
               >
@@ -1081,22 +1378,24 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
           </div>
         </div>
 
-        {/* Quick Add + KPIs */}
         <div className="row g-3 mb-4">
         {/* Quick Add */}
       <div className="col-12 col-lg-6">
   <div className="bg-white border rounded-3 shadow-sm p-3 h-100">
-    <h6 className="text-muted mb-2">Quick Add Room</h6>
+    <h5 className="text-center mb-3">Quick Add Room</h5>
 
     <div className="d-grid" style={{ gap: "8px" }}>
-
       <input
         type="text"
         className="form-control form-control-sm"
-        placeholder="Category (e.g., Deluxe, Standard)"
+        placeholder="Category (Private / Double Sharing / 3 Sharing)"
         value={roomForm.category}
         onChange={(e) =>
-          setRoomForm((prev) => ({ ...prev, category: e.target.value }))
+          setRoomForm((prev) => ({
+            ...prev,
+            propertyType: "bed",
+            category: e.target.value,
+          }))
         }
       />
 
@@ -1104,10 +1403,14 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         <input
           type="text"
           className="form-control form-control-sm"
-          placeholder="Floor No (e.g., Ground, 1, 2, 3, Basement)"
+          placeholder="Floor No (Ground, 1, 2)"
           value={roomForm.floorNo}
           onChange={(e) =>
-            setRoomForm((prev) => ({ ...prev, floorNo: e.target.value }))
+            setRoomForm((prev) => ({
+              ...prev,
+              propertyType: "bed",
+              floorNo: e.target.value,
+            }))
           }
         />
         {remainingHint && floorKey && (
@@ -1127,7 +1430,11 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         placeholder="Room No (e.g., 203)"
         value={roomForm.roomNo}
         onChange={(e) =>
-          setRoomForm((prev) => ({ ...prev, roomNo: e.target.value }))
+          setRoomForm((prev) => ({
+            ...prev,
+            propertyType: "bed",
+            roomNo: e.target.value,
+          }))
         }
       />
 
@@ -1136,7 +1443,11 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         placeholder="Bed No (e.g., B1)"
         value={roomForm.bedNo}
         onChange={(e) =>
-          setRoomForm((prev) => ({ ...prev, bedNo: e.target.value }))
+          setRoomForm((prev) => ({
+            ...prev,
+            propertyType: "bed",
+            bedNo: e.target.value,
+          }))
         }
       />
 
@@ -1145,7 +1456,11 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         placeholder="Bed Category (e.g., Upper, Lower)"
         value={roomForm.bedCategory}
         onChange={(e) =>
-          setRoomForm((prev) => ({ ...prev, bedCategory: e.target.value }))
+          setRoomForm((prev) => ({
+            ...prev,
+            propertyType: "bed",
+            bedCategory: e.target.value,
+          }))
         }
       />
 
@@ -1153,7 +1468,13 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
       <input
         type="number"
         className="form-control form-control-sm"
-        placeholder="Bed Price (₹)"
+        placeholder={
+          roomForm.propertyType === "bed"
+            ? "Bed Price (₹)"
+            : roomForm.propertyType === "shop"
+            ? "Shop Price (₹)"
+            : "Room Price (₹)"
+        }
         value={roomForm.bedPrice}
         onChange={(e) =>
           setRoomForm((prev) => ({
@@ -1176,7 +1497,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
 </div>
 
 
-        {/* KPI – Total Rooms */}
+        {/* KPI – Primary Total */}
         <div className="col-6 col-md-6 col-lg-3">
           <div className="bg-white border rounded-3 shadow-sm p-3 h-100 d-flex align-items-center">
             <div
@@ -1186,13 +1507,13 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               <i className="bi bi-door-open" />
             </div>
             <div>
-              <div className="text-muted small">Total Rooms</div>
-              <div className="fw-bold fs-4">{totalRooms}</div>
+              <div className="text-muted small">{statsMeta.primaryLabel}</div>
+              <div className="fw-bold fs-4">{statsMeta.primaryValue}</div>
             </div>
           </div>
         </div>
 
-        {/* KPI – Total Beds */}
+        {/* KPI – Secondary Total */}
         <div className="col-6 col-md-6 col-lg-3">
           <div className="bg-white border rounded-3 shadow-sm p-3 h-100 d-flex align-items-center">
             <div
@@ -1202,8 +1523,8 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               <i className="bi bi-people" />
             </div>
             <div>
-              <div className="text-muted small">Total Beds</div>
-              <div className="fw-bold fs-4">{totalBeds}</div>
+              <div className="text-muted small">{statsMeta.secondaryLabel}</div>
+              <div className="fw-bold fs-4">{statsMeta.secondaryValue}</div>
             </div>
           </div>
         </div>
@@ -1218,13 +1539,16 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               style={{ minWidth: 260 }}
             >
               <label className="form-label mb-0 me-2">Category</label>
+              <div className="badge text-bg-light border text-capitalize">
+                {selectedPropertyMeta.label}
+              </div>
               <select
                 className="form-select form-select-sm"
                 value={catFilter}
                 onChange={(e) => setCatFilter(e.target.value)}
               >
                 <option value="">All</option>
-                {categories.map((c, idx) => (
+                {filterCategoryOptions.map((c, idx) => (
                   <option key={idx} value={c}>
                     {c}
                   </option>
@@ -1233,7 +1557,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
             </div>
 
             <h5 className="fw-bold mb-0 text-center flex-grow-1 d-none d-md-block">
-              Rooms &amp; Beds
+              {selectedPropertyMeta.label}
             </h5>
 
             <div
@@ -1244,7 +1568,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
             </div>
 
             <h6 className="fw-bold mb-0 d-md-none mt-2 w-100">
-              Rooms &amp; Beds
+              {selectedPropertyMeta.label}
             </h6>
           </div>
 
@@ -1254,6 +1578,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                 <tr className="fw-semibold text-secondary">
                   <th style={{ whiteSpace: "nowrap" }}>Room No</th>
                   <th style={{ whiteSpace: "nowrap" }}>Floor</th>
+                  <th style={{ whiteSpace: "nowrap" }}>Type</th>
                   <th style={{ whiteSpace: "nowrap" }}>Category</th>
                   <th style={{ minWidth: 320 }}>Beds</th>
                   <th style={{ whiteSpace: "nowrap" }}>Actions</th>
@@ -1283,6 +1608,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
 </td>
 
                       <td>{displayFloor}</td>
+                     <td className="text-capitalize">{room.propertyType || "bed"}</td>
                      <td>
   <span
     className="badge bg-light text-dark border"
@@ -1311,7 +1637,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                               >
                                 <div className="d-flex align-items-center gap-2 flex-wrap">
                                   <span className="badge rounded-pill bg-secondary">
-                                    Bed {bed.bedNo}
+                                    {(room.propertyType || "bed") === "bed" ? `Bed ${bed.bedNo}` : `Unit ${bed.bedNo}`}
                                   </span>
                                   {bed.bedCategory && (
                                     <span className="badge rounded-pill bg-light text-dark border">
@@ -1351,16 +1677,16 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                         )}
                       </td>
                       <td>
-                        <button
+                        {(room.propertyType || "bed") === "bed" && <button
                           className="btn btn-sm"
                           style={{ backgroundColor: "#5f7dfc", color: "white" }}
                           onClick={() => openAddBedModal(room)}
                         >
                           + Add Bed
-                        </button>
+                        </button>}
 
                         {/* 🔴 NEW: one Delete Bed button per room */}
-                        {room.beds?.length > 0 && (
+                        {(room.propertyType || "bed") === "bed" && room.beds?.length > 0 && (
  <button
   className="btn btn-sm btn-outline-primary ms-2"
   style={{ color: "#2ea3f2", borderColor: "#2ea3f2" }}
@@ -1371,13 +1697,22 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
 
 
                         )}
+
+                        {(room.propertyType || "bed") !== "bed" && (
+                          <button
+                            className="btn btn-sm btn-outline-danger ms-2"
+                            onClick={() => openDeleteRoomModal(room)}
+                          >
+                            Delete
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
                 })}
                 {!displayedRooms.length && (
                   <tr>
-                    <td colSpan={5} className="text-center text-muted py-4">
+                    <td colSpan={6} className="text-center text-muted py-4">
                       No rooms match your filters.
                     </td>
                   </tr>
@@ -1710,6 +2045,91 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                   onClick={handleDeleteBed}
                 >
                   Delete Bed
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteRoomModal && renderModal(
+        <div
+          style={modalBackdropStyle}
+          onClick={() => setShowDeleteRoomModal(false)}
+        >
+          <div
+            className="modal-dialog modal-dialog-centered"
+            style={{
+              width: "100%",
+              maxWidth: "520px",
+              margin: "0 12px",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div
+              className="modal-content"
+              style={{
+                maxHeight: "calc(100vh - 24px)",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <div
+                className="modal-header bg-white sticky-top py-2"
+                style={{ zIndex: 1 }}
+              >
+                <h6 className="modal-title mb-0">
+                  Delete {deleteRoomState.propertyType === "shop" ? "Shop" : "Room"} — {deleteRoomState.roomNo}
+                </h6>
+                <button
+                  type="button"
+                  className="btn-close p-0"
+                  onClick={() => setShowDeleteRoomModal(false)}
+                >
+                  x
+                </button>
+              </div>
+
+              <div className="modal-body py-2" style={{ overflowY: "auto" }}>
+                <div className="mb-2">
+                  <label className="form-label mb-1">
+                    Password (required to delete)
+                  </label>
+                  <input
+                    type="password"
+                    name="delete-room-password"
+                    autoComplete="new-password"
+                    className="form-control form-control-sm"
+                    value={deleteRoomState.password}
+                    onChange={(e) =>
+                      setDeleteRoomState((prev) => ({
+                        ...prev,
+                        password: e.target.value,
+                      }))
+                    }
+                    placeholder="Enter password"
+                  />
+                </div>
+
+                <div className="alert alert-warning small mt-2">
+                  This will permanently remove the selected {deleteRoomState.propertyType === "shop" ? "shop" : "room"}.
+                </div>
+              </div>
+
+              <div className="modal-footer py-2 flex-wrap gap-2">
+                <button
+                  className="btn btn-secondary w-100 w-sm-auto"
+                  onClick={() => setShowDeleteRoomModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="btn btn-danger w-100 w-sm-auto"
+                  onClick={deleteRoomOrShop}
+                >
+                  Delete {deleteRoomState.propertyType === "shop" ? "Shop" : "Room"}
                 </button>
               </div>
             </div>

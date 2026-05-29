@@ -215,7 +215,8 @@ const FormDownload = ({ formData }) => {
   const [tenantDoc, setTenantDoc] = useState(null);
   const [photoDataUrl, setPhotoDataUrl] = useState("");
   const [documentDataUrls, setDocumentDataUrls] = useState({});
-  const [showPhotoPreview, setShowPhotoPreview] = useState(false);
+  const [previewImage, setPreviewImage] = useState(null);
+  const [previewRotation, setPreviewRotation] = useState(0);
 
   // ---------------- Helpers ----------------
   const safe = (v) =>
@@ -270,7 +271,7 @@ const FormDownload = ({ formData }) => {
   // Prefer fetched doc if available
   const data = tenantDoc || formData;
 
-  const BASE_URL = "https://mutakegirlshostel-0ko7.onrender.com";
+  const BASE_URL = "http://localhost:8000";
 
   const allDocuments = useMemo(() => {
     if (Array.isArray(data?.documents)) return data.documents;
@@ -328,6 +329,16 @@ const FormDownload = ({ formData }) => {
     } catch (e) {
       return "";
     }
+  }, []);
+
+  const openPreviewImage = useCallback((src, title) => {
+    setPreviewRotation(0);
+    setPreviewImage({ src, title });
+  }, []);
+
+  const closePreviewImage = useCallback(() => {
+    setPreviewImage(null);
+    setPreviewRotation(0);
   }, []);
 
   // ---------------- Try to fetch full tenant doc (WITH and WITHOUT /api prefix) ----------------
@@ -573,7 +584,7 @@ const FormDownload = ({ formData }) => {
       return ct.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(name);
     };
 
-    const BASE_URL = "https://mutakegirlshostel-0ko7.onrender.com"; // change to your backend URL
+    const BASE_URL = "http://localhost:8000"; // change to your backend URL
 
     const getUrl = (d) => {
       const raw =
@@ -680,11 +691,14 @@ const FormDownload = ({ formData }) => {
             role={photoDataUrl ? "button" : undefined}
             tabIndex={photoDataUrl ? 0 : undefined}
             title={photoDataUrl ? "View larger photo" : undefined}
-            onClick={() => photoDataUrl && setShowPhotoPreview(true)}
+            onClick={() =>
+              photoDataUrl &&
+              openPreviewImage(photoDataUrl, "Tenant Photo")
+            }
             onKeyDown={(e) => {
               if (photoDataUrl && (e.key === "Enter" || e.key === " ")) {
                 e.preventDefault();
-                setShowPhotoPreview(true);
+                openPreviewImage(photoDataUrl, "Tenant Photo");
               }
             }}
           >
@@ -804,7 +818,19 @@ const FormDownload = ({ formData }) => {
                     <img
                       src={imgSrc}
                       alt={docLabel(doc, index)}
-                      className="form-document-image"
+                      className="form-document-image form-document-image-clickable"
+                      role="button"
+                      tabIndex={0}
+                      title="Click to zoom"
+                      onClick={() =>
+                        openPreviewImage(imgSrc, docLabel(doc, index))
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openPreviewImage(imgSrc, docLabel(doc, index));
+                        }
+                      }}
                     />
                   ) : url ? (
                     <div className="form-document-link">
@@ -825,26 +851,48 @@ const FormDownload = ({ formData }) => {
       <button onClick={handleDownload} className="download-button">
         Download as PDF
       </button>
-      {showPhotoPreview && photoDataUrl && (
+      {previewImage?.src && (
         <div
           className="form-photo-preview-backdrop"
-          onClick={() => setShowPhotoPreview(false)}
+          onClick={closePreviewImage}
         >
           <div
             className="form-photo-preview-dialog"
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="form-photo-preview-toolbar">
+              <div className="form-photo-preview-title">
+                {previewImage.title}
+              </div>
+              <div className="form-photo-preview-actions">
+                <button
+                  type="button"
+                  className="form-photo-preview-action-btn"
+                  onClick={() => setPreviewRotation((prev) => prev - 90)}
+                >
+                  Rotate Left
+                </button>
+                <button
+                  type="button"
+                  className="form-photo-preview-action-btn"
+                  onClick={() => setPreviewRotation((prev) => prev + 90)}
+                >
+                  Rotate Right
+                </button>
+              </div>
+            </div>
             <button
               type="button"
               className="form-photo-preview-close"
-              onClick={() => setShowPhotoPreview(false)}
+              onClick={closePreviewImage}
             >
               x
             </button>
             <img
-              src={photoDataUrl}
-              alt="Tenant"
+              src={previewImage.src}
+              alt={previewImage.title || "Preview"}
               className="form-photo-preview-image"
+              style={{ transform: `rotate(${previewRotation}deg)` }}
             />
           </div>
         </div>

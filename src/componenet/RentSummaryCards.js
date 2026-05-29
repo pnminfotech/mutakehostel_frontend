@@ -7,10 +7,21 @@ function RentSummaryCards({
   vacantBeds,
   pendingRents,
   upcomingRents,
+  trackerType = "bed",
   onVacantClick,
   onPendingClick,
   onUpcomingClick,
 }) {
+  const totalLabel =
+    trackerType === "shop" ? "Total Shops" : trackerType === "room" ? "Total Rooms" : "Total Beds";
+  const vacantLabel =
+    trackerType === "shop" ? "Vacant Shops" : trackerType === "room" ? "Vacant Rooms" : "Vacant Beds";
+  const vacantTitle =
+    trackerType === "shop"
+      ? "Click to view vacant shops"
+      : trackerType === "room"
+      ? "Click to view vacant rooms"
+      : "Click to view vacant beds";
   return (
     <div className="row g-3 mb-2 summary-row rent-summary-row">
       <div className="col-md-3 col-sm-6">
@@ -18,7 +29,7 @@ function RentSummaryCards({
           <div className="summary-left">
             <div className="summary-icon">🛏️</div>
             <div className="summary-text">
-              <div className="summary-title">Total Beds</div>
+              <div className="summary-title">{totalLabel}</div>
             </div>
           </div>
           <div className="summary-number">{totalBeds}</div>
@@ -43,12 +54,12 @@ function RentSummaryCards({
           role={onVacantClick ? "button" : undefined}
           style={onVacantClick ? { cursor: "pointer" } : undefined}
           onClick={onVacantClick}
-          title={onVacantClick ? "Click to view vacant beds" : undefined}
+          title={onVacantClick ? vacantTitle : undefined}
         >
           <div className="summary-left">
             <div className="summary-icon">🛌</div>
             <div className="summary-text">
-              <div className="summary-title">Vacant Beds</div>
+              <div className="summary-title">{vacantLabel}</div>
             </div>
           </div>
           <div className="summary-number">{vacantBeds}</div>
@@ -95,3 +106,4 @@ function RentSummaryCards({
 }
 
 export default RentSummaryCards;
+
