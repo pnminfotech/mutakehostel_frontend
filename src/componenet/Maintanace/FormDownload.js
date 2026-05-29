@@ -271,7 +271,7 @@ const FormDownload = ({ formData }) => {
   // Prefer fetched doc if available
   const data = tenantDoc || formData;
 
-  const BASE_URL = "http://localhost:8000";
+  const BASE_URL = "https://hosteldemo-api.pnminfotech.com/";
 
   const allDocuments = useMemo(() => {
     if (Array.isArray(data?.documents)) return data.documents;
@@ -584,7 +584,7 @@ const FormDownload = ({ formData }) => {
       return ct.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(name);
     };
 
-    const BASE_URL = "http://localhost:8000"; // change to your backend URL
+    const BASE_URL = "https://hosteldemo-api.pnminfotech.com/"; // change to your backend URL
 
     const getUrl = (d) => {
       const raw =

@@ -7,6 +7,22 @@ import { API_BASE } from "../api";
 
 const API = API_BASE;
 const API_ROOT = String(API).replace(/\/+$/, "");
+const DATE_FIELDS = new Set(["joiningDate", "dob", "dateOfJoiningCollege"]);
+
+function toDateInputValue(value) {
+  if (value == null || value === "") return "";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return value.trim();
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const yyyy = parsed.getFullYear();
+  const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+  const dd = String(parsed.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 function TenantIntake() {
   const [formData, setFormData] = useState({
@@ -109,6 +125,17 @@ function TenantIntake() {
       next[key] = value;
     });
 
+    return next;
+  };
+
+  const normalizeFormDates = (source = {}) => {
+    const next = { ...source };
+    DATE_FIELDS.forEach((field) => {
+      if (!(field in next)) return;
+      const normalized = toDateInputValue(next[field]);
+      if (normalized) next[field] = normalized;
+      else delete next[field];
+    });
     return next;
   };
 
@@ -242,7 +269,7 @@ function TenantIntake() {
 
         // Prefill from invite
         if (r.data?.ok && r.data.prefill) {
-          const pre = { ...r.data.prefill };
+          const pre = normalizeFormDates({ ...r.data.prefill });
           if (pre.category == null) delete pre.category; // prevent null overwrite
 
           setFormData((prev) => ({
@@ -254,7 +281,7 @@ function TenantIntake() {
 
         // If backend sends existing form data too (optional)
         if (r.data?.form) {
-          const existing = { ...r.data.form };
+          const existing = normalizeFormDates({ ...r.data.form });
           delete existing._id;
           delete existing.__v;
 
@@ -267,7 +294,7 @@ function TenantIntake() {
         if (fid) {
           try {
             const formRes = await axios.get(`${API_ROOT}/form/${fid}`);
-            const draft = { ...(formRes.data || {}) };
+            const draft = normalizeFormDates({ ...(formRes.data || {}) });
             delete draft._id;
             delete draft.__v;
             if ((draft.rentAmount === "" || draft.rentAmount == null) && draft.baseRent != null) {
@@ -287,7 +314,7 @@ function TenantIntake() {
         else if (code === 404) setInviteError("Invalid invite link.");
         else setInviteError("Could not validate invite link.");
 
-        console.warn("Invite validation failed.");
+        console.warn("Invite validation failed.", err);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

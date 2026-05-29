@@ -44,6 +44,26 @@ import { FaMoneyBillWave, FaPhoneAlt, FaCalendarAlt } from "react-icons/fa";
 import { API_BASE } from "../api";
 
 const TRACKER_TYPES = ["bed", "room", "shop"];
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function buildApiUrl(base) {
+  const rawBase = String(base || "").trim();
+
+  if (rawBase) {
+    try {
+      return new URL(`${rawBase.replace(/\/+$/, "")}/`).toString();
+    } catch (_error) {
+      // Fall through to the safe fallback below.
+    }
+  }
+
+  const fallbackOrigin =
+    typeof window !== "undefined" && LOCAL_HOSTS.has(window.location.hostname)
+      ? "https://hosteldemo-api.pnminfotech.com/"
+      : "https://hosteldemo-api.pnminfotech.com";
+
+  return new URL("/api/", fallbackOrigin).toString();
+}
 
 function normalizeTrackerType(value) {
   const raw = String(value || "").trim().toLowerCase();
@@ -1094,7 +1114,7 @@ const existingForm = formData?.find(
 
 
 
-  const apiUrl = `${API_BASE}/`;
+  const apiUrl = useMemo(() => buildApiUrl(API_BASE), []);
 
 const ROOMS_API = `${apiUrl}rooms`;
 const COMMERCIAL_UNITS_API = `${apiUrl}commercial-units`;
@@ -1662,7 +1682,7 @@ const handleApprovedFromBell = React.useCallback((payload) => {
   // Build a shareable URL for the tenant intake page, prefilled + locked
  const buildTenantFormUrl = React.useCallback(() => {
     const base = new URL(
-      "/hosteldemo/tenant-intake",
+      `${appBasePath || ""}/tenant-intake`,
       window.location.origin
     );
     const p = new URLSearchParams(base.search);
@@ -3382,7 +3402,7 @@ const getRentStatusLabelForSort = (tenant) => {
   // }, []);
   // useEffect(() => {
   //   axios
-  //     .get("  http://localhost:8000/api/rooms")
+  //     .get("  https://hosteldemo-api.pnminfotech.com//api/rooms")
   //     .then((response) => setRoomsData(response.data))
   //     .catch((err) => console.error("Failed to fetch rooms:", err));
   // }, []);

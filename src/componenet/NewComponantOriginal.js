@@ -61,7 +61,7 @@ const openAddModal = () => {
   setShowAddModal(true);
 };
 
-  const apiUrl = '  http://localhost:8000/api/';
+  const apiUrl = '  https://hosteldemo-api.pnminfotech.com//api/';
 
   useEffect(() => {
     axios

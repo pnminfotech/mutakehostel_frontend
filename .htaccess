@@ -1,6 +1,6 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /HostelManager/
+  RewriteBase /hosteldemo/
 
   # If the requested file or folder exists, serve it
   RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -8,5 +8,5 @@
   RewriteRule ^ - [L]
 
   # Otherwise, serve index.html
-  RewriteRule ^ index.html [L]
+  RewriteRule ^ /hosteldemo/index.html [L]
 </IfModule>

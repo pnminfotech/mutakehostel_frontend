@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from "react";
 import { FaPaperPlane, FaTimes, FaGlobe, FaCog } from "react-icons/fa";
 import Fuse from "fuse.js";
 import rawIntents from "./json/chatbotIntents.json";
-import "../Pages/NewComponent.css";
+import "../Pages/TenantChatbot.css";
 
 /* =========================
    Month-aware rent record parser

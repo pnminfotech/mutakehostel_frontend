@@ -114,7 +114,7 @@ const LightBill = ({ embedded, propertyScope = null }) => {
 
   const fetchLightBills = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/light-bill/all");
+      const res = await fetch("https://hosteldemo-api.pnminfotech.com//api/light-bill/all");
       const data = await res.json();
       setLightBills(
         Array.isArray(data)
@@ -339,7 +339,7 @@ const LightBill = ({ embedded, propertyScope = null }) => {
         date: formattedDate,
       };
 
-      const res = await fetch("http://localhost:8000/api/light-bill", {
+      const res = await fetch("https://hosteldemo-api.pnminfotech.com//api/light-bill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bodyData),
@@ -388,7 +388,7 @@ const LightBill = ({ embedded, propertyScope = null }) => {
       };
 
       const res = await fetch(
-        `http://localhost:8000/api/light-bill/${selectedBill._id}`,
+        `https://hosteldemo-api.pnminfotech.com//api/light-bill/${selectedBill._id}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -410,7 +410,7 @@ const LightBill = ({ embedded, propertyScope = null }) => {
     if (!window.confirm("Delete this bill?")) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/api/light-bill/${bill._id}`, {
+      const res = await fetch(`https://hosteldemo-api.pnminfotech.com//api/light-bill/${bill._id}`, {
         method: "DELETE",
       });
 

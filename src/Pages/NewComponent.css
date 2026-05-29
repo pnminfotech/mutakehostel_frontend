@@ -1533,7 +1533,7 @@
   color: #ffffff;
 }
 .expense-tabs-wrapper {
-  display: flex;              /* ⬅️ not inline-flex */
+  display: none;              /* ⬅️ not inline-flex */
   align-items: center;
   gap: 6px;
 
