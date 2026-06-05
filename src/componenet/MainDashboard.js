@@ -34,6 +34,7 @@ const COLORS = [
 
 const MainDashboard = () => {
   const navigate = useNavigate();
+  const [openSubmenu, setOpenSubmenu] = useState(null);
 
   const [summary, setSummary] = useState({
     rent: {},
@@ -47,46 +48,67 @@ const MainDashboard = () => {
   const menuItems = [
     { label: "Dashboard", icon: <FiBarChart2 />, path: "/maindashboard" },
     {
-      label: "Bed Tracker",
+      label: "Rent Tracker",
       icon: <MdOutlineBedroomParent />,
-      path: "/tracker/bed",
-      state: { tab: "rent", trackerType: "bed" },
+      children: [
+        {
+          label: "Hostel Tracker",
+          path: "/tracker/bed",
+          state: { tab: "rent", trackerType: "bed" },
+        },
+        {
+          label: "Residential Rooms Tracker",
+          path: "/tracker/room",
+          state: { tab: "rent", trackerType: "room" },
+        },
+        {
+          label: "Commercial Shop Tracker",
+          path: "/tracker/shop",
+          state: { tab: "rent", trackerType: "shop" },
+        },
+      ],
     },
     {
-      label: "Room Tracker",
-      icon: <MdOutlineBedroomParent />,
-      path: "/tracker/room",
-      state: { tab: "rent", trackerType: "room" },
-    },
-    {
-      label: "Shop Tracker",
-      icon: <MdOutlineBedroomParent />,
-      path: "/tracker/shop",
-      state: { tab: "rent", trackerType: "shop" },
-    },
-    {
-      label: "Light Bill Hostel",
+      label: "Light Bill",
       icon: <MdLightbulbOutline />,
-      path: "/tracker/bed",
-      state: { tab: "light-hostel", trackerType: "bed" },
+      children: [
+        {
+          label: "Hostel",
+          path: "/tracker/bed",
+          state: { tab: "light-hostel", trackerType: "bed" },
+        },
+        {
+          label: "Residential Rooms",
+          path: "/tracker/room",
+          state: { tab: "light-room", trackerType: "room" },
+        },
+        {
+          label: "Commercial Shop",
+          path: "/tracker/shop",
+          state: { tab: "light-shop", trackerType: "shop" },
+        },
+      ],
     },
     {
-      label: "Light Bill Room + Shop",
-      icon: <MdLightbulbOutline />,
-      path: "/tracker/room",
-      state: { tab: "light-room-shop", trackerType: "room" },
-    },
-    {
-      label: "Expenses Hostel",
+      label: "Expenses",
       icon: <MdOutlineReceiptLong />,
-      path: "/tracker/bed",
-      state: { tab: "expenses-hostel", trackerType: "bed" },
-    },
-    {
-      label: "Expenses Room + Shop",
-      icon: <MdOutlineReceiptLong />,
-      path: "/tracker/room",
-      state: { tab: "expenses-room-shop", trackerType: "room" },
+      children: [
+        {
+          label: "Hostel",
+          path: "/tracker/bed",
+          state: { tab: "expenses-hostel", trackerType: "bed" },
+        },
+        {
+          label: "Residential Rooms",
+          path: "/tracker/room",
+          state: { tab: "expenses-room", trackerType: "room" },
+        },
+        {
+          label: "Commercial Shop",
+          path: "/tracker/shop",
+          state: { tab: "expenses-shop", trackerType: "shop" },
+        },
+      ],
     },
     {
       label: "Staff",
@@ -97,6 +119,9 @@ const MainDashboard = () => {
   ];
 
   const handleNavigation = (path, state) => navigate(path, state ? { state } : undefined);
+  const toggleSubmenu = (label) => {
+    setOpenSubmenu((current) => (current === label ? null : label));
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("authToken");
@@ -642,16 +667,16 @@ const MainDashboard = () => {
   // ---------------------------------------------------------
   useEffect(() => {
     Promise.all([
-      fetch("https://hosteldemo-api.pnminfotech.com//api/").then((res) =>
+      fetch("https://mutakehostel-api.pnminfotech.com/api/").then((res) =>
         res.json()
       ),
-      fetch("https://hosteldemo-api.pnminfotech.com//api/light-bill/all").then(
+      fetch("https://mutakehostel-api.pnminfotech.com/api/light-bill/all").then(
         (res) => res.json()
       ),
-      fetch("https://hosteldemo-api.pnminfotech.com//api/other-expense/all").then(
+      fetch("https://mutakehostel-api.pnminfotech.com/api/other-expense/all").then(
         (res) => res.json()
       ),
-      fetch("https://hosteldemo-api.pnminfotech.com//api/rooms").then((res) =>
+      fetch("https://mutakehostel-api.pnminfotech.com/api/rooms").then((res) =>
         res.json()
       ),
     ]).then(([tenants, lightBills, otherExpenses, rooms]) => {
@@ -990,19 +1015,71 @@ const MainDashboard = () => {
           </h2>
 
           <ul className="list-unstyled mt-3" style={{ textAlign: "left" }}>
-            {menuItems.map((item, idx) => (
-              <li
-                key={idx}
-                onClick={() => {
-                handleNavigation(item.path, item.state);
-                setOpen(false);
-              }}
-                className="mb-2 px-3 py-2 rounded"
-                style={{ cursor: "pointer" }}
-              >
-                {item.icon} <span className="ms-2">{item.label}</span>
-              </li>
-            ))}
+            {menuItems.map((item, idx) => {
+              const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+              const isOpen = openSubmenu === item.label;
+
+              if (!hasChildren) {
+                return (
+                  <li
+                    key={idx}
+                    onClick={() => {
+                      handleNavigation(item.path, item.state);
+                      setOpen(false);
+                      setOpenSubmenu(null);
+                    }}
+                    className="mb-2 px-3 py-2 rounded"
+                    style={{ cursor: "pointer" }}
+                  >
+                    {item.icon} <span className="ms-2">{item.label}</span>
+                  </li>
+                );
+              }
+
+              return (
+                <li
+                  key={idx}
+                  className="mb-2 rounded"
+                  onMouseEnter={() => setOpenSubmenu(item.label)}
+                  onMouseLeave={() => setOpenSubmenu((current) => (current === item.label ? null : current))}
+                >
+                  <div
+                    onClick={() => toggleSubmenu(item.label)}
+                    className="px-3 py-2 rounded d-flex align-items-center justify-content-between"
+                    style={{ cursor: "pointer" }}
+                  >
+                    <span>
+                      {item.icon} <span className="ms-2">{item.label}</span>
+                    </span>
+                    <span style={{ fontSize: "0.85rem" }}>{isOpen ? "v" : ">"}</span>
+                  </div>
+
+                  <ul
+                    className="list-unstyled ms-4 mt-1"
+                    style={{ display: isOpen ? "block" : "none" }}
+                  >
+                    {item.children.map((child) => (
+                      <li
+                        key={child.label}
+                        onClick={() => {
+                          handleNavigation(child.path, child.state);
+                          setOpen(false);
+                          setOpenSubmenu(null);
+                        }}
+                        className="px-3 py-2 rounded mb-1"
+                        style={{
+                          cursor: "pointer",
+                          fontSize: "0.95rem",
+                          backgroundColor: "rgba(255,255,255,0.08)",
+                        }}
+                      >
+                        {child.label}
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              );
+            })}
             <li
               onClick={() => {
                 handleLogout();

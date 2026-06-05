@@ -1,6 +1,6 @@
 // ✅ IMPORTANT: NO SPACE before http
 const API_ORIGIN =
-  (process.env.REACT_APP_API_ORIGIN || " https://hosteldemo-api.pnminfotech.com/").trim();
+  (process.env.REACT_APP_API_ORIGIN || " https://mutakehostel-api.pnminfotech.com").trim();
 
 export const getDocHref = (doc) => {
   if (!doc) return "#";
@@ -11,7 +11,7 @@ export const getDocHref = (doc) => {
   if (url && /^https?:\/\//i.test(url)) return url;
 
   // 2) relative URL (disk) -> open from backend origin (8000)
-  //    "/uploads/docs/abc.webp" => " https://hosteldemo-api.pnminfotech.com//uploads/docs/abc.webp"
+  //    "/uploads/docs/abc.webp" => " https://mutakehostel-api.pnminfotech.com/uploads/docs/abc.webp"
   if (url) {
     const rel = url.startsWith("/") ? url : `/${url}`;
     return `${API_ORIGIN}${rel}`;

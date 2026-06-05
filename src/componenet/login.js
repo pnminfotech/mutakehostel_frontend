@@ -26,7 +26,7 @@ const FormPage = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('  https://hosteldemo-api.pnminfotech.com//api/login', {
+      const response = await fetch('  https://mutakehostel-api.pnminfotech.com/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: loginEmail, password: loginPassword }),
@@ -48,7 +48,7 @@ const FormPage = () => {
   const handleRegister = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch('  https://hosteldemo-api.pnminfotech.com//api/register', {
+      const response = await fetch('  https://mutakehostel-api.pnminfotech.com/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, email: registerEmail, password: registerPassword }),

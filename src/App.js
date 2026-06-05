@@ -120,7 +120,7 @@ function Layout() {
 
 function App() {
   return (
-    <BrowserRouter basename="/hosteldemo">
+    <BrowserRouter basename="/mutakegirlshostel">
       <Layout />
     </BrowserRouter>
   );

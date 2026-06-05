@@ -7,11 +7,16 @@ import { API_BASE } from "../api";
 import {
   FaArrowLeft,
   FaBed,
+  FaBuilding,
   FaChevronDown,
   FaChevronUp,
+  FaCube,
   FaEdit,
   FaFilter,
+  FaLayerGroup,
+  FaMapMarkerAlt,
   FaPlus,
+  FaRedoAlt,
   FaSearch,
   FaSlidersH,
   FaTags,
@@ -45,6 +50,7 @@ const apiUrl = `${API_BASE}/rooms`;
 /* Editable default categories – used only for filter dropdown & optional limits */
 const DEFAULT_CATEGORIES = ["Category 1", "Category 2", "Category 3", "Other"];
 const NEW_CATEGORY_VALUE = "__new_category__";
+const STRUCTURE_DRAFTS_KEY = "room_structure_drafts";
 
 const CATEGORY_LIMITS_BY_INDEX = [
   { floors: { "0": 10, "1": 10, "2": 10, "3": 10 } },
@@ -103,6 +109,45 @@ function normalizePropertyType(value) {
   return "bed";
 }
 
+function getPropertyTypeLabel(value) {
+  const propertyType = normalizePropertyType(value);
+  if (propertyType === "shop") return "Commercial Shop";
+  if (propertyType === "room") return "Residential Room";
+  return "Hostel";
+}
+
+function getCategoryLabel(value) {
+  const propertyType = normalizePropertyType(value);
+  if (propertyType === "shop") return "Commercial Property Name";
+  if (propertyType === "room") return "Residential Property Name";
+  return "Category";
+}
+
+function getUnitLabel(value) {
+  const propertyType = normalizePropertyType(value);
+  if (propertyType === "shop") return "Shop";
+  if (propertyType === "room") return "Flat";
+  return "Room";
+}
+
+function getUnitPlaceholder(value) {
+  const propertyType = normalizePropertyType(value);
+  if (propertyType === "shop") return "Shop No (e.g., S-1)";
+  if (propertyType === "room") return "Flat No (e.g., A-203)";
+  return "Room No (e.g., 203)";
+}
+
+function getRoomMetaSummary(room) {
+  const parts = [];
+  if (room?.category) parts.push(room.category);
+  if (room?.wingName) parts.push(`Wing ${room.wingName}`);
+  if (room?.floorNo) parts.push(`Floor ${room.floorNo}`);
+  if (room?.flatType) parts.push(room.flatType);
+  return parts.join(" • ");
+}
+
+const FLAT_TYPE_OPTIONS = ["1RK", "1BHK", "2BHK", "3BHK"];
+
 
 // 🔵 Room color helper (safe – no side effects)
 
@@ -154,9 +199,9 @@ function roomColors(room) {
 
 export default function RoomManager() {
   const PROPERTY_TYPE_OPTIONS = [
-    { value: "bed", label: "Bed Wise" },
-    { value: "room", label: "Room Wise" },
-    { value: "shop", label: "Shop Wise" },
+    { value: "bed", label: "Hostel" },
+    { value: "room", label: "Residential Room" },
+    { value: "shop", label: "Commercial Shop" },
   ];
   const [rooms, setRooms] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -165,7 +210,10 @@ export default function RoomManager() {
   const [roomForm, setRoomForm] = useState({
     propertyType: "bed",
     category: "",
+    hasWing: false,
+    wingName: "",
     floorNo: "",
+    flatType: "",
     roomNo: "",
     bedNo: "",
     bedCategory: "",
@@ -212,9 +260,12 @@ const [editTarget, setEditTarget] = useState({
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("bed");
+  const [wingFilter, setWingFilter] = useState("");
+  const [floorFilter, setFloorFilter] = useState("");
   const [mobileSection, setMobileSection] = useState("room");
   const [showQuickAddForm, setShowQuickAddForm] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
+  const [structureDrafts, setStructureDrafts] = useState({});
   const roomSectionRef = React.useRef(null);
   const filterSectionRef = React.useRef(null);
   const categorySectionRef = React.useRef(null);
@@ -225,6 +276,13 @@ const [editTarget, setEditTarget] = useState({
     const cleaned = mergeCategoryNames(nextCategories);
     setCategories(cleaned);
     localStorage.setItem("room_categories", JSON.stringify(cleaned));
+  };
+  const persistStructureDrafts = (updater) => {
+    setStructureDrafts((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      localStorage.setItem(STRUCTURE_DRAFTS_KEY, JSON.stringify(next));
+      return next;
+    });
   };
   const scrollToSection = (ref) => {
     ref?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -242,14 +300,23 @@ const [editTarget, setEditTarget] = useState({
         }
       } catch (_) {}
     }
+    const savedDrafts = localStorage.getItem(STRUCTURE_DRAFTS_KEY);
+    if (savedDrafts) {
+      try {
+        const parsedDrafts = JSON.parse(savedDrafts);
+        if (parsedDrafts && typeof parsedDrafts === "object") {
+          setStructureDrafts(parsedDrafts);
+        }
+      } catch (_) {}
+    }
     fetchRooms();
   }, []);
 
   useEffect(() => {
-    if (search || catFilter) {
+    if (search || catFilter || wingFilter || floorFilter) {
       setShowMobileFilters(true);
     }
-  }, [search, catFilter]);
+  }, [search, catFilter, wingFilter, floorFilter]);
 
   useEffect(() => {
     setRoomForm((prev) =>
@@ -258,6 +325,9 @@ const [editTarget, setEditTarget] = useState({
         : {
             ...prev,
             propertyType: propertyFilter,
+            hasWing: false,
+            wingName: "",
+            flatType: "",
             bedNo: propertyFilter === "bed" ? prev.bedNo : "",
             bedCategory: propertyFilter === "bed" ? prev.bedCategory : "",
           }
@@ -297,21 +367,14 @@ const [editTarget, setEditTarget] = useState({
       .filter((room) => normalizePropertyType(room?.propertyType) === selectedType)
       .map((room) => room?.category);
 
-    const savedCategoriesForType =
-      selectedType === "bed"
-        ? categories.filter(
-            (category) =>
-              !rooms.some((room) =>
-                normalizePropertyType(room?.propertyType) !== "bed"
-                && String(room?.category || "").trim().toLowerCase() === String(category || "").trim().toLowerCase()
-              )
-          )
-        : categories.filter((category) =>
-            rooms.some((room) =>
-              ["room", "shop"].includes(normalizePropertyType(room?.propertyType))
-              && String(room?.category || "").trim().toLowerCase() === String(category || "").trim().toLowerCase()
-            )
-          );
+    const savedCategoriesForType = categories.filter((category) =>
+      rooms.some(
+        (room) =>
+          normalizePropertyType(room?.propertyType) === selectedType &&
+          String(room?.category || "").trim().toLowerCase() ===
+            String(category || "").trim().toLowerCase()
+      )
+    );
 
     return mergeCategoryNames(savedCategoriesForType, roomCategoriesForType);
   }, [categories, rooms, roomForm.propertyType]);
@@ -325,12 +388,93 @@ const [editTarget, setEditTarget] = useState({
     return matched || NEW_CATEGORY_VALUE;
   }, [buildingOptions, roomForm.category]);
 
+  const structureScopeKey = useMemo(() => {
+    const propertyType = normalizePropertyType(roomForm.propertyType);
+    const category = normalizeCategoryName(roomForm.category).toLowerCase();
+    if (propertyType === "bed" || !category) return "";
+    return `${propertyType}::${category}`;
+  }, [roomForm.propertyType, roomForm.category]);
+
+  const scopedStructureDraft = useMemo(() => {
+    if (!structureScopeKey) {
+      return { wings: [], floorsNoWing: [], floorsByWing: {} };
+    }
+    return (
+      structureDrafts[structureScopeKey] || {
+        wings: [],
+        floorsNoWing: [],
+        floorsByWing: {},
+      }
+    );
+  }, [structureDrafts, structureScopeKey]);
+
+  const scopedPropertyRooms = useMemo(() => {
+    const propertyType = normalizePropertyType(roomForm.propertyType);
+    const category = normalizeCategoryName(roomForm.category).toLowerCase();
+    if (propertyType === "bed" || !category) return [];
+    return rooms.filter(
+      (room) =>
+        normalizePropertyType(room?.propertyType) === propertyType &&
+        String(room?.category || "").trim().toLowerCase() === category
+    );
+  }, [rooms, roomForm.propertyType, roomForm.category]);
+
+  const existingWingNames = useMemo(() => {
+    return mergeCategoryNames(
+      scopedPropertyRooms.map((room) => String(room?.wingName || "").trim()).filter(Boolean)
+    );
+  }, [scopedPropertyRooms]);
+
+  const availableWingNames = useMemo(() => {
+    return mergeCategoryNames(existingWingNames, scopedStructureDraft.wings || []);
+  }, [existingWingNames, scopedStructureDraft]);
+
+  const activeWingName = roomForm.hasWing ? normalizeCategoryName(roomForm.wingName) : "";
+
+  const existingFloorNames = useMemo(() => {
+    const filtered = scopedPropertyRooms.filter((room) =>
+      roomForm.hasWing
+        ? String(room?.wingName || "").trim().toLowerCase() === activeWingName.toLowerCase()
+        : !String(room?.wingName || "").trim()
+    );
+    return mergeCategoryNames(filtered.map((room) => room?.floorNo));
+  }, [scopedPropertyRooms, roomForm.hasWing, activeWingName]);
+
+  const draftFloorNames = useMemo(() => {
+    if (!roomForm.hasWing) {
+      return scopedStructureDraft.floorsNoWing || [];
+    }
+    return scopedStructureDraft.floorsByWing?.[activeWingName] || [];
+  }, [scopedStructureDraft, roomForm.hasWing, activeWingName]);
+
+  const availableFloorNames = useMemo(() => {
+    return mergeCategoryNames(existingFloorNames, draftFloorNames);
+  }, [existingFloorNames, draftFloorNames]);
+
   const filterCategoryOptions = useMemo(() => {
     const selectedType = normalizePropertyType(propertyFilter);
     return mergeCategoryNames(
       rooms
         .filter((room) => normalizePropertyType(room?.propertyType) === selectedType)
         .map((room) => room?.category)
+    );
+  }, [rooms, propertyFilter]);
+  const filterWingOptions = useMemo(() => {
+    const selectedType = normalizePropertyType(propertyFilter);
+    return mergeCategoryNames(
+      rooms
+        .filter((room) => normalizePropertyType(room?.propertyType) === selectedType)
+        .map((room) => String(room?.wingName || "").trim())
+        .filter(Boolean)
+    );
+  }, [rooms, propertyFilter]);
+  const filterFloorOptions = useMemo(() => {
+    const selectedType = normalizePropertyType(propertyFilter);
+    return mergeCategoryNames(
+      rooms
+        .filter((room) => normalizePropertyType(room?.propertyType) === selectedType)
+        .map((room) => String(room?.floorNo || "").trim())
+        .filter(Boolean)
     );
   }, [rooms, propertyFilter]);
 
@@ -340,7 +484,14 @@ const [editTarget, setEditTarget] = useState({
   );
 
   const currentCountOnFloor = useMemo(() => {
-    if (!roomForm.category || !floorKey || selectedCategoryIndex < 0) return 0;
+    if (
+      normalizePropertyType(roomForm.propertyType) !== "bed" ||
+      !roomForm.category ||
+      !floorKey ||
+      selectedCategoryIndex < 0
+    ) {
+      return 0;
+    }
     const catName = categories[selectedCategoryIndex];
     return rooms.filter(
       (r) =>
@@ -366,7 +517,10 @@ const [editTarget, setEditTarget] = useState({
  const addRoom = async () => {
   const propertyType = String(roomForm.propertyType || "bed").trim().toLowerCase();
   const category = normalizeCategoryName(roomForm.category);
+  const hasWing = propertyType !== "bed" ? Boolean(roomForm.hasWing) : false;
+  const wingName = hasWing ? String(roomForm.wingName || "").trim() : "";
   const floorNo = roomForm.floorNo.trim();
+  const flatType = propertyType === "room" ? String(roomForm.flatType || "").trim() : "";
   const roomNo = roomForm.roomNo.trim();
   const firstBedNo = propertyType === "bed" ? roomForm.bedNo.trim() : "";
   const firstBedCategory = roomForm.bedCategory.trim();
@@ -374,15 +528,23 @@ const [editTarget, setEditTarget] = useState({
   const firstBedPrice = priceInput === "" ? null : Number(priceInput);
 
   if (!category) {
-    alert("Please enter a Building Name.");
+    alert(`Please enter ${getCategoryLabel(propertyType)}.`);
     return;
   }
   if (!roomNo) {
-    alert("Room No is required.");
+    alert(`${getUnitLabel(propertyType)} number is required.`);
     return;
   }
   if (!floorNo) {
     alert("Please enter a Floor.");
+    return;
+  }
+  if ((propertyType === "room" || propertyType === "shop") && hasWing && !wingName) {
+    alert("Please enter a Wing name.");
+    return;
+  }
+  if (propertyType === "room" && !flatType) {
+    alert("Please select a flat type.");
     return;
   }
   if (priceInput !== "" && (Number.isNaN(firstBedPrice) || firstBedPrice < 0)) {
@@ -395,7 +557,7 @@ const [editTarget, setEditTarget] = useState({
     (c) => (c || "").trim().toLowerCase() === category.toLowerCase()
   );
 
-  if (catIndex !== -1 && normalized) {
+  if (propertyType === "bed" && catIndex !== -1 && normalized) {
     const limitConfig = CATEGORY_LIMITS_BY_INDEX[catIndex] || { floors: {} };
     const floorLimit = limitConfig.floors[normalized];
     if (floorLimit !== undefined) {
@@ -431,18 +593,29 @@ const [editTarget, setEditTarget] = useState({
 
 const dup = rooms.some(
   (r) =>
+    normalizePropertyType(r.propertyType) === propertyType &&
     String(r.roomNo).trim().toLowerCase() === roomNo.toLowerCase() &&
-    String(r.category || "").trim().toLowerCase() === category.toLowerCase()
+    String(r.category || "").trim().toLowerCase() === category.toLowerCase() &&
+    String(r.floorNo || "").trim().toLowerCase() === floorNo.toLowerCase() &&
+    String(r.wingName || "").trim().toLowerCase() === wingName.toLowerCase()
 );
 if (dup) {
-  alert("Room already exists in this building.");
+  alert(`${getUnitLabel(propertyType)} already exists in this location.`);
   return;
 }
 
 
   try {
     // 1) Create room
-  const created = await axios.post(apiUrl, { category, floorNo, roomNo, propertyType });
+  const created = await axios.post(apiUrl, {
+    category,
+    hasWing,
+    wingName,
+    floorNo,
+    flatType,
+    roomNo,
+    propertyType,
+  });
 const createdRoom = created.data; // must include _id
 
 if (propertyType === "bed" && firstBedNo) {
@@ -467,7 +640,10 @@ if (propertyType !== "bed" && firstBedPrice != null) {
     setRoomForm({
       propertyType: "bed",
       category: "",
+      hasWing: false,
+      wingName: "",
       floorNo: "",
+      flatType: "",
       roomNo: "",
       bedNo: "",
       bedCategory: "",
@@ -479,12 +655,22 @@ if (propertyType !== "bed" && firstBedPrice != null) {
       ...prev,
       propertyType,
       category,
+      hasWing,
+      wingName,
       floorNo,
+      flatType,
       roomNo: "",
       bedNo: "",
       bedCategory: "",
       bedPrice: "",
-    }));
+   }));
+
+    // Show the newly created property in the desktop list immediately.
+    setPropertyFilter(propertyType);
+    setSearch("");
+    setCatFilter("");
+    setWingFilter("");
+    setFloorFilter("");
 
     fetchRooms();
   } catch (error) {
@@ -639,6 +825,88 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
     setShowCatEditor(false);
   };
 
+  const addWingDraft = () => {
+    const propertyType = normalizePropertyType(roomForm.propertyType);
+    const category = normalizeCategoryName(roomForm.category);
+    const wingName = normalizeCategoryName(roomForm.wingName);
+
+    if (propertyType === "bed") return;
+    if (!category) {
+      alert(`Please enter ${getCategoryLabel(propertyType)} first.`);
+      return;
+    }
+    if (!roomForm.hasWing) {
+      alert("Please choose Wing: Yes first.");
+      return;
+    }
+    if (!wingName) {
+      alert("Please enter a wing name first.");
+      return;
+    }
+
+    persistStructureDrafts((prev) => {
+      const current = prev[structureScopeKey] || { wings: [], floorsNoWing: [], floorsByWing: {} };
+      return {
+        ...prev,
+        [structureScopeKey]: {
+          ...current,
+          wings: mergeCategoryNames(current.wings || [], [wingName]),
+          floorsByWing: {
+            ...(current.floorsByWing || {}),
+            [wingName]: current.floorsByWing?.[wingName] || [],
+          },
+        },
+      };
+    });
+    setRoomForm((prev) => ({ ...prev, hasWing: true, wingName }));
+  };
+
+  const addFloorDraft = () => {
+    const propertyType = normalizePropertyType(roomForm.propertyType);
+    const category = normalizeCategoryName(roomForm.category);
+    const floorNo = normalizeCategoryName(roomForm.floorNo);
+    const wingName = normalizeCategoryName(roomForm.wingName);
+
+    if (propertyType === "bed") return;
+    if (!category) {
+      alert(`Please enter ${getCategoryLabel(propertyType)} first.`);
+      return;
+    }
+    if (roomForm.hasWing && !wingName) {
+      alert("Please select or enter a wing first.");
+      return;
+    }
+    if (!floorNo) {
+      alert("Please enter a floor first.");
+      return;
+    }
+
+    persistStructureDrafts((prev) => {
+      const current = prev[structureScopeKey] || { wings: [], floorsNoWing: [], floorsByWing: {} };
+      if (roomForm.hasWing) {
+        return {
+          ...prev,
+          [structureScopeKey]: {
+            ...current,
+            wings: mergeCategoryNames(current.wings || [], [wingName]),
+            floorsByWing: {
+              ...(current.floorsByWing || {}),
+              [wingName]: mergeCategoryNames(current.floorsByWing?.[wingName] || [], [floorNo]),
+            },
+          },
+        };
+      }
+      return {
+        ...prev,
+        [structureScopeKey]: {
+          ...current,
+          floorsNoWing: mergeCategoryNames(current.floorsNoWing || [], [floorNo]),
+        },
+      };
+    });
+    setRoomForm((prev) => ({ ...prev, floorNo }));
+  };
+
   const resetDefaultCategories = () => {
     setCatDrafts([...DEFAULT_CATEGORIES]);
   };
@@ -671,7 +939,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
   const scopedRooms = useMemo(
     () =>
       rooms.filter(
-        (r) => String(r.propertyType || "bed").trim().toLowerCase() === propertyFilter
+        (r) => normalizePropertyType(r.propertyType || "bed") === propertyFilter
       ),
     [rooms, propertyFilter]
   );
@@ -722,13 +990,18 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
   const baseFiltered = useMemo(() => {
     const q = (search || "").toLowerCase();
     let list = rooms.filter(
-      (r) => String(r.propertyType || "bed").trim().toLowerCase() === propertyFilter
+      (r) => normalizePropertyType(r.propertyType || "bed") === propertyFilter
     );
 
     if (catFilter) {
       list = list.filter((r) => (r.category || "") === catFilter);
     }
-
+    if (wingFilter) {
+      list = list.filter((r) => String(r.wingName || "").trim() === wingFilter);
+    }
+    if (floorFilter) {
+      list = list.filter((r) => String(r.floorNo || "").trim() === floorFilter);
+    }
     if (!q) return list;
     return list.filter((r) => {
       const inRoom = String(r.roomNo).toLowerCase().includes(q);
@@ -736,23 +1009,48 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         (r.floorNo || "").toLowerCase().includes(q) ||
         floorLabelFromKey(normalizeFloorKey(r.floorNo)).toLowerCase().includes(q);
       const inCat = (r.category || "").toLowerCase().includes(q);
+      const inWing = String(r.wingName || "").toLowerCase().includes(q);
+      const inFlatType = String(r.flatType || "").toLowerCase().includes(q);
       const inBeds = (r.beds || []).some(
         (b) =>
           String(b.bedNo).toLowerCase().includes(q) ||
           String(b.bedCategory || "").toLowerCase().includes(q) ||
           String(b.price ?? "").toLowerCase().includes(q)
       );
-      return inRoom || inFloor || inCat || inBeds;
+      return inRoom || inFloor || inCat || inWing || inFlatType || inBeds;
     });
-  }, [rooms, search, catFilter, propertyFilter]);
+  }, [rooms, search, catFilter, wingFilter, floorFilter, propertyFilter]);
 
   const displayedRooms = baseFiltered;
-  const selectedPropertyMeta =
-    PROPERTY_TYPE_OPTIONS.find((item) => item.value === propertyFilter) ||
-    PROPERTY_TYPE_OPTIONS[0];
+  const groupedDisplayedRooms = useMemo(() => {
+    const grouped = displayedRooms.reduce((acc, room) => {
+      const buildingKey = String(room?.category || "Unassigned").trim() || "Unassigned";
+      const wingKey = String(room?.wingName || "No Wing").trim() || "No Wing";
+      const floorKey = String(room?.floorNo || "No Floor").trim() || "No Floor";
+
+      if (!acc[buildingKey]) acc[buildingKey] = {};
+      if (!acc[buildingKey][wingKey]) acc[buildingKey][wingKey] = {};
+      if (!acc[buildingKey][wingKey][floorKey]) acc[buildingKey][wingKey][floorKey] = [];
+      acc[buildingKey][wingKey][floorKey].push(room);
+      return acc;
+    }, {});
+
+    return Object.entries(grouped).map(([building, wings]) => ({
+      building,
+      wings: Object.entries(wings).map(([wing, floors]) => ({
+        wing,
+        floors: Object.entries(floors).map(([floor, units]) => ({
+          floor,
+          units: units.sort((a, b) => String(a.roomNo).localeCompare(String(b.roomNo), undefined, { numeric: true })),
+        })),
+      })),
+    }));
+  }, [displayedRooms]);
   const clearFilters = () => {
     setSearch("");
     setCatFilter("");
+    setWingFilter("");
+    setFloorFilter("");
   };
 
   const openDeleteRoomModal = (room) => {
@@ -797,6 +1095,9 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
     setRoomForm((prev) => ({
       ...prev,
       propertyType: propertyFilter,
+      hasWing: propertyFilter === "bed" ? false : prev.hasWing,
+      wingName: propertyFilter === "bed" ? "" : prev.wingName,
+      flatType: propertyFilter === "room" ? prev.flatType : "",
       bedNo: propertyFilter === "bed" ? prev.bedNo : "",
       bedCategory: propertyFilter === "bed" ? prev.bedCategory : "",
     }));
@@ -843,12 +1144,608 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
     alert(err.response?.data?.message || "Failed to update room category.");
   }
   };
+  const renderStructureBuilder = (isMobile = false) => {
+    if (normalizePropertyType(roomForm.propertyType) === "bed" || !normalizeCategoryName(roomForm.category)) {
+      return null;
+    }
+
+    const isResidential = roomForm.propertyType === "room";
+    const currentFloor = normalizeCategoryName(roomForm.floorNo);
+    const unitLabel = roomForm.propertyType === "room" ? "flat" : "shop";
+    const unitLabelTitle = roomForm.propertyType === "room" ? "Flat" : "Shop";
+    const currentFloorUnits = scopedPropertyRooms.filter((room) => {
+      const sameFloor = String(room?.floorNo || "").trim().toLowerCase() === currentFloor.toLowerCase();
+      const sameWing = roomForm.hasWing
+        ? String(room?.wingName || "").trim().toLowerCase() === activeWingName.toLowerCase()
+        : !String(room?.wingName || "").trim();
+      return sameFloor && sameWing;
+    }).length;
+
+    const containerClass = isMobile ? "border rounded-3 p-3 bg-light" : "border rounded-3 p-3 bg-light";
+    const chipButtonClass = isMobile ? "btn btn-sm btn-outline-primary" : "btn btn-sm btn-outline-primary";
+    const selectedWingFloors = roomForm.hasWing
+      ? mergeCategoryNames(
+          scopedPropertyRooms
+            .filter((room) => String(room?.wingName || "").trim().toLowerCase() === activeWingName.toLowerCase())
+            .map((room) => room?.floorNo),
+          scopedStructureDraft.floorsByWing?.[activeWingName] || []
+        )
+      : [];
+
+    return (
+      <div className={containerClass}>
+        <div className="mb-3">
+          <div>
+            <strong>{roomForm.propertyType === "room" ? "Residential Setup" : "Commercial Setup"}</strong>
+            <div className="text-muted small">
+              Building: {roomForm.category}
+            </div>
+            <div className="text-primary small mt-1">
+              {roomForm.hasWing
+                ? `Selected: ${activeWingName || "Choose wing"} -> ${currentFloor || "Choose floor"} -> Add ${unitLabelTitle}`
+                : `Selected: ${currentFloor || "Choose floor"} -> Add ${unitLabelTitle}`}
+            </div>
+          </div>
+        </div>
+
+        {isResidential && (
+          <div className="mb-3">
+            <div className="border rounded-3 bg-white p-3">
+              <div className="fw-semibold mb-2">Setup Details</div>
+              <div className="d-grid" style={{ gap: "10px" }}>
+                <select
+                  className="form-select"
+                  value={roomForm.hasWing ? "yes" : "no"}
+                  onChange={(e) =>
+                    setRoomForm((prev) => ({
+                      ...prev,
+                      hasWing: e.target.value === "yes",
+                      wingName: e.target.value === "yes" ? prev.wingName : "",
+                    }))
+                  }
+                >
+                  <option value="no">Has Wing: No</option>
+                  <option value="yes">Has Wing: Yes</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {roomForm.hasWing && (
+          <div className="mb-3">
+            <div className="border rounded-3 bg-white p-3">
+              <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                <div>
+                  <div className="fw-semibold">Step 1: Add Or Select Wing</div>
+                  <div className="text-muted small">Enter a wing name, then click `Add Wing`.</div>
+                </div>
+              </div>
+              <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+                <input
+                  type="text"
+                  className="form-control"
+                  style={{ flex: "1 1 240px" }}
+                  placeholder="Wing Name (e.g., A Wing)"
+                  value={roomForm.wingName}
+                  onChange={(e) =>
+                    setRoomForm((prev) => ({ ...prev, wingName: e.target.value }))
+                  }
+                />
+                <button type="button" className="btn btn-sm btn-primary" onClick={addWingDraft}>
+                  Add Wing
+                </button>
+              </div>
+              <div className="d-flex flex-wrap gap-2">
+                {availableWingNames.map((wing) => {
+                  const wingFloorCount = mergeCategoryNames(
+                    scopedPropertyRooms
+                      .filter((room) => String(room?.wingName || "").trim().toLowerCase() === wing.toLowerCase())
+                      .map((room) => room?.floorNo),
+                    scopedStructureDraft.floorsByWing?.[wing] || []
+                  ).length;
+                  const wingUnitCount = scopedPropertyRooms.filter(
+                    (room) => String(room?.wingName || "").trim().toLowerCase() === wing.toLowerCase()
+                  ).length;
+                  return (
+                    <button
+                      key={wing}
+                      type="button"
+                      className={`${chipButtonClass} ${activeWingName.toLowerCase() === wing.toLowerCase() ? "active" : ""}`}
+                      onClick={() =>
+                        setRoomForm((prev) => ({
+                          ...prev,
+                          wingName: wing,
+                          hasWing: true,
+                          floorNo: "",
+                        }))
+                      }
+                    >
+                      {wing} • {wingFloorCount} floor(s) • {wingUnitCount} {unitLabel}(s)
+                    </button>
+                  );
+                })}
+                {!availableWingNames.length && <span className="text-muted small">No wings added yet.</span>}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="mb-2">
+          <div className="border rounded-3 bg-white p-3">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+              <div>
+                <div className="fw-semibold">
+                  Step 2: {roomForm.hasWing ? `Add Or Select Floor In ${activeWingName || "Selected Wing"}` : "Add Or Select Floor"}
+                </div>
+                <div className="text-muted small">
+                  Enter the floor, then click `Add Floor`.
+                </div>
+              </div>
+            </div>
+
+            <div className="d-flex flex-wrap align-items-center gap-2 mb-3">
+              <input
+                type="text"
+                className="form-control"
+                style={{ flex: "1 1 240px" }}
+                placeholder="Floor No (Ground, 1, 2)"
+                value={roomForm.floorNo}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({
+                    ...prev,
+                    floorNo: e.target.value,
+                  }))
+                }
+              />
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-dark"
+                onClick={addFloorDraft}
+                disabled={roomForm.hasWing && !activeWingName}
+              >
+                Add Floor
+              </button>
+            </div>
+
+            {roomForm.hasWing && !activeWingName ? (
+              <span className="text-muted small">Select a wing first.</span>
+            ) : (
+              <div className="d-flex flex-wrap gap-2">
+                {(roomForm.hasWing ? selectedWingFloors : availableFloorNames).map((floor) => {
+                  const unitCount = scopedPropertyRooms.filter((room) => {
+                    const sameFloor = String(room?.floorNo || "").trim().toLowerCase() === floor.toLowerCase();
+                    const sameWing = roomForm.hasWing
+                      ? String(room?.wingName || "").trim().toLowerCase() === activeWingName.toLowerCase()
+                      : !String(room?.wingName || "").trim();
+                    return sameFloor && sameWing;
+                  }).length;
+
+                  return (
+                    <button
+                      key={floor}
+                      type="button"
+                      className={`${chipButtonClass} ${currentFloor.toLowerCase() === floor.toLowerCase() ? "active" : ""}`}
+                      onClick={() =>
+                        setRoomForm((prev) => ({
+                          ...prev,
+                          floorNo: floor,
+                        }))
+                      }
+                    >
+                      {floor} • {unitCount} {unitLabel}(s)
+                    </button>
+                  );
+                })}
+                {!(roomForm.hasWing ? selectedWingFloors : availableFloorNames).length && (
+                  <span className="text-muted small">No floors added yet.</span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="border rounded-3 bg-white p-3">
+          <div className="fw-semibold mb-1">Step 3: Add {unitLabelTitle}</div>
+          <div className="text-muted small">
+            {currentFloor
+              ? `Selected location: ${roomForm.hasWing ? `${activeWingName} -> ` : ""}${currentFloor}. Current count: ${currentFloorUnits}`
+              : `Select ${roomForm.hasWing ? "a wing and floor" : "a floor"} first, then fill ${unitLabel} type/number below.`}
+          </div>
+          {isResidential && (
+            <div className="d-grid mt-3" style={{ gap: "10px" }}>
+              <select
+                className="form-select"
+                value={roomForm.flatType}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({ ...prev, flatType: e.target.value }))
+                }
+              >
+                <option value="">Select Flat Type</option>
+                {FLAT_TYPE_OPTIONS.map((flatType) => (
+                  <option key={flatType} value={flatType}>
+                    {flatType}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                className="form-control"
+                placeholder={getUnitPlaceholder(roomForm.propertyType)}
+                value={roomForm.roomNo}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({ ...prev, roomNo: e.target.value }))
+                }
+              />
+
+              <input
+                type="number"
+                className="form-control"
+                placeholder="Flat Price (₹)"
+                value={roomForm.bedPrice}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({ ...prev, bedPrice: e.target.value }))
+                }
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+  const renderDesktopQuickAddModal = () =>
+    renderModal(
+      <div style={modalBackdropStyle} onClick={() => setShowQuickAddForm(false)}>
+        <div
+          className="modal-dialog modal-dialog-centered"
+          style={{ width: "100%", maxWidth: "720px", margin: "0 12px" }}
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="modal-content"
+            style={{
+              maxHeight: "calc(100vh - 24px)",
+              display: "flex",
+              flexDirection: "column",
+              width: "100%",
+              borderRadius: "18px",
+              overflow: "hidden",
+            }}
+          >
+            <div className="modal-header bg-white sticky-top py-2 px-3" style={{ zIndex: 1 }}>
+              <h5 className="modal-title mb-0">Add Property</h5>
+              <button
+                type="button"
+                className="btn btn-sm text-white"
+                style={{ backgroundColor: "#5f7dfc", minWidth: 88 }}
+                onClick={() => setShowQuickAddForm(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="modal-body bg-white px-3 py-3" style={{ overflowY: "auto" }}>
+              <div className="d-grid" style={{ gap: "10px" }}>
+                <select
+                  className="form-select"
+                  value={roomForm.propertyType}
+                  onChange={(e) => setPropertyFilter(e.target.value)}
+                >
+                  {PROPERTY_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <input
+                  type="text"
+                  className="form-control"
+                  placeholder={
+                    roomForm.propertyType === "bed"
+                      ? "Category (Private / Double Sharing / 3 Sharing)"
+                      : getCategoryLabel(roomForm.propertyType)
+                  }
+                  value={roomForm.category}
+                  onChange={(e) =>
+                    setRoomForm((prev) => ({
+                      ...prev,
+                      category: e.target.value,
+                    }))
+                  }
+                />
+
+                {roomForm.propertyType === "shop" && (
+                  <select
+                    className="form-select"
+                    value={roomForm.hasWing ? "yes" : "no"}
+                    onChange={(e) =>
+                      setRoomForm((prev) => ({
+                        ...prev,
+                        hasWing: e.target.value === "yes",
+                        wingName: e.target.value === "yes" ? prev.wingName : "",
+                      }))
+                    }
+                  >
+                    <option value="no">Has Wing: No</option>
+                    <option value="yes">Has Wing: Yes</option>
+                  </select>
+                )}
+
+                {roomForm.propertyType === "shop" && roomForm.hasWing && (
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="Wing Name (e.g., A Wing)"
+                    value={roomForm.wingName}
+                    onChange={(e) =>
+                      setRoomForm((prev) => ({
+                        ...prev,
+                        wingName: e.target.value,
+                      }))
+                    }
+                  />
+                )}
+
+                {roomForm.propertyType !== "room" && (
+                  <div>
+                    <input
+                      type="text"
+                      className="form-control"
+                      placeholder="Floor No (Ground, 1, 2)"
+                      value={roomForm.floorNo}
+                      onChange={(e) =>
+                        setRoomForm((prev) => ({
+                          ...prev,
+                          floorNo: e.target.value,
+                        }))
+                      }
+                    />
+                    {roomForm.propertyType === "bed" && remainingHint && floorKey && (
+                      <small className="text-muted d-block mt-1 text-wrap">
+                        {roomForm.category && (
+                          <>
+                            {roomForm.category} • {floorLabelFromKey(floorKey)}:{" "}
+                          </>
+                        )}
+                        {remainingHint}
+                      </small>
+                    )}
+                  </div>
+                )}
+
+                {renderStructureBuilder(false)}
+
+                {roomForm.propertyType === "shop" && (
+                  <select
+                    className="form-select"
+                    value={roomForm.flatType}
+                    onChange={(e) =>
+                      setRoomForm((prev) => ({
+                        ...prev,
+                        flatType: e.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Select Flat Type</option>
+                    {FLAT_TYPE_OPTIONS.map((flatType) => (
+                      <option key={flatType} value={flatType}>
+                        {flatType}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {roomForm.propertyType !== "room" && (
+                  <input
+                    className="form-control"
+                    placeholder={getUnitPlaceholder(roomForm.propertyType)}
+                    value={roomForm.roomNo}
+                    onChange={(e) =>
+                      setRoomForm((prev) => ({
+                        ...prev,
+                        roomNo: e.target.value,
+                      }))
+                    }
+                  />
+                )}
+
+                {roomForm.propertyType === "bed" && (
+                  <input
+                    className="form-control"
+                    placeholder="Bed No (e.g., B1)"
+                    value={roomForm.bedNo}
+                    onChange={(e) =>
+                      setRoomForm((prev) => ({
+                        ...prev,
+                        bedNo: e.target.value,
+                      }))
+                    }
+                  />
+                )}
+
+                {roomForm.propertyType === "bed" && (
+                  <input
+                    className="form-control"
+                    placeholder="Bed Category (e.g., Upper, Lower)"
+                    value={roomForm.bedCategory}
+                    onChange={(e) =>
+                      setRoomForm((prev) => ({
+                        ...prev,
+                        bedCategory: e.target.value,
+                      }))
+                    }
+                  />
+                )}
+
+                {roomForm.propertyType !== "room" && (
+                  <input
+                    type="number"
+                    className="form-control"
+                    placeholder={
+                      roomForm.propertyType === "bed"
+                        ? "Bed Price (₹)"
+                        : roomForm.propertyType === "shop"
+                        ? "Shop Price (₹)"
+                        : "Flat Price (₹)"
+                    }
+                    value={roomForm.bedPrice}
+                    onChange={(e) =>
+                      setRoomForm((prev) => ({
+                        ...prev,
+                        bedPrice: e.target.value,
+                      }))
+                    }
+                  />
+                )}
+
+                <button
+                  className="btn px-3 text-white"
+                  style={{ backgroundColor: "#5f7dfc" }}
+                  onClick={addRoom}
+                >
+                  Add {getUnitLabel(roomForm.propertyType)}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  const renderGroupedUnitsDesktop = () => {
+    if (!groupedDisplayedRooms.length) {
+      return <div className="text-center text-muted py-4">No units match your filters.</div>;
+    }
+
+    return (
+      <div className="room-manager-grouped-list">
+        {groupedDisplayedRooms.map((buildingGroup) => (
+          <section key={buildingGroup.building} className="room-manager-building-card">
+            <div className="room-manager-building-head">
+              <div className="room-manager-building-head-main">
+                <div className="room-manager-building-icon">
+                  <FaBuilding />
+                </div>
+                <div>
+                  <h5>{buildingGroup.building}</h5>
+                  <span>
+                    <FaMapMarkerAlt className="me-2" />
+                    {buildingGroup.wings[0]?.wing === "No Wing"
+                      ? "No Wing"
+                      : `Wing ${buildingGroup.wings[0]?.wing || "-"}`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="room-manager-building-meta">
+                <div className="room-manager-building-badge">
+                  <FaCube className="me-2" />
+                  {buildingGroup.wings.reduce(
+                    (sum, wing) =>
+                      sum + wing.floors.reduce((fSum, floor) => fSum + floor.units.length, 0),
+                    0
+                  )}{" "}
+                  Units
+                </div>
+                <div className="room-manager-building-badge">
+                  <FaLayerGroup className="me-2" />
+                  {buildingGroup.wings.reduce((sum, wing) => sum + wing.floors.length, 0)} Floors
+                </div>
+              </div>
+            </div>
+
+            <div className="room-manager-building-table-wrap">
+              <div className="room-manager-building-table-head">
+                <div>Unit / Room</div>
+                <div>Room Type</div>
+                <div>Floor</div>
+                <div>Price (₹)</div>
+                <div>Actions</div>
+              </div>
+
+              {buildingGroup.wings.flatMap((wingGroup) =>
+                wingGroup.floors.flatMap((floorGroup) =>
+                  floorGroup.units.map((room) => {
+                    const primaryBed = (room.beds || [])[0];
+                    return (
+                      <div
+                        key={room._id || `${room.category}-${room.floorNo}-${room.roomNo}`}
+                        className="room-manager-building-table-row"
+                      >
+                        <div className="room-manager-building-cell room-manager-building-cell-main">
+                          <span
+                            className="roomNoPill"
+                            style={{ "--bg": roomColors(room).bg, "--fg": roomColors(room).fg }}
+                          >
+                            {room.roomNo}
+                          </span>
+                          <div className="room-manager-unit-copy">
+                            <div className="room-manager-unit-title">
+                              {getPropertyTypeLabel(room.propertyType)}
+                            </div>
+                            <div className="room-manager-unit-sub">
+                              {wingGroup.wing === "No Wing" ? "No Wing" : `Wing ${wingGroup.wing}`}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="room-manager-building-cell">
+                          {room.flatType || getPropertyTypeLabel(room.propertyType)}
+                        </div>
+
+                        <div className="room-manager-building-cell">{floorGroup.floor}</div>
+
+                        <div className="room-manager-building-cell">
+                          {primaryBed?.price != null
+                            ? Number(primaryBed.price).toLocaleString("en-IN")
+                            : "-"}
+                        </div>
+
+                        <div className="room-manager-building-cell room-manager-unit-actions">
+                          {primaryBed ? (
+                            <button
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={() =>
+                                openEditModal(
+                                  room._id,
+                                  room.roomNo,
+                                  primaryBed.bedNo,
+                                  primaryBed.bedCategory ?? "",
+                                  primaryBed.price ?? ""
+                                )
+                              }
+                            >
+                              <FaEdit className="me-2" />
+                              Edit
+                            </button>
+                          ) : null}
+                          <button
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => openDeleteRoomModal(room)}
+                          >
+                            <FaTrash className="me-2" />
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )
+              )}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
+  };
   return (
     <div
       className="container-fluid px-3 px-md-4 py-3"
       style={{ fontFamily: "Poppins, sans-serif" }}
     >
-      <div className="room-manager-mobile d-md-none">
+      <div className="room-manager-mobile d-lg-none">
         <div className="room-manager-mobile-topbar">
           <button
             type="button"
@@ -860,21 +1757,6 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
           </button>
 
           <div className="room-manager-mobile-topbadge">Beds, Rooms &amp; Shops</div>
-        </div>
-
-        <div className="room-manager-mobile-hero">
-          <div className="room-manager-mobile-hero-copy">
-            <div className="room-manager-mobile-kicker">Room Manager</div>
-            <h4>Manage beds, rooms and shops</h4>
-            <p>
-              Add property units, prices, and categories in a clean mobile app style.
-            </p>
-          </div>
-          <div className="room-manager-mobile-hero-stat">
-            <span>{statsMeta.heroLabel}</span>
-            <strong>{statsMeta.heroValue}</strong>
-            <small>{statsMeta.heroSubtext}</small>
-          </div>
         </div>
 
         <div className="room-manager-mobile-stats">
@@ -937,11 +1819,11 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
           >
             <span className="room-manager-mobile-filter-toggle-left">
               <FaFilter />
-              <span>Filter</span>
+              <span>Room Filters</span>
             </span>
             <span className="room-manager-mobile-filter-toggle-right">
               <span className="room-manager-mobile-filter-toggle-label">
-                {displayedRooms.length} rooms
+                {displayedRooms.length} shown
               </span>
               {showMobileFilters ? <FaChevronUp /> : <FaChevronDown />}
             </span>
@@ -949,33 +1831,27 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
 
           {showMobileFilters ? (
             <div className="room-manager-mobile-filter-panel">
-              <div className="room-manager-mobile-filter-panel-title">
-                <div>
-                  <h5>Search &amp; Filter</h5>
-                  <span>{displayedRooms.length} rooms shown</span>
-                </div>
-                <div className="room-manager-mobile-filter-panel-badge">
-                  <FaFilter />
-                  <span>Filter</span>
-                </div>
+              <div className="room-manager-mobile-filter-summary">
+                <strong>Refine your room list</strong>
+                <span>{displayedRooms.length} rooms currently visible</span>
               </div>
 
-              <label className="room-manager-mobile-filter-chip room-manager-mobile-filter-chip--search">
-                <FaSearch className="room-manager-mobile-search-icon" />
-                <input
-                  type="search"
-                  name="room-manager-mobile-search"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck="false"
-                  placeholder="Search room"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
+              <label className="room-manager-mobile-filter-field">
+                <span>Property Type</span>
+                <select
+                  className="form-select"
+                  value={propertyFilter}
+                  onChange={(e) => setPropertyFilter(e.target.value)}
+                >
+                  {PROPERTY_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
 
-              <label className="room-manager-mobile-filter-chip room-manager-mobile-filter-chip--select">
+              <label className="room-manager-mobile-filter-field">
                 <span>Category</span>
                 <select
                   className="form-select"
@@ -991,15 +1867,49 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                 </select>
               </label>
 
+              {propertyFilter !== "bed" ? (
+                <label className="room-manager-mobile-filter-field">
+                  <span>Wing</span>
+                  <select
+                    className="form-select"
+                    value={wingFilter}
+                    onChange={(e) => setWingFilter(e.target.value)}
+                  >
+                    <option value="">All</option>
+                    {filterWingOptions.map((wing) => (
+                      <option key={wing} value={wing}>
+                        {wing}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+
+              <label className="room-manager-mobile-filter-field">
+                <span>Floor</span>
+                <select
+                  className="form-select"
+                  value={floorFilter}
+                  onChange={(e) => setFloorFilter(e.target.value)}
+                >
+                  <option value="">All</option>
+                  {filterFloorOptions.map((floor) => (
+                    <option key={floor} value={floor}>
+                      {floor}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               <div className="room-manager-mobile-filter-actions">
                 <button
                   type="button"
                   className="room-manager-mobile-filter-chip room-manager-mobile-filter-chip--ghost"
                   onClick={clearFilters}
-                  disabled={!search && !catFilter}
+                  disabled={!search && !catFilter && !wingFilter && !floorFilter}
                 >
-                  <FaTimes />
-                  <span>Clear</span>
+                  <FaRedoAlt />
+                  <span>Reset Filters</span>
                 </button>
               </div>
             </div>
@@ -1010,7 +1920,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
           <section ref={roomSectionRef} className="room-manager-mobile-panel">
           <div className="room-manager-mobile-panel-title">
             <div>
-              <h5>Quick Add Room</h5>
+              <h5>Quick Add Unit</h5>
               <span>Fast entry</span>
             </div>
             <div className="room-manager-mobile-panel-actions">
@@ -1035,9 +1945,11 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               value={roomForm.propertyType}
               onChange={(e) => setPropertyFilter(e.target.value)}
             >
-              <option value="bed">Bed-wise Property</option>
-              <option value="room">Room-wise Property</option>
-              <option value="shop">Shop-wise Property</option>
+              {PROPERTY_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
 
             <select
@@ -1051,7 +1963,9 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                 }));
               }}
             >
-              <option value="">Select Building Name</option>
+              <option value="">
+                {roomForm.propertyType === "bed" ? "Select Category" : `Select ${getCategoryLabel(roomForm.propertyType)}`}
+              </option>
               {buildingOptions.map((name) => (
                 <option key={name} value={name}>
                   {name}
@@ -1064,13 +1978,46 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               <input
                 type="text"
                 className="form-control"
-                placeholder="New Building Name (e.g., Mutake A Wing)"
+                placeholder={
+                  roomForm.propertyType === "bed"
+                    ? "New Category (e.g., Private)"
+                    : `${getCategoryLabel(roomForm.propertyType)}`
+                }
                 value={roomForm.category}
                 onChange={(e) =>
                   setRoomForm((prev) => ({ ...prev, category: e.target.value }))
                 }
               />
             ) : null}
+
+            {roomForm.propertyType !== "bed" && (
+              <select
+                className="form-select"
+                value={roomForm.hasWing ? "yes" : "no"}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({
+                    ...prev,
+                    hasWing: e.target.value === "yes",
+                    wingName: e.target.value === "yes" ? prev.wingName : "",
+                  }))
+                }
+              >
+                <option value="no">Has Wing: No</option>
+                <option value="yes">Has Wing: Yes</option>
+              </select>
+            )}
+
+            {roomForm.propertyType !== "bed" && roomForm.hasWing && (
+              <input
+                type="text"
+                className="form-control"
+                placeholder="Wing Name (e.g., A Wing)"
+                value={roomForm.wingName}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({ ...prev, wingName: e.target.value }))
+                }
+              />
+            )}
 
             <input
               type="text"
@@ -1082,10 +2029,29 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               }
             />
 
+            {renderStructureBuilder(true)}
+
+            {roomForm.propertyType === "room" && (
+              <select
+                className="form-select"
+                value={roomForm.flatType}
+                onChange={(e) =>
+                  setRoomForm((prev) => ({ ...prev, flatType: e.target.value }))
+                }
+              >
+                <option value="">Select Flat Type</option>
+                {FLAT_TYPE_OPTIONS.map((flatType) => (
+                  <option key={flatType} value={flatType}>
+                    {flatType}
+                  </option>
+                ))}
+              </select>
+            )}
+
             <input
               type="text"
               className="form-control"
-              placeholder={roomForm.propertyType === "shop" ? "Shop No (e.g., S-1)" : "Room No (e.g., 203)"}
+              placeholder={getUnitPlaceholder(roomForm.propertyType)}
               value={roomForm.roomNo}
               onChange={(e) =>
                 setRoomForm((prev) => ({ ...prev, roomNo: e.target.value }))
@@ -1124,7 +2090,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                   ? "Bed Price (Rs.)"
                   : roomForm.propertyType === "shop"
                   ? "Shop Price (Rs.)"
-                  : "Room Price (Rs.)"
+                  : "Flat Price (Rs.)"
               }
               value={roomForm.bedPrice}
               onChange={(e) =>
@@ -1138,7 +2104,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               onClick={addRoom}
             >
               <FaPlus />
-              <span>{roomForm.propertyType === "shop" ? "Shop" : "Room"}</span>
+              <span>{getUnitLabel(roomForm.propertyType)}</span>
             </button>
           </div>
           </section>
@@ -1168,10 +2134,11 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                   <div className="room-manager-mobile-room-head">
                     <div>
                       <span className="roomNoPill room-manager-mobile-room-pill" style={roomStyle}>
-                        Room {room.roomNo}
+                        {getUnitLabel(room.propertyType)} {room.roomNo}
                       </span>
                       <div className="room-manager-mobile-room-meta">
-                        Floor: {displayFloor} {bedCount} bed(s)
+                        {getRoomMetaSummary({ ...room, floorNo: displayFloor })}{" "}
+                        {(room.propertyType || "bed") === "bed" ? `${bedCount} bed(s)` : ""}
                       </div>
                     </div>
 
@@ -1189,7 +2156,9 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                       <div key={`mobile-${room.roomNo}-${bed.bedNo}-${idx}`} className="room-manager-mobile-bed-row">
                         <div className="room-manager-mobile-bed-copy">
                           <div className="room-manager-mobile-bed-pill-row">
-                            <span className="room-manager-mobile-bed-pill">Bed {bed.bedNo}</span>
+                            <span className="room-manager-mobile-bed-pill">
+                              {(room.propertyType || "bed") === "bed" ? `Bed ${bed.bedNo}` : `Unit ${bed.bedNo}`}
+                            </span>
                             {bed.bedCategory ? (
                               <span className="room-manager-mobile-bed-pill room-manager-mobile-bed-pill--alt">
                                 {bed.bedCategory}
@@ -1227,22 +2196,22 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                   </div>
 
                   <div className="room-manager-mobile-room-actions">
+                    {(room.propertyType || "bed") === "bed" && (
                     <button
                       type="button"
                       className="room-manager-mobile-room-action room-manager-mobile-room-action--primary"
                       onClick={() => openAddBedModal(room)}
                     >
-                      {/* <FaBed /> */}
                       <span>Add Bed</span>
                     </button>
+                    )}
 
-                    {room.beds?.length > 0 ? (
+                    {(room.propertyType || "bed") === "bed" && (room.beds?.length > 0 ? (
                       <button
                         type="button"
                         className="room-manager-mobile-room-action room-manager-mobile-room-action--danger"
                         onClick={() => openDeleteBedModal(room)}
                       >
-                        {/* <FaTrash /> */}
                         <span>Delete Bed</span>
                       </button>
                     ) : (
@@ -1254,7 +2223,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                         <FaPlus />
                         <span>Add First Bed</span>
                       </button>
-                    )}
+                    ))}
 
                     {(room.propertyType || "bed") !== "bed" && (
                       <button
@@ -1321,37 +2290,34 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         </div>
       </div>
 
-      <div className="d-none d-md-block">
-        <div className="mb-4 text-center">
-          <h1 className="fw-bold mb-0" style={{ color: "#13233f", fontSize: "2.25rem" }}>
+      <div className="d-none d-lg-block">
+        <div className="room-manager-desktop-header mb-4">
+          <button
+            type="button"
+            className="btn room-manager-back-btn"
+            onClick={() => handleNavigation("/newcomponant")}
+          >
+            <FaArrowLeft className="me-1" />
+            Back
+          </button>
+
+          <h1 className="room-manager-page-title mb-0">
             Room &amp; Bed Management
           </h1>
         </div>
 
-        {/* Toolbar */}
-        <div className="card border-0 mb-3" style={{ background: "transparent" }}>
-          <div className="card-body p-0">
-            <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
-              <div className="d-flex align-items-center gap-3 flex-wrap">
-                <button
-                  type="button"
-                  className="btn me-2"
-                  style={{ backgroundColor: "#5f7dfc", color: "#fff", minWidth: 82 }}
-                  onClick={() => handleNavigation("/newcomponant")}
-                >
-                  <FaArrowLeft className="me-1" />
-                  Back
-                </button>
-              </div>
-
-              <div className="me-md-auto d-flex align-items-center gap-2 flex-wrap">
-                <h2 className="fw-bold mb-0" style={{ color: "#13233f" }}>Manage Rooms</h2>
-                <span className="badge bg-light text-dark border">
-                  Rooms &amp; Beds
+        <div className="room-manager-header-tools mb-3">
+              <button
+                type="button"
+                className="btn text-white room-manager-top-card-btn"
+                onClick={() => setShowQuickAddForm(true)}
+              >
+                <FaPlus className="me-1" /> Add Property
+              </button>
+              <div className="room-manager-header-search">
+                <span className="room-manager-header-search-icon">
+                  <FaSearch />
                 </span>
-              </div>
-
-              <div className="ms-md-auto flex-grow-1" style={{ maxWidth: 420 }}>
                 <input
                   type="text"
                   name="room-manager-desktop-search"
@@ -1360,7 +2326,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
                   autoCapitalize="off"
                   spellCheck="false"
                   className="form-control"
-                  placeholder="Search room / bed / floor / category"
+                  placeholder="Search unit / bed / floor / category / wing"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
@@ -1368,36 +2334,96 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
 
               <button
                 type="button"
-                className="btn btn-outline-secondary ms-auto ms-md-0"
+                className="btn btn-outline-secondary room-manager-outline-btn"
                 onClick={openCategoryEditor}
                 title="Edit category names"
               >
+                <FaEdit className="room-manager-outline-btn-icon" />
                 ✏️ Edit Categories
               </button>
             </div>
-          </div>
         </div>
 
-        <div className="row g-3 mb-4">
+        <div className="row g-3 mb-4 room-manager-top-strip">
+        <div className="col-12 col-lg room-manager-top-strip-title">
+          <h1 className="room-manager-top-strip-page-title mb-0">
+            Room &amp; Bed Management
+          </h1>
+        </div>
         {/* Quick Add */}
-      <div className="col-12 col-lg-6">
-  <div className="bg-white border rounded-3 shadow-sm p-3 h-100">
-    <h5 className="text-center mb-3">Quick Add Room</h5>
+      <div className="col-12 col-lg-6 room-manager-top-strip-action">
+    <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
+      <button
+        type="button"
+        className="btn text-white room-manager-top-card-btn"
+        onClick={() => setShowQuickAddForm(true)}
+      >
+        <FaPlus className="me-1" /> Add Property
+      </button>
+    </div>
 
+      {false ? (
     <div className="d-grid" style={{ gap: "8px" }}>
+      <select
+        className="form-select form-select-sm"
+        value={roomForm.propertyType}
+        onChange={(e) => setPropertyFilter(e.target.value)}
+      >
+        {PROPERTY_TYPE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+
       <input
         type="text"
         className="form-control form-control-sm"
-        placeholder="Category (Private / Double Sharing / 3 Sharing)"
+        placeholder={
+          roomForm.propertyType === "bed"
+            ? "Category (Private / Double Sharing / 3 Sharing)"
+            : getCategoryLabel(roomForm.propertyType)
+        }
         value={roomForm.category}
         onChange={(e) =>
           setRoomForm((prev) => ({
             ...prev,
-            propertyType: "bed",
             category: e.target.value,
           }))
         }
       />
+
+      {roomForm.propertyType !== "bed" && (
+        <select
+          className="form-select form-select-sm"
+          value={roomForm.hasWing ? "yes" : "no"}
+          onChange={(e) =>
+            setRoomForm((prev) => ({
+              ...prev,
+              hasWing: e.target.value === "yes",
+              wingName: e.target.value === "yes" ? prev.wingName : "",
+            }))
+          }
+        >
+          <option value="no">Has Wing: No</option>
+          <option value="yes">Has Wing: Yes</option>
+        </select>
+      )}
+
+      {roomForm.propertyType !== "bed" && roomForm.hasWing && (
+        <input
+          type="text"
+          className="form-control form-control-sm"
+          placeholder="Wing Name (e.g., A Wing)"
+          value={roomForm.wingName}
+          onChange={(e) =>
+            setRoomForm((prev) => ({
+              ...prev,
+              wingName: e.target.value,
+            }))
+          }
+        />
+      )}
 
       <div>
         <input
@@ -1408,12 +2434,11 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
           onChange={(e) =>
             setRoomForm((prev) => ({
               ...prev,
-              propertyType: "bed",
               floorNo: e.target.value,
             }))
           }
         />
-        {remainingHint && floorKey && (
+        {roomForm.propertyType === "bed" && remainingHint && floorKey && (
           <small className="text-muted d-block mt-1 text-wrap">
             {roomForm.category && (
               <>
@@ -1425,19 +2450,41 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         )}
       </div>
 
+      {renderStructureBuilder(false)}
+
+      {roomForm.propertyType === "room" && (
+        <select
+          className="form-select form-select-sm"
+          value={roomForm.flatType}
+          onChange={(e) =>
+            setRoomForm((prev) => ({
+              ...prev,
+              flatType: e.target.value,
+            }))
+          }
+        >
+          <option value="">Select Flat Type</option>
+          {FLAT_TYPE_OPTIONS.map((flatType) => (
+            <option key={flatType} value={flatType}>
+              {flatType}
+            </option>
+          ))}
+        </select>
+      )}
+
       <input
         className="form-control form-control-sm"
-        placeholder="Room No (e.g., 203)"
+        placeholder={getUnitPlaceholder(roomForm.propertyType)}
         value={roomForm.roomNo}
         onChange={(e) =>
           setRoomForm((prev) => ({
             ...prev,
-            propertyType: "bed",
             roomNo: e.target.value,
           }))
         }
       />
 
+      {roomForm.propertyType === "bed" && (
       <input
         className="form-control form-control-sm"
         placeholder="Bed No (e.g., B1)"
@@ -1445,12 +2492,12 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         onChange={(e) =>
           setRoomForm((prev) => ({
             ...prev,
-            propertyType: "bed",
             bedNo: e.target.value,
           }))
         }
-      />
+      />)}
 
+      {roomForm.propertyType === "bed" && (
       <input
         className="form-control form-control-sm"
         placeholder="Bed Category (e.g., Upper, Lower)"
@@ -1458,11 +2505,10 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         onChange={(e) =>
           setRoomForm((prev) => ({
             ...prev,
-            propertyType: "bed",
             bedCategory: e.target.value,
           }))
         }
-      />
+      />)}
 
       {/* ✅ NEW FIELD: BED PRICE */}
       <input
@@ -1473,7 +2519,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
             ? "Bed Price (₹)"
             : roomForm.propertyType === "shop"
             ? "Shop Price (₹)"
-            : "Room Price (₹)"
+            : "Flat Price (₹)"
         }
         value={roomForm.bedPrice}
         onChange={(e) =>
@@ -1484,99 +2530,142 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
         }
       />
 
-    <button
+<button
   className="btn btn-sm px-3 text-white"
   style={{ backgroundColor: "#5f7dfc" }}
   onClick={addRoom}
 >
-  Add
+  Add {getUnitLabel(roomForm.propertyType)}
 </button>
 
     </div>
-  </div>
-</div>
+    ) : null}
+ </div>
 
 
         {/* KPI – Primary Total */}
-        <div className="col-6 col-md-6 col-lg-3">
-          <div className="bg-white border rounded-3 shadow-sm p-3 h-100 d-flex align-items-center">
+        <div className="col-12 col-md-6 col-lg-4 room-manager-stat-col ms-lg-auto">
+          <div className="bg-white border rounded-3 shadow-sm p-3 h-100 d-flex align-items-center room-manager-top-card room-manager-top-card--rooms room-manager-top-card-inner">
             <div
-              className="rounded-circle d-inline-flex justify-content-center align-items-center me-3"
-              style={{ width: 42, height: 42, background: "#eef5ff" }}
+              className="rounded-circle d-inline-flex justify-content-center align-items-center me-3 room-manager-top-card-icon"
             >
-              <i className="bi bi-door-open" />
+              <FaBuilding />
             </div>
             <div>
-              <div className="text-muted small">{statsMeta.primaryLabel}</div>
-              <div className="fw-bold fs-4">{statsMeta.primaryValue}</div>
+              <div className="small room-manager-top-card-label">{statsMeta.primaryLabel}</div>
+              <div className="fw-bold fs-4 room-manager-top-card-value">{statsMeta.primaryValue}</div>
             </div>
           </div>
         </div>
 
         {/* KPI – Secondary Total */}
-        <div className="col-6 col-md-6 col-lg-3">
-          <div className="bg-white border rounded-3 shadow-sm p-3 h-100 d-flex align-items-center">
+        <div className="col-12 col-md-6 col-lg-4 room-manager-stat-col">
+          <div className="bg-white border rounded-3 shadow-sm p-3 h-100 d-flex align-items-center room-manager-top-card room-manager-top-card--beds room-manager-top-card-inner">
             <div
-              className="rounded-circle d-inline-flex justify-content-center align-items-center me-3"
-              style={{ width: 42, height: 42, background: "#eefaf4" }}
+              className="rounded-circle d-inline-flex justify-content-center align-items-center me-3 room-manager-top-card-icon"
             >
-              <i className="bi bi-people" />
+              <FaBed />
             </div>
             <div>
-              <div className="text-muted small">{statsMeta.secondaryLabel}</div>
-              <div className="fw-bold fs-4">{statsMeta.secondaryValue}</div>
+              <div className="small room-manager-top-card-label">{statsMeta.secondaryLabel}</div>
+              <div className="fw-bold fs-4 room-manager-top-card-value">{statsMeta.secondaryValue}</div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Rooms & Beds Table */}
-      <div className="card shadow-sm">
+      <div className="card shadow-sm room-manager-table-card">
         <div className="card-body">
-          <div className="d-flex flex-wrap align-items-center justify-content-between mb-3 w-100">
+          <div className="room-manager-filterbar mb-4">
             <div
-              className="d-flex flex-wrap align-items-center gap-2 flex-shrink-0"
-              style={{ minWidth: 260 }}
+              className="room-manager-filterbar-controls"
             >
-              <label className="form-label mb-0 me-2">Category</label>
-              <div className="badge text-bg-light border text-capitalize">
-                {selectedPropertyMeta.label}
+              <div className="room-manager-filter-field">
+                <label className="form-label mb-1">Property Type</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={propertyFilter}
+                  onChange={(e) => setPropertyFilter(e.target.value)}
+                >
+                  {PROPERTY_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <select
-                className="form-select form-select-sm"
-                value={catFilter}
-                onChange={(e) => setCatFilter(e.target.value)}
+
+              <div className="room-manager-filter-field">
+                <label className="form-label mb-1">Category</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={catFilter}
+                  onChange={(e) => setCatFilter(e.target.value)}
+                >
+                  <option value="">All</option>
+                  {filterCategoryOptions.map((c, idx) => (
+                    <option key={idx} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="room-manager-filter-field">
+                <label className="form-label mb-1">Wing</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={wingFilter}
+                  onChange={(e) => setWingFilter(e.target.value)}
+                >
+                  <option value="">All</option>
+                  {filterWingOptions.map((wing, idx) => (
+                    <option key={idx} value={wing}>
+                      {wing}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="room-manager-filter-field">
+                <label className="form-label mb-1">Floor</label>
+                <select
+                  className="form-select form-select-sm"
+                  value={floorFilter}
+                  onChange={(e) => setFloorFilter(e.target.value)}
+                >
+                  <option value="">All</option>
+                  {filterFloorOptions.map((floor, idx) => (
+                    <option key={idx} value={floor}>
+                      {floor}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+            </div>
+
+            <div className="room-manager-filterbar-side">
+              <button
+                type="button"
+                className="btn btn-outline-secondary room-manager-reset-btn"
+                onClick={clearFilters}
+                disabled={!search && !catFilter && !wingFilter && !floorFilter}
               >
-                <option value="">All</option>
-                {filterCategoryOptions.map((c, idx) => (
-                  <option key={idx} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
+                <FaRedoAlt className="me-2" /> Reset Filters
+              </button>
             </div>
-
-            <h5 className="fw-bold mb-0 text-center flex-grow-1 d-none d-md-block">
-              {selectedPropertyMeta.label}
-            </h5>
-
-            <div
-              className="d-none d-md-block flex-shrink-0"
-              style={{ minWidth: 260, visibility: "hidden" }}
-            >
-              spacer
-            </div>
-
-            <h6 className="fw-bold mb-0 d-md-none mt-2 w-100">
-              {selectedPropertyMeta.label}
-            </h6>
           </div>
 
+          {propertyFilter !== "bed" ? (
+            renderGroupedUnitsDesktop()
+          ) : (
           <div className="table-responsive">
             <table className="table table-bordered table-sm align-middle">
               <thead>
                 <tr className="fw-semibold text-secondary">
-                  <th style={{ whiteSpace: "nowrap" }}>Room No</th>
+                  <th style={{ whiteSpace: "nowrap" }}>Unit No</th>
                   <th style={{ whiteSpace: "nowrap" }}>Floor</th>
                   <th style={{ whiteSpace: "nowrap" }}>Type</th>
                   <th style={{ whiteSpace: "nowrap" }}>Category</th>
@@ -1608,7 +2697,7 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
 </td>
 
                       <td>{displayFloor}</td>
-                     <td className="text-capitalize">{room.propertyType || "bed"}</td>
+                     <td>{getPropertyTypeLabel(room.propertyType)}</td>
                      <td>
   <span
     className="badge bg-light text-dark border"
@@ -1617,7 +2706,12 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
     style={{ cursor: "pointer" }}
     onClick={() => editRoomCategoryQuick(room)}
   >
-    {room.category || "-"}
+    <div>{room.category || "-"}</div>
+    {(room.wingName || room.flatType) && (
+      <small className="d-block text-muted">
+        {[room.wingName ? `Wing ${room.wingName}` : "", room.flatType || ""].filter(Boolean).join(" • ")}
+      </small>
+    )}
   </span>
 </td>
 
@@ -1720,8 +2814,30 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
               </tbody>
             </table>
           </div>
+          )}
         </div>
       </div>
+
+      <div className="room-manager-footer-bar d-none d-md-flex">
+        <span>
+          Showing 1 to {propertyFilter === "bed" ? displayedRooms.length : groupedDisplayedRooms.length} of{" "}
+          {propertyFilter === "bed" ? displayedRooms.length : groupedDisplayedRooms.length}{" "}
+          {propertyFilter === "bed" ? "rooms" : "properties"}
+        </span>
+        <div className="room-manager-footer-pager">
+          <button type="button" className="room-manager-footer-pagebtn" disabled>
+            ‹
+          </button>
+          <button type="button" className="room-manager-footer-pagebtn is-active">
+            1
+          </button>
+          <button type="button" className="room-manager-footer-pagebtn" disabled>
+            ›
+          </button>
+        </div>
+      </div>
+
+      {showQuickAddForm && renderDesktopQuickAddModal()}
 
       {/* Add Bed Modal */}
       {showAddBedModal && selectedRoom && renderModal(
@@ -2219,7 +3335,6 @@ console.log("Payload =>", { price: priceToSend, bedCategory });
           </div>
         </div>
         )}
-      </div>
     </div>
   );
 }

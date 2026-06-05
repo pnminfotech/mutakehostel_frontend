@@ -7,7 +7,7 @@ const Record = () => {
   const [selectedSupplier, setSelectedSupplier] = useState(null);
 
   useEffect(() => {
-    axios.get("  https://hosteldemo-api.pnminfotech.com//api/suppliers")
+    axios.get("  https://mutakehostel-api.pnminfotech.com/api/suppliers")
       .then((res) => setSuppliers(res.data))
       .catch((err) => console.log(err));
   }, []);
@@ -16,7 +16,7 @@ const Record = () => {
     e.preventDefault();
     if (!selectedSupplier) return;
 
-    axios.put(`  https://hosteldemo-api.pnminfotech.com//api/suppliers/${selectedSupplier._id}/payments`, transaction)
+    axios.put(`  https://mutakehostel-api.pnminfotech.com/api/suppliers/${selectedSupplier._id}/payments`, transaction)
       .then((res) => {
         setSuppliers(suppliers.map((s) => (s._id === selectedSupplier._id ? res.data : s)));
         setTransaction({ given: "", received: "" });

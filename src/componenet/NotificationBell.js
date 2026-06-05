@@ -18,7 +18,7 @@ const adminAuthHeader = () => {
 };
 
 export default function NotificationBell({
-  apiUrl = "  https://hosteldemo-api.pnminfotech.com//api/",
+  apiUrl = "  https://mutakehostel-api.pnminfotech.com/api/",
   onApproved,
   onLeaveApproved,
 }) {

@@ -3,7 +3,7 @@
 
 // import { useNavigate } from "react-router-dom";
 // import { FaArrowLeft } from "react-icons/fa";
-// const apiUrl = "  https://hosteldemo-api.pnminfotech.com//api/rooms";
+// const apiUrl = "  https://mutakehostel-api.pnminfotech.com/api/rooms";
 
 // export default function RoomManager() {
 //   const [rooms, setRooms] = useState([]);

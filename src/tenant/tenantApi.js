@@ -18,7 +18,7 @@
 // export const TOKEN_KEY = "tenantToken";
 
 // // ✅ always HTTPS
-// const ORIGIN = "  https://hosteldemo-api.pnminfotech.com/";
+// const ORIGIN = "  https://mutakehostel-api.pnminfotech.com";
 // export const API = `${ORIGIN}/api`;
 
 // export function setToken(t){ localStorage.setItem(TOKEN_KEY, t); }

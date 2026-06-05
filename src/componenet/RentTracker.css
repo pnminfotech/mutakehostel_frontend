@@ -1,16 +1,24 @@
 .rent-header-card {
   background: linear-gradient(180deg, #faf8ff, #f4f6ff);
   border-radius: 24px;
-  padding: 18px 20px;
+  padding: 22px 24px;
+  border: 1px solid rgba(95, 125, 252, 0.1);
   box-shadow: 0 18px 40px rgba(120, 100, 200, 0.12);
 }
 
 .rent-header-top {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.rent-header-notification {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .rent-header-eyebrow {
@@ -31,6 +39,7 @@
   font-weight: 800;
   color: #111827;
   margin: 0;
+  line-height: 1.2;
 }
 
 .rent-toolbar {
@@ -38,6 +47,55 @@
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+  flex: 1 1 720px;
+  min-width: 0;
+}
+
+.rent-toolbar-select {
+  width: 160px;
+  flex: 0 0 160px;
+}
+
+.rent-toolbar-search {
+  position: relative;
+  flex: 1 1 280px;
+  min-width: 220px;
+  max-width: 360px;
+}
+
+.rent-toolbar-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.rent-toolbar-input {
+  padding-left: 40px !important;
+}
+
+.rent-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: 1 1 520px;
+  flex-wrap: wrap;
+}
+
+.rent-toolbar-actions-primary,
+.rent-toolbar-actions-secondary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.rent-toolbar-actions-secondary {
+  margin-left: auto;
 }
 
 .rent-toolbar .form-select,
@@ -45,14 +103,60 @@
   border-radius: 12px;
   border: 1px solid #d8ddeb;
   min-height: 46px;
+  background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
 }
 
-.rent-toolbar .btn {
+.rent-toolbar-action {
   min-height: 46px;
   border-radius: 12px;
   font-weight: 700;
+  border: none;
+  padding: 0 18px;
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #5f7dfc 0%, #4865f3 100%) !important;
   box-shadow: 0 8px 18px rgba(95, 125, 252, 0.16);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.rent-toolbar-action:hover,
+.rent-toolbar-action:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(95, 125, 252, 0.22);
+  filter: saturate(1.03);
+}
+
+.rent-tracker-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 18px 0 20px;
+}
+
+.rent-tracker-tab {
+  border: 1px solid #5f7dfc;
+  border-radius: 14px;
+  padding: 11px 22px;
+  background: #ffffff;
+  color: #2553cf;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  box-shadow: 0 6px 16px rgba(95, 125, 252, 0.08);
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+}
+
+.rent-tracker-tab:hover,
+.rent-tracker-tab:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(95, 125, 252, 0.14);
+}
+
+.rent-tracker-tab.is-active {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.24);
 }
 
 .rent-mobile-actionbar {
@@ -1111,17 +1215,27 @@
 }
 @media (max-width: 768px) {
   .maincontainer{
-  padding: 10px;
-    
-}
+    padding: 10px;
+  }
+
+  .position-relative.d-flex.align-items-center.justify-content-between.gap-3.flex-wrap.mb-3,
+  .rent-tracker-tabs {
+    display: none !important;
+  }
+
   .rent-header-card {
     padding: 14px;
     border-radius: 18px;
   }
 
   .rent-header-top {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .rent-header-notification {
+    justify-content: flex-end;
   }
 
   .rent-header-title {
@@ -1133,10 +1247,43 @@
     align-items: stretch;
   }
 
+  .rent-toolbar-select,
+  .rent-toolbar-search,
+  .rent-toolbar-actions,
+  .rent-toolbar-actions-primary,
+  .rent-toolbar-actions-secondary,
   .rent-toolbar .form-select,
   .rent-toolbar .form-control,
   .rent-toolbar .btn {
     width: 100%;
+    max-width: none;
+  }
+
+  .rent-toolbar-select,
+  .rent-toolbar-search,
+  .rent-toolbar-actions {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .rent-toolbar-actions-primary,
+  .rent-toolbar-actions-secondary {
+    justify-content: flex-start;
+  }
+
+  .rent-toolbar-actions-secondary {
+    margin-left: 0;
+  }
+
+  .rent-tracker-tabs {
+    gap: 10px;
+    margin-top: 14px;
+  }
+
+  .rent-tracker-tab {
+    flex: 1 1 calc(50% - 10px);
+    padding: 10px 14px;
+    font-size: 14px;
   }
 
   .rent-toolbar-action {
@@ -1322,12 +1469,8 @@
     font-size: 13px;}
 
   .rent-mobile-view{
- 
-       
-        margin-bottom: 100px;
-    
-
-}
+    margin-bottom: 100px;
+  }
 
 .rent-mobile-actions .form-select,
 .rent-mobile-actions input[type="month"] {

@@ -19,7 +19,7 @@ const Sidebar = () => {
         const token = localStorage.getItem("authToken");
         if (!token) return;
 
-        const response = await axios.get("  https://hosteldemo-api.pnminfotech.com//api/user", {
+        const response = await axios.get("  https://mutakehostel-api.pnminfotech.com/api/user", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -56,13 +56,13 @@ const Sidebar = () => {
           <FaTachometerAlt className="icon" /> Dashboard
         </div>
         <div className="sidebar-item" onClick={() => handleNavigation("/tracker/bed", { tab: "rent", trackerType: "bed" })}>
-          <MdOutlineBedroomParent className="icon" /> Hostel Bed
+          <MdOutlineBedroomParent className="icon" /> Hostel
         </div>
         <div className="sidebar-item" onClick={() => handleNavigation("/tracker/room", { tab: "rent", trackerType: "room" })}>
-          <MdOutlineBedroomParent className="icon" /> Other Property Room
+          <MdOutlineBedroomParent className="icon" /> Residential Rooms
         </div>
         <div className="sidebar-item" onClick={() => handleNavigation("/tracker/shop", { tab: "rent", trackerType: "shop" })}>
-          <MdOutlineBedroomParent className="icon" /> Other Property Shop
+          <MdOutlineBedroomParent className="icon" /> Commercial Shop
         </div>
         <div className="sidebar-item" onClick={() => handleNavigation("/tracker/bed", { tab: "light-hostel", trackerType: "bed" })}>
           <MdLightbulbOutline className="icon" /> Light Bill Hostel

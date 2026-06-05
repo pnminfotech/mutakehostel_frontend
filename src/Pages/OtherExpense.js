@@ -136,7 +136,7 @@ const OtherExpense = ({ embedded = false, propertyScope = null }) => {
 
   const fetchExpenses = async () => {
     try {
-      const res = await fetch("https://hosteldemo-api.pnminfotech.com//api/other-expense/all");
+      const res = await fetch("https://mutakehostel-api.pnminfotech.com/api/other-expense/all");
       const data = await res.json();
       setOtherExpenses(
         Array.isArray(data)
@@ -188,7 +188,7 @@ const OtherExpense = ({ embedded = false, propertyScope = null }) => {
         status: newEntry.status,
       };
 
-      const res = await fetch("https://hosteldemo-api.pnminfotech.com//api/other-expense", {
+      const res = await fetch("https://mutakehostel-api.pnminfotech.com/api/other-expense", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -247,7 +247,7 @@ const OtherExpense = ({ embedded = false, propertyScope = null }) => {
       };
 
       const res = await fetch(
-        `https://hosteldemo-api.pnminfotech.com//api/other-expense/${selectedExpense._id}`,
+        `https://mutakehostel-api.pnminfotech.com/api/other-expense/${selectedExpense._id}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -270,7 +270,7 @@ const OtherExpense = ({ embedded = false, propertyScope = null }) => {
 
     try {
       const res = await fetch(
-        `https://hosteldemo-api.pnminfotech.com//api/other-expense/${exp._id}`,
+        `https://mutakehostel-api.pnminfotech.com/api/other-expense/${exp._id}`,
         {
           method: "DELETE",
         }
@@ -303,11 +303,6 @@ const OtherExpense = ({ embedded = false, propertyScope = null }) => {
   };
 
   const handleGoBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
     navigate("/maindashboard");
   };
 
@@ -794,13 +789,30 @@ const OtherExpense = ({ embedded = false, propertyScope = null }) => {
   return (
     <div className={`p-2 ${embedded ? "" : "container-fluid"}`}>
 
-<div className="d-flex justify-content-center align-items-center gap-2 mb-3">
-  <div className="section-icon">
-    <FaClipboardList />
+<div className="d-flex align-items-center justify-content-between gap-2 mb-3">
+  {embedded ? (
+    <button
+      className="btn"
+      style={{ backgroundColor: "#2563eb", color: "white", borderRadius: "10px", padding: "8px 18px" }}
+      onClick={handleGoBack}
+    >
+      <FaArrowLeft className="me-1" />
+      Back
+    </button>
+  ) : (
+    <div style={{ width: 108 }} />
+  )}
+
+  <div className="d-flex justify-content-center align-items-center gap-2 text-center flex-grow-1">
+    <div className="section-icon">
+      <FaClipboardList />
+    </div>
+    <div className="section-text">
+      {scopeLabel} Maintenance & Other Expenses
+    </div>
   </div>
-  <div className="section-text">
-    {scopeLabel} Maintenance & Other Expenses
-  </div>
+
+  <div style={{ width: 108 }} />
 </div>
 
 
@@ -875,7 +887,8 @@ const OtherExpense = ({ embedded = false, propertyScope = null }) => {
             </button>
 
           <button
-            className="btn btn-dark"
+            className="btn"
+            style={{ backgroundColor: "#2563eb", color: "white", borderRadius: "10px", padding: "8px 18px" }}
             onClick={handleGoBack}
           >
               <FaArrowLeft className="me-1" />

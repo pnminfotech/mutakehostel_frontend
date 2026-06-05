@@ -1,5 +1,5 @@
-import React from "react";
-import { FaSignOutAlt } from "react-icons/fa";
+import React, { useEffect, useMemo, useState } from "react";
+import { FaChevronDown, FaChevronRight, FaSignOutAlt } from "react-icons/fa";
 import "./MobileSectionSidebar.css";
 
 function MobileSectionSidebar({
@@ -16,6 +16,41 @@ function MobileSectionSidebar({
   onClose,
   onLogout,
 }) {
+  const findParentKeyForActive = useMemo(() => {
+    const parent = (items || []).find((item) =>
+      Array.isArray(item?.children) &&
+      item.children.some((child) => child?.key === activeKey)
+    );
+    return parent?.key || "";
+  }, [activeKey, items]);
+
+  const [expandedGroups, setExpandedGroups] = useState(() => {
+    const initial = {};
+    (items || []).forEach((item) => {
+      if (Array.isArray(item?.children) && item.children.length) {
+        initial[item.key] = item.key === findParentKeyForActive;
+      }
+    });
+    return initial;
+  });
+
+  useEffect(() => {
+    if (!findParentKeyForActive) return;
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [findParentKeyForActive]: true,
+    }));
+  }, [findParentKeyForActive]);
+
+  const handleToggleGroup = (event, key) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setExpandedGroups((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
   return (
     <>
       <div
@@ -44,20 +79,62 @@ function MobileSectionSidebar({
         </div>
 
         <div className="mobile-section-list">
-          {items.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              className={`mobile-section-item ${activeKey === item.key ? "active" : ""}`}
-              onClick={() => {
-                onSelect?.(item.key);
-                onClose?.();
-              }}
-            >
-              <span className="mobile-section-item-icon">{item.icon}</span>
-              <span className="mobile-section-item-label">{item.label}</span>
-            </button>
-          ))}
+          {items.map((item) => {
+            const hasChildren = Array.isArray(item?.children) && item.children.length > 0;
+            const isExpanded = Boolean(expandedGroups[item.key]);
+
+            if (!hasChildren) {
+              return (
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`mobile-section-item ${activeKey === item.key ? "active" : ""}`}
+                  onClick={() => {
+                    onSelect?.(item.key);
+                    onClose?.();
+                  }}
+                >
+                  <span className="mobile-section-item-icon">{item.icon}</span>
+                  <span className="mobile-section-item-label">{item.label}</span>
+                </button>
+              );
+            }
+
+            return (
+              <div key={item.key} className={`mobile-section-group ${isExpanded ? "open" : ""}`}>
+                <button
+                  type="button"
+                  className={`mobile-section-item mobile-section-group-toggle ${findParentKeyForActive === item.key ? "active" : ""}`}
+                  onClick={(event) => handleToggleGroup(event, item.key)}
+                  aria-expanded={isExpanded}
+                >
+                  <span className="mobile-section-item-icon">{item.icon}</span>
+                  <span className="mobile-section-item-label">{item.label}</span>
+                  <span className="mobile-section-group-arrow">
+                    {isExpanded ? <FaChevronDown /> : <FaChevronRight />}
+                  </span>
+                </button>
+
+                {isExpanded ? (
+                  <div className="mobile-section-sublist">
+                    {item.children.map((child) => (
+                      <button
+                        key={child.key}
+                        type="button"
+                        className={`mobile-section-subitem ${activeKey === child.key ? "active" : ""}`}
+                        onClick={() => {
+                          onSelect?.(child.key);
+                          onClose?.();
+                        }}
+                      >
+                        <span className="mobile-section-subitem-label">{child.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
 
         <div className="mobile-section-sidebar-footer">

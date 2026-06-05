@@ -6,7 +6,7 @@ const fmtINR = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const monthLabel = (m, y) => (m && y ? `${String(m).padStart(2, "0")}/${y}` : "—");
 
 export default function AdminNotificationBell({
-  apiOrigin = process.env.REACT_APP_API_ORIGIN || "  https://hosteldemo-api.pnminfotech.com/",
+  apiOrigin = process.env.REACT_APP_API_ORIGIN || "  https://mutakehostel-api.pnminfotech.com",
   pollMs = 20000,
 }) {
   const [open, setOpen] = useState(false);

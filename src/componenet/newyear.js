@@ -7,7 +7,7 @@ import { FaSearch, FaMoneyBillWave } from "react-icons/fa";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
 
-const API_BASE_URL = "  https://hosteldemo-api.pnminfotech.com//api/maintenance"; // Update this if backend is deployed
+const API_BASE_URL = "  https://mutakehostel-api.pnminfotech.com/api/maintenance"; // Update this if backend is deployed
 
 const Kahata = () => {
     const [schemas, setSchemas] = useState([]);
@@ -38,7 +38,7 @@ const Kahata = () => {
                 const token = localStorage.getItem("authToken");
                 if (!token) return;
 
-                const response = await axios.get("  https://hosteldemo-api.pnminfotech.com//api/user", {
+                const response = await axios.get("  https://mutakehostel-api.pnminfotech.com/api/user", {
                     headers: { Authorization: `Bearer ${token}` },
                 });
 

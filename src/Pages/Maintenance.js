@@ -28,7 +28,7 @@ const Maintenance = () => {
 
   useEffect(() => {
     axios
-      .get("https://hosteldemo-api.pnminfotech.com//api/projects")
+      .get("https://mutakehostel-api.pnminfotech.com/api/projects")
       .then((res) => setProjects(res.data))
       .catch((err) => console.error("Error fetching projects:", err));
   }, []);
@@ -53,7 +53,7 @@ const Maintenance = () => {
   
     try {
       const res = await axios.post(
-        "https://hosteldemo-api.pnminfotech.com//api/emp/projects",
+        "https://mutakehostel-api.pnminfotech.com/api/emp/projects",
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
@@ -96,7 +96,7 @@ const Maintenance = () => {
 
     try {
       const res = await axios.put(
-        `https://hosteldemo-api.pnminfotech.com//api/projects/${editProject}`,
+        `https://mutakehostel-api.pnminfotech.com/api/projects/${editProject}`,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
@@ -252,7 +252,7 @@ const Maintenance = () => {
                   <td> {project.image && (
     <img 
     src={project.image 
-      ? `https://hosteldemo-api.pnminfotech.com//uploads/${project.image}` 
+      ? `https://mutakehostel-api.pnminfotech.com/uploads/${project.image}` 
       : `../image/houseRom.jpeg`}     
        alt="Project"
       style={{ 

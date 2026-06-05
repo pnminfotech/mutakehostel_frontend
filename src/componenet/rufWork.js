@@ -20,7 +20,7 @@ const UpdateForm = ({ formId }) => {
 
   useEffect(() => {
     // Fetch existing data for the given formId
-    fetch(`  https://hosteldemo-api.pnminfotech.com//api/form/${formId}`)
+    fetch(`  https://mutakehostel-api.pnminfotech.com/api/form/${formId}`)
       .then((res) => res.json())
       .then((data) => {
         setFormData(data);
@@ -43,7 +43,7 @@ const UpdateForm = ({ formId }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await fetch(`  https://hosteldemo-api.pnminfotech.com//api/form/update/${formId}`, {
+      const response = await fetch(`  https://mutakehostel-api.pnminfotech.com/api/form/update/${formId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

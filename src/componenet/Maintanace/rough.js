@@ -120,7 +120,7 @@ const openAddModal = () => {
   setShowAddModal(true);
 };
 
-  const apiUrl = '  https://hosteldemo-api.pnminfotech.com//api/';
+  const apiUrl = '  https://mutakehostel-api.pnminfotech.com/api/';
 const correctPassword = "987654";
 
   useEffect(() => {
@@ -155,7 +155,7 @@ useEffect(() => {
     .catch(err => console.error("Error fetching archived tenants:", err));
 }, []);
 useEffect(() => {
-  axios.get('  https://hosteldemo-api.pnminfotech.com//api/rooms')
+  axios.get('  https://mutakehostel-api.pnminfotech.com/api/rooms')
     .then(response => setRoomsData(response.data))
     .catch(err => console.error("Failed to fetch rooms:", err));
 }, []);
@@ -1728,7 +1728,7 @@ const months = [
 useEffect(() => {
   const fetchTenants = async () => {
     try {
-      const res = await fetch('  https://hosteldemo-api.pnminfotech.com//api/');
+      const res = await fetch('  https://mutakehostel-api.pnminfotech.com/api/');
       const data = await res.json();
       setTenants(data);
     } catch (err) {
@@ -1745,8 +1745,8 @@ useEffect(() => {
   const fetchData = async () => {
     const url =
       activeTab === 'light'
-        ? '  https://hosteldemo-api.pnminfotech.com//api/light-bill/all'
-        : '  https://hosteldemo-api.pnminfotech.com//api/other-expense/all';
+        ? '  https://mutakehostel-api.pnminfotech.com/api/light-bill/all'
+        : '  https://mutakehostel-api.pnminfotech.com/api/other-expense/all';
     try {
       const res = await fetch(url);
       const data = await res.json();
@@ -1762,8 +1762,8 @@ useEffect(() => {
 const handleAddEntry = async () => {
   try {
     const url = activeTab === 'light'
-      ? '  https://hosteldemo-api.pnminfotech.com//api/light-bill'
-      : '  https://hosteldemo-api.pnminfotech.com//api/other-expense';
+      ? '  https://mutakehostel-api.pnminfotech.com/api/light-bill'
+      : '  https://mutakehostel-api.pnminfotech.com/api/other-expense';
 
     const bodyData = activeTab === 'light'
       ? {
@@ -1850,7 +1850,7 @@ const handleAddEntry = async () => {
       let bodyData;
       let url;
       if (activeTab === 'light') {
-        url = `  https://hosteldemo-api.pnminfotech.com//api/light-bill/${selectedBill._id}`;
+        url = `  https://mutakehostel-api.pnminfotech.com/api/light-bill/${selectedBill._id}`;
         bodyData = {
           ...selectedBill,
           status: updatedStatus,
@@ -1859,7 +1859,7 @@ const handleAddEntry = async () => {
           date: updatedDate,
         };
       } else {
-        url = `  https://hosteldemo-api.pnminfotech.com//api/other-expense/${selectedBill._id}`;
+        url = `  https://mutakehostel-api.pnminfotech.com/api/other-expense/${selectedBill._id}`;
         bodyData = {
           ...selectedBill,
            status: updatedStatus,
@@ -1891,8 +1891,8 @@ const handleAddEntry = async () => {
     if (window.confirm(`Are you sure you want to delete this ${activeTab === 'light' ? 'light bill' : 'other expense'}?`)) {
       try {
         const url = activeTab === 'light'
-          ? `  https://hosteldemo-api.pnminfotech.com//api/light-bill/${bill._id}`
-          : `  https://hosteldemo-api.pnminfotech.com//api/other-expense/${bill._id}`;
+          ? `  https://mutakehostel-api.pnminfotech.com/api/light-bill/${bill._id}`
+          : `  https://mutakehostel-api.pnminfotech.com/api/other-expense/${bill._id}`;
 
         const response = await fetch(url, {
           method: 'DELETE',
@@ -2433,9 +2433,9 @@ const MainDashboard = () => {
 
   useEffect(() => {
     Promise.all([
-      fetch('  https://hosteldemo-api.pnminfotech.com//api/').then(res => res.json()),
-      fetch('  https://hosteldemo-api.pnminfotech.com//api/light-bill/all').then(res => res.json()),
-      fetch('  https://hosteldemo-api.pnminfotech.com//api/other-expense/all').then(res => res.json()),
+      fetch('  https://mutakehostel-api.pnminfotech.com/api/').then(res => res.json()),
+      fetch('  https://mutakehostel-api.pnminfotech.com/api/light-bill/all').then(res => res.json()),
+      fetch('  https://mutakehostel-api.pnminfotech.com/api/other-expense/all').then(res => res.json()),
     ]).then(([tenants, lightBills, otherExpenses]) => {
       const totalBeds = tenants.length;
       const occupied = tenants.filter(t => !t.leaveDate).length;

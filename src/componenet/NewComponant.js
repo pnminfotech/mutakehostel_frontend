@@ -59,7 +59,7 @@ function buildApiUrl(base) {
 
   const fallbackOrigin =
     typeof window !== "undefined" && LOCAL_HOSTS.has(window.location.hostname)
-      ? "https://hosteldemo-api.pnminfotech.com/"
+      ? "https://mutakehostel-api.pnminfotech.com"
       : "https://hosteldemo-api.pnminfotech.com";
 
   return new URL("/api/", fallbackOrigin).toString();
@@ -71,12 +71,13 @@ function normalizeTrackerType(value) {
 }
 
 function getTrackerTypeFromLocation(location) {
-  const stateType = normalizeTrackerType(location?.state?.trackerType);
-  if (location?.state?.trackerType) return stateType;
-
   const path = String(location?.pathname || "").toLowerCase();
   if (path.includes("/tracker/room")) return "room";
   if (path.includes("/tracker/shop")) return "shop";
+
+  const stateType = normalizeTrackerType(location?.state?.trackerType);
+  if (location?.state?.trackerType) return stateType;
+
   return "bed";
 }
 
@@ -96,25 +97,43 @@ function normalizeRoomPropertyType(room) {
   return "bed";
 }
 
+function matchesTrackerUnitType(room, trackerType) {
+  const normalizedType = normalizeRoomPropertyType(room);
+  if (normalizedType !== trackerType) return false;
+
+  const bedNos = Array.isArray(room?.beds)
+    ? room.beds.map((bed) => String(bed?.bedNo || "").trim().toUpperCase())
+    : [];
+
+  if (trackerType === "shop") {
+    return bedNos.includes("SHOP-1") || String(room?.unitType || room?.propertyType || "").trim().toLowerCase() === "shop";
+  }
+
+  if (trackerType === "room") {
+    return bedNos.includes("ROOM-1") || String(room?.unitType || room?.propertyType || "").trim().toLowerCase() === "room";
+  }
+
+  return true;
+}
+
 function NewComponant() {
-  console.log("[NewComponant] loaded at", new Date().toISOString());
   const location = useLocation();
   const trackerTypeFromLocation = useMemo(() => getTrackerTypeFromLocation(location), [location]);
   const [trackerType, setTrackerType] = useState(trackerTypeFromLocation);
-  const trackerGroupLabel = trackerType === "bed" ? "Hostel" : "Other Property";
+  const trackerGroupLabel = trackerType === "bed" ? "Hostel" : "Property";
   const trackerLabel = trackerType === "shop"
-    ? "Other Property Shop-wise"
+    ? "Commercial Shop"
     : trackerType === "room"
-      ? "Other Property Room-wise"
-      : "Hostel Bed-wise";
+      ? "Residential Rooms"
+      : "Hostel";
   const trackerUnitLabel = trackerType === "shop" ? "Shop" : trackerType === "room" ? "Room" : "Room / Bed";
-  const manageUnitsPath = trackerType === "bed" ? "/roommanager" : "/commercial-manager";
+  const manageUnitsPath = "/roommanager";
   const appBasePath = useMemo(() => {
     try {
       const baseUrl = process.env.PUBLIC_URL || "/mutakegirlhostel";
       return new URL(baseUrl, window.location.origin).pathname.replace(/\/$/, "");
     } catch (_error) {
-      return "/hosteldemo";
+      return "/mutakegirlshostel";
     }
   }, []);
   const formatTrackerUnit = useCallback(
@@ -255,7 +274,11 @@ const [editRentAmount, setEditRentAmount] = useState("");
     srNo: "",
     name: "",
     joiningDate: "",
+    roomId: "",
     roomNo: "",
+    category: "",
+    wingName: "",
+    flatType: "",
     depositAmount: "",
     address: "",
     pincode: "",
@@ -275,6 +298,7 @@ const [editRentAmount, setEditRentAmount] = useState("");
     relative2Phone: "",
     floorNo: "",
     bedNo: "",
+    bedPrice: "",
     companyAddress: "",
     dateOfJoiningCollege: "",
     dob: "",
@@ -345,19 +369,39 @@ const totalBeds = (Array.isArray(roomsData) ? roomsData : []).reduce(
   (sum, room) => sum + (room.beds?.length || 0),
   0
 );
-
-
  const sectionItems = [
-    { key: "dashboard", label: "Dashboard", icon: <MdDashboard size={20} />, onClick: () => handleNavigation("/maindashboard") },
-    { key: "rent", label: `${trackerLabel} Tracker`, icon: <MdOutlineBedroomParent /> },
-    { key: "light-hostel", label: "Light Bill Hostel", icon: <MdLightbulbOutline /> },
-    { key: "light-room-shop", label: "Light Bill Room + Shop", icon: <MdLightbulbOutline /> },
-    { key: "expenses-hostel", label: "Expenses Hostel", icon: <MdOutlineReceiptLong /> },
-    { key: "expenses-room-shop", label: "Expenses Room + Shop", icon: <MdOutlineReceiptLong /> },
+    { key: "dashboard", label: "Dashboard", icon: <MdDashboard size={20} /> },
+    {
+      key: "rent-group",
+      label: "Rent Tracker",
+      icon: <MdOutlineBedroomParent />,
+      children: [
+        { key: "tracker-bed", label: "Hostel Tracker" },
+        { key: "tracker-room", label: "Residential Rooms Tracker" },
+        { key: "tracker-shop", label: "Commercial Shop Tracker" },
+      ],
+    },
+    {
+      key: "light-group",
+      label: "Light Bill",
+      icon: <MdLightbulbOutline />,
+      children: [
+        { key: "light-hostel", label: "Hostel" },
+        { key: "light-room", label: "Residential Rooms" },
+        { key: "light-shop", label: "Commercial Shop" },
+      ],
+    },
+    {
+      key: "expenses-group",
+      label: "Expenses",
+      icon: <MdOutlineReceiptLong />,
+      children: [
+        { key: "expenses-hostel", label: "Hostel" },
+        { key: "expenses-room", label: "Residential Rooms" },
+        { key: "expenses-shop", label: "Commercial Shop" },
+      ],
+    },
     { key: "staff", label: "Staff", icon: <MdPerson /> },
-    // { key: "holiday", label: "Holiday Management", icon: <MdCalendarToday /> },
-    // { key: "canteen-expenses", label: "Canteen Portal", icon: <FaUtensils /> },
-    // { key: "canteen-attendance", label: "Meal Attendance", icon: <FaUtensils /> },
   ];
 
 
@@ -616,9 +660,37 @@ const occupiedBeds = useMemo(() => {
   return s;
 }, [tenants, formData, roomsData]);
 
-// ✅ ONE source of truth: occupied beds (roomNo-bedNo)
-const makeOccKey = (roomNo, bedNo) =>
-  `${String(roomNo ?? "").trim()}-${String(bedNo ?? "").trim()}`;
+const getTrackerPropertyLabel = (item) => {
+  if (trackerType === "bed") return "";
+  return String(item?.buildingName || item?.category || "").trim();
+};
+
+const getTrackerPropertyLabelForTenant = (tenant) => {
+  const directLabel = getTrackerPropertyLabel(tenant);
+  if (directLabel) return directLabel;
+
+  const matchedRoom = (allRoomsData || []).find((room) => {
+    const tenantRoomId = tenant?.roomId?._id || tenant?.roomId;
+    if (tenantRoomId && String(room?._id) === String(tenantRoomId)) {
+      return true;
+    }
+
+    return String(room?.roomNo ?? "").trim() === String(tenant?.roomNo ?? "").trim();
+  });
+
+  return getTrackerPropertyLabel(matchedRoom);
+};
+
+const getTrackerRoomKey = (roomNo, propertyLabel = "") => {
+  const normalizedRoomNo = String(roomNo ?? "").trim();
+  if (trackerType === "bed") return normalizedRoomNo;
+
+  return `${String(propertyLabel || "").trim().toLowerCase()}::${normalizedRoomNo}`;
+};
+
+// ✅ ONE source of truth: occupied beds/units
+const makeOccKey = (roomNo, bedNo, propertyLabel = "") =>
+  `${getTrackerRoomKey(roomNo, propertyLabel)}-${String(bedNo ?? "").trim()}`;
 
 const occupiedBedSet = useMemo(() => {
   const s = new Set();
@@ -626,20 +698,143 @@ const occupiedBedSet = useMemo(() => {
     if (t.leaveDate && hasLeaveDatePassed(t.leaveDate)) return; // ignore tenants whose leave date has passed
     const roomNo = t.roomNo;
     const bedNo = t.bedNo;
+    const propertyLabel = getTrackerPropertyLabelForTenant(t);
     if (String(roomNo ?? "").trim() && String(bedNo ?? "").trim()) {
-      s.add(makeOccKey(roomNo, bedNo));
+      s.add(makeOccKey(roomNo, bedNo, propertyLabel));
     }
   });
   return s;
-}, [formData]);
+}, [allRoomsData, formData, trackerType]);
 
 const roomHasVacantBed = (room) => {
   const roomNo = room?.roomNo;
+  const propertyLabel = getTrackerPropertyLabel(room);
   return (room?.beds || []).some(
-    (bed) => !occupiedBedSet.has(makeOccKey(roomNo, bed?.bedNo))
+    (bed) => !occupiedBedSet.has(makeOccKey(roomNo, bed?.bedNo, propertyLabel))
   );
 };
 const getPrimaryUnitBedNo = (type) => (type === "shop" ? "SHOP-1" : "ROOM-1");
+
+const getRoomBuildingLabel = (room) =>
+  String(room?.buildingName || room?.category || "").trim();
+
+const getRoomWingValue = (room) => String(room?.wingName || "").trim();
+
+const getRoomFloorValue = (room) => String(room?.floorNo || "").trim();
+
+const formatWingOptionLabel = (wingValue) =>
+  wingValue ? `Wing ${wingValue}` : "No Wing";
+
+const getRoomSortNumber = (value) => {
+  const parsed = parseInt(String(value ?? "").replace(/[^\d-]/g, ""), 10);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const residentialVacantRooms = useMemo(() => {
+  if (trackerType !== "room") return [];
+
+  return (Array.isArray(roomsData) ? roomsData : [])
+    .filter(
+      (room) => normalizeRoomPropertyType(room) === "room" && roomHasVacantBed(room)
+    )
+    .sort((a, b) => {
+      const buildingCompare = getRoomBuildingLabel(a).localeCompare(getRoomBuildingLabel(b), undefined, {
+        sensitivity: "base",
+      });
+      if (buildingCompare !== 0) return buildingCompare;
+
+      const wingCompare = getRoomWingValue(a).localeCompare(getRoomWingValue(b), undefined, {
+        sensitivity: "base",
+      });
+      if (wingCompare !== 0) return wingCompare;
+
+      const floorCompare = getRoomSortNumber(getRoomFloorValue(a)) - getRoomSortNumber(getRoomFloorValue(b));
+      if (floorCompare !== 0) return floorCompare;
+
+      return getRoomSortNumber(a?.roomNo) - getRoomSortNumber(b?.roomNo);
+    });
+}, [roomsData, trackerType, occupiedBedSet]);
+
+const residentialBuildingOptions = useMemo(
+  () => Array.from(new Set(residentialVacantRooms.map((room) => getRoomBuildingLabel(room)).filter(Boolean))),
+  [residentialVacantRooms]
+);
+
+const residentialWingOptions = useMemo(() => {
+  if (trackerType !== "room" || !newTenant.category) return [];
+
+  return Array.from(
+    new Set(
+      residentialVacantRooms
+        .filter((room) => getRoomBuildingLabel(room) === String(newTenant.category || "").trim())
+        .map((room) => getRoomWingValue(room))
+    )
+  );
+}, [newTenant.category, residentialVacantRooms, trackerType]);
+
+const residentialFloorOptions = useMemo(() => {
+  if (trackerType !== "room" || !newTenant.category) return [];
+
+  return Array.from(
+    new Set(
+      residentialVacantRooms
+        .filter((room) => {
+          if (getRoomBuildingLabel(room) !== String(newTenant.category || "").trim()) return false;
+          if (residentialWingOptions.length <= 1) return true;
+          return getRoomWingValue(room) === String(newTenant.wingName || "").trim();
+        })
+        .map((room) => getRoomFloorValue(room))
+        .filter(Boolean)
+    )
+  ).sort((a, b) => getRoomSortNumber(a) - getRoomSortNumber(b));
+}, [newTenant.category, newTenant.wingName, residentialVacantRooms, residentialWingOptions.length, trackerType]);
+
+const residentialFlatOptions = useMemo(() => {
+  if (trackerType !== "room" || !newTenant.category || !newTenant.floorNo) return [];
+
+  return residentialVacantRooms.filter((room) => {
+    if (getRoomBuildingLabel(room) !== String(newTenant.category || "").trim()) return false;
+    if (residentialWingOptions.length > 1 && getRoomWingValue(room) !== String(newTenant.wingName || "").trim()) {
+      return false;
+    }
+    return getRoomFloorValue(room) === String(newTenant.floorNo || "").trim();
+  });
+}, [newTenant.category, newTenant.floorNo, newTenant.wingName, residentialVacantRooms, residentialWingOptions.length, trackerType]);
+
+const applySelectedTrackerRoom = useCallback(
+  (selectedRoom) => {
+    const autoSlot =
+      trackerType !== "bed"
+        ? (selectedRoom?.beds || []).find(
+            (bed) => !occupiedBeds.has(occKey(selectedRoom?.roomNo, bed.bedNo))
+          )
+        : null;
+
+    setNewTenant((prev) => ({
+      ...prev,
+      roomId: selectedRoom?._id || "",
+      roomNo: selectedRoom?.roomNo || "",
+      category: getRoomBuildingLabel(selectedRoom),
+      wingName: getRoomWingValue(selectedRoom),
+      flatType: selectedRoom?.flatType || "",
+      bedNo: autoSlot?.bedNo || "",
+      floorNo: selectedRoom?.floorNo || "",
+      baseRent: autoSlot?.price ?? "",
+      rentAmount: autoSlot?.price ?? "",
+      bedPrice: autoSlot?.price ?? "",
+      newBedNo: "",
+      newBedPrice: "",
+      newBedCategory: "",
+      __bedMsg: "",
+      __savingBed: false,
+      __priceMode: "current",
+      __newBedPriceEdit: "",
+      __priceMsg: "",
+      __savingPrice: false,
+    }));
+  },
+  [occupiedBeds, trackerType]
+);
 
 
 
@@ -1119,8 +1314,13 @@ const existingForm = formData?.find(
 const ROOMS_API = `${apiUrl}rooms`;
 const COMMERCIAL_UNITS_API = `${apiUrl}commercial-units`;
 
+  const getCommercialUnitTrackerType = useCallback((unit) => {
+    const explicitType = String(unit?.unitType || unit?.propertyType || "").trim().toLowerCase();
+    return explicitType === "shop" ? "shop" : "room";
+  }, []);
+
   const mapCommercialUnitToTrackerRoom = useCallback((unit) => {
-    const propertyType = String(unit?.unitType || "").trim().toLowerCase() === "shop" ? "shop" : "room";
+    const propertyType = getCommercialUnitTrackerType(unit);
     return {
       _id: unit?._id,
       propertyType,
@@ -1137,18 +1337,18 @@ const COMMERCIAL_UNITS_API = `${apiUrl}commercial-units`;
         },
       ],
     };
-  }, []);
+  }, [getCommercialUnitTrackerType]);
 
   const filterRoomsForTracker = useCallback(
     (rooms = []) =>
       (Array.isArray(rooms) ? rooms : []).filter((room) => {
-        return normalizeRoomPropertyType(room) === trackerType;
+        return matchesTrackerUnitType(room, trackerType);
       }),
     [trackerType]
   );
 
   const filterTenantsForTracker = useCallback(
-    (tenants = [], rooms = allRoomsData) => {
+    (tenants = [], rooms = []) => {
       const scopedRooms = filterRoomsForTracker(Array.isArray(rooms) ? rooms : []);
 
       return (Array.isArray(tenants) ? tenants : []).filter((tenant) => {
@@ -1175,18 +1375,20 @@ const COMMERCIAL_UNITS_API = `${apiUrl}commercial-units`;
         return normalizeRoomPropertyType(tenantRoom) === trackerType;
       });
     },
-    [allRoomsData, filterRoomsForTracker, trackerType]
+    [filterRoomsForTracker, trackerType]
   );
 
   const fetchTrackerUnits = useCallback(async () => {
-    if (trackerType === "bed") {
+    if (trackerType === "bed" || trackerType === "room") {
       const { data } = await axios.get(`${apiUrl}rooms`);
       return Array.isArray(data) ? data : [];
     }
 
     const { data } = await axios.get(COMMERCIAL_UNITS_API);
-    return (Array.isArray(data) ? data : []).map(mapCommercialUnitToTrackerRoom);
-  }, [apiUrl, COMMERCIAL_UNITS_API, mapCommercialUnitToTrackerRoom, trackerType]);
+    return (Array.isArray(data) ? data : [])
+      .filter((unit) => getCommercialUnitTrackerType(unit) === "shop")
+      .map(mapCommercialUnitToTrackerRoom);
+  }, [apiUrl, COMMERCIAL_UNITS_API, getCommercialUnitTrackerType, mapCommercialUnitToTrackerRoom, trackerType]);
   const fetchAllUnits = useCallback(async () => {
     const [hostelRes, commercialRes] = await Promise.all([
       axios.get(`${apiUrl}rooms`),
@@ -1195,21 +1397,25 @@ const COMMERCIAL_UNITS_API = `${apiUrl}commercial-units`;
 
     const hostelUnits = Array.isArray(hostelRes?.data) ? hostelRes.data : [];
     const commercialUnits = Array.isArray(commercialRes?.data)
-      ? commercialRes.data.map(mapCommercialUnitToTrackerRoom)
+      ? commercialRes.data
+          .filter((unit) => getCommercialUnitTrackerType(unit) === "shop")
+          .map(mapCommercialUnitToTrackerRoom)
       : [];
 
     return [...hostelUnits, ...commercialUnits];
-  }, [apiUrl, COMMERCIAL_UNITS_API, mapCommercialUnitToTrackerRoom]);
+  }, [apiUrl, COMMERCIAL_UNITS_API, getCommercialUnitTrackerType, mapCommercialUnitToTrackerRoom]);
 
   const refreshTenants = React.useCallback(async () => {
     try {
       const { data } = await axios.get(`${apiUrl}forms`);
       setAllTenantsData(Array.isArray(data) ? data : []);
-      setFormData(filterTenantsForTracker(data));
+      setFormData(
+        filterTenantsForTracker(data, Array.isArray(allRoomsData) ? allRoomsData : [])
+      );
     } catch (e) {
       console.error("Failed to refresh tenants:", e);
     }
-  }, [apiUrl, filterTenantsForTracker]);
+  }, [allRoomsData, apiUrl, filterTenantsForTracker]);
 
   const refreshRooms = useCallback(async () => {
     try {
@@ -3402,7 +3608,7 @@ const getRentStatusLabelForSort = (tenant) => {
   // }, []);
   // useEffect(() => {
   //   axios
-  //     .get("  https://hosteldemo-api.pnminfotech.com//api/rooms")
+  //     .get("  https://mutakehostel-api.pnminfotech.com/api/rooms")
   //     .then((response) => setRoomsData(response.data))
   //     .catch((err) => console.error("Failed to fetch rooms:", err));
   // }, []);
@@ -3674,10 +3880,15 @@ const futureOnLeaveTenants = useMemo(() => {
         floorNo: room.floorNo,
         bedNo: String(bed.bedNo),
         price: toNum(bed.price),
-        category: bed.category || "",
+        propertyType: normalizeRoomPropertyType(room),
+        category:
+          trackerType === "bed"
+            ? bed.category || getTrackerPropertyLabel(room) || ""
+            : getTrackerPropertyLabel(room) || "",
+        propertyLabel: getTrackerPropertyLabel(room) || "",
       }))
     );
-  }, [roomsData]);
+  }, [roomsData, trackerType]);
 const getBillingMonthsUpToNow = (tenant) => {
   if (!tenant?.joiningDate) return [];
 
@@ -3987,14 +4198,18 @@ return sorted;
           const isLeaved = leaveISO && new Date(leaveISO) < new Date();
           return !isLeaved;
         })
-        .map((t) => `${t.roomNo}-${t.bedNo}`)
+        .map((t) => makeOccKey(t.roomNo, t.bedNo, getTrackerPropertyLabelForTenant(t)))
     );
 
     const search = (searchText || "").toLowerCase();
 
    return (slots || [])
   .filter((slot) => {
-    const key = `${slot.roomNo}-${slot.bedNo}`;
+    if (trackerType !== "bed" && String(slot?.propertyType || "") !== trackerType) {
+      return false;
+    }
+
+    const key = makeOccKey(slot.roomNo, slot.bedNo, slot.propertyLabel || slot.category);
     if (activeKeys.has(key)) return false;
 
     const matchesSearch =
@@ -4014,32 +4229,59 @@ return sorted;
     if (sortConfig.column) return null;
 
     const byRoom = new Map();
-    const addRoomBucket = (roomNo) => {
-      const key = String(roomNo ?? "");
-      if (!byRoom.has(key)) byRoom.set(key, { tenants: [], vacants: [] });
+    const roomSort = (a, b) => {
+      if (trackerType === "room" || trackerType === "shop") {
+        const propertyCompare = String(a?.propertyLabel || "").localeCompare(
+          String(b?.propertyLabel || ""),
+          undefined,
+          { sensitivity: "base" }
+        );
+        if (propertyCompare !== 0) return propertyCompare;
+      }
+
+      return getRoomSortNumber(a?.roomNo) - getRoomSortNumber(b?.roomNo);
+    };
+
+    (roomsData || []).forEach((room) => {
+      if (normalizeRoomPropertyType(room) !== "room") return;
+      const roomNo = String(room?.roomNo ?? "").trim();
+      const propertyLabel = getTrackerPropertyLabel(room);
+      if (!roomNo) return;
+      const key = getTrackerRoomKey(roomNo, propertyLabel);
+      if (!byRoom.has(key)) {
+        byRoom.set(key, { tenants: [], vacants: [], roomNo, propertyLabel });
+      }
+    });
+
+    const addRoomBucket = (roomNo, propertyLabel = "") => {
+      const normalizedRoomNo = String(roomNo ?? "").trim();
+      const normalizedPropertyLabel = String(propertyLabel || "").trim();
+      const key = getTrackerRoomKey(normalizedRoomNo, normalizedPropertyLabel);
+      if (!byRoom.has(key)) {
+        byRoom.set(key, {
+          tenants: [],
+          vacants: [],
+          roomNo: normalizedRoomNo,
+          propertyLabel: normalizedPropertyLabel,
+        });
+      }
       return byRoom.get(key);
     };
 
     (visibleTenants || []).forEach((t) => {
-      const bucket = addRoomBucket(t.roomNo);
+      const bucket = addRoomBucket(t.roomNo, getTrackerPropertyLabelForTenant(t));
       bucket.tenants.push(t);
     });
 
     (extraVacantSlots || []).forEach((s) => {
-      const bucket = addRoomBucket(s.roomNo);
+      const bucket = addRoomBucket(s.roomNo, s.propertyLabel || s.category);
       bucket.vacants.push(s);
     });
 
-    const roomKeys = Array.from(byRoom.keys()).sort((a, b) => {
-      const ra = toInt(a);
-      const rb = toInt(b);
-      return ra - rb;
-    });
+    const roomBuckets = Array.from(byRoom.values()).sort(roomSort);
 
     const rows = [];
-    roomKeys.forEach((roomKey) => {
-      const bucket = byRoom.get(roomKey);
-      if (!bucket) return;
+    roomBuckets.forEach((bucket) => {
       bucket.tenants.sort(compareRoomBed);
       bucket.vacants.sort(compareRoomBed);
 
@@ -4048,31 +4290,101 @@ return sorted;
     });
 
     return rows;
-  }, [visibleTenants, extraVacantSlots, sortConfig]);
+  }, [visibleTenants, extraVacantSlots, roomsData, sortConfig, trackerType]);
+
+  const propertyBuildingByRoomKey = useMemo(() => {
+    const map = new Map();
+
+    (roomsData || []).forEach((room) => {
+      if (trackerType !== "bed" && normalizeRoomPropertyType(room) !== trackerType) return;
+      const roomNo = String(room?.roomNo ?? "").trim();
+      const propertyLabel = getTrackerPropertyLabel(room);
+      if (!roomNo) return;
+      const key = getTrackerRoomKey(roomNo, propertyLabel);
+      if (propertyLabel && !map.has(key)) {
+        map.set(key, propertyLabel);
+      }
+    });
+
+    return map;
+  }, [roomsData, trackerType]);
+
+  const getPropertyBuildingLabelForRow = useCallback(
+    (row, isStructuredRow) => {
+      if (trackerType === "bed") return "";
+
+      if (isStructuredRow) {
+        if (row?.type === "tenant") {
+          const tenant = row?.tenant;
+          return String(
+            tenant?.category ||
+            propertyBuildingByRoomKey.get(
+              getTrackerRoomKey(tenant?.roomNo, getTrackerPropertyLabelForTenant(tenant))
+            ) ||
+            ""
+          ).trim();
+        }
+
+        if (row?.type === "vacant") {
+          const slot = row?.slot;
+          return String(
+            slot?.propertyLabel ||
+            slot?.category ||
+            propertyBuildingByRoomKey.get(
+              getTrackerRoomKey(slot?.roomNo, slot?.propertyLabel || slot?.category)
+            ) ||
+            ""
+          ).trim();
+        }
+      }
+
+      return String(
+        row?.category ||
+        propertyBuildingByRoomKey.get(
+          getTrackerRoomKey(row?.roomNo, row?.category || row?.buildingName || "")
+        ) ||
+        ""
+      ).trim();
+    },
+    [propertyBuildingByRoomKey, trackerType]
+  );
 
 
-   const groupedRooms = useMemo(() => {
+  const groupedRooms = useMemo(() => {
     const roomMap = new Map();
 
     (visibleTenants || []).forEach((t) => {
-      const roomNo = String(t.roomNo ?? "");
-      if (!roomMap.has(roomNo)) {
-        roomMap.set(roomNo, { roomNo, occupied: [], vacant: [] });
+      const roomNo = String(t.roomNo ?? "").trim();
+      const propertyLabel = getTrackerPropertyLabelForTenant(t);
+      const roomKey = getTrackerRoomKey(roomNo, propertyLabel);
+      if (!roomMap.has(roomKey)) {
+        roomMap.set(roomKey, { roomNo, propertyLabel, occupied: [], vacant: [] });
       }
-      roomMap.get(roomNo).occupied.push(t);
+      roomMap.get(roomKey).occupied.push(t);
     });
 
     (extraVacantSlots || []).forEach((s) => {
-      const roomNo = String(s.roomNo ?? "");
-      if (!roomMap.has(roomNo)) {
-        roomMap.set(roomNo, { roomNo, occupied: [], vacant: [] });
+      const roomNo = String(s.roomNo ?? "").trim();
+      const propertyLabel = String(s.propertyLabel || s.category || "").trim();
+      const roomKey = getTrackerRoomKey(roomNo, propertyLabel);
+      if (!roomMap.has(roomKey)) {
+        roomMap.set(roomKey, { roomNo, propertyLabel, occupied: [], vacant: [] });
       }
-      roomMap.get(roomNo).vacant.push(s);
+      roomMap.get(roomKey).vacant.push(s);
     });
 
-    const rooms = Array.from(roomMap.values()).sort(
-      (a, b) => toInt(a.roomNo) - toInt(b.roomNo)
-    );
+    const rooms = Array.from(roomMap.values()).sort((a, b) => {
+      if (trackerType === "room") {
+        const propertyCompare = String(a?.propertyLabel || "").localeCompare(
+          String(b?.propertyLabel || ""),
+          undefined,
+          { sensitivity: "base" }
+        );
+        if (propertyCompare !== 0) return propertyCompare;
+      }
+
+      return toInt(a.roomNo) - toInt(b.roomNo);
+    });
 
     rooms.forEach((r) => {
       r.occupied.sort(compareRoomBed);
@@ -4080,7 +4392,7 @@ return sorted;
     });
 
     return rooms;
-  }, [visibleTenants, extraVacantSlots]);
+  }, [visibleTenants, extraVacantSlots, trackerType, allRoomsData]);
   // All vacant slots (for shifting), not filtered by search/year
   const allVacantSlots = useMemo(() => {
     const activeKeys = new Set(
@@ -4090,17 +4402,21 @@ return sorted;
           const isLeaved = leaveISO && new Date(leaveISO) < new Date();
           return !isLeaved;
         })
-        .map((t) => `${t.roomNo}-${t.bedNo}`)
+        .map((t) => makeOccKey(t.roomNo, t.bedNo, getTrackerPropertyLabelForTenant(t)))
     );
 
  return (slots || [])
   .filter((slot) => {
-    const key = `${slot.roomNo}-${slot.bedNo}`;
+    if (trackerType !== "bed" && String(slot?.propertyType || "") !== trackerType) {
+      return false;
+    }
+
+    const key = makeOccKey(slot.roomNo, slot.bedNo, slot.propertyLabel || slot.category);
     return !activeKeys.has(key);
   })
   .sort(compareRoomBed);
 
-  }, [slots, formData, leaveDates]);
+  }, [slots, formData, leaveDates, trackerType, allRoomsData]);
 
   // ADD THIS helper in NewComponant component (near other handlers)
   const openEditForTenantMonth = (tenantId, monthIdx, year) => {
@@ -4692,15 +5008,15 @@ const handleDownloadExcel = () => {
 
   
 const sectionHeadingMap = {
-  rent: `${trackerLabel} Rent and Deposit Tracker`,
-  "light-hostel": "Light Bill Hostel",
-  "light-room-shop": "Light Bill Room + Shop",
-  "light-room": "Light Bill Room",
-  "light-shop": "Light Bill Shop",
-  "expenses-hostel": "Expenses Hostel",
-  "expenses-room-shop": "Expenses Room + Shop",
-  "expenses-room": "Expenses Room",
-  "expenses-shop": "Expenses Shop",
+  rent: "Rent and Deposit Tracker",
+  "light-hostel": "Light Bill",
+  "light-room-shop": "Light Bill",
+  "light-room": "Light Bill",
+  "light-shop": "Light Bill",
+  "expenses-hostel": "Expenses",
+  "expenses-room-shop": "Expenses",
+  "expenses-room": "Expenses",
+  "expenses-shop": "Expenses",
   staff: "Staff Expenses",
   holiday: "Holiday Management",
   canteen: "Canteen Portal",
@@ -4716,6 +5032,12 @@ useEffect(() => {
 }, [trackerTypeFromLocation]);
 
 useEffect(() => {
+  setLoading(true);
+  setRoomsData([]);
+  setFormData([]);
+}, [trackerType]);
+
+useEffect(() => {
   if (location.state?.tab) {
     setActiveTab(location.state.tab);
   }
@@ -4727,11 +5049,45 @@ const openNewComponantSection = (tab) => {
 
 const openTrackerView = (nextTrackerType, tab = activeTab) => {
   const normalizedType = normalizeTrackerType(nextTrackerType);
-  setTrackerType(normalizedType);
+  const targetPath = `/tracker/${normalizedType}`;
+  const isSamePath = location.pathname === targetPath;
+  const isSameTab = (location.state?.tab || "rent") === tab;
+
+  if (isSamePath && isSameTab) return;
+
   navigate(`/tracker/${normalizedType}`, {
     state: { tab, trackerType: normalizedType },
   });
 };
+
+const mobileSidebarActiveKey = useMemo(() => {
+  if (activeTab === "rent") {
+    if (trackerType === "room") return "tracker-room";
+    if (trackerType === "shop") return "tracker-shop";
+    return "tracker-bed";
+  }
+
+  if (
+    activeTab === "light-hostel" ||
+    activeTab === "light-room-shop" ||
+    activeTab === "light-room" ||
+    activeTab === "light-shop"
+  ) {
+    return activeTab;
+  }
+
+  if (
+    activeTab === "expenses-hostel" ||
+    activeTab === "expenses-room-shop" ||
+    activeTab === "expenses-room" ||
+    activeTab === "expenses-shop"
+  ) {
+    return activeTab;
+  }
+
+  if (activeTab === "staff") return "staff";
+  return "";
+}, [activeTab, trackerType]);
 
 const handleMobileSectionSelect = (key) => {
   setShowMobileSections(false);
@@ -4741,8 +5097,18 @@ const handleMobileSectionSelect = (key) => {
     return;
   }
 
-  if (key === "rent") {
-    openNewComponantSection("rent");
+  if (key === "tracker-bed") {
+    openTrackerView("bed", "rent");
+    return;
+  }
+
+  if (key === "tracker-room") {
+    openTrackerView("room", "rent");
+    return;
+  }
+
+  if (key === "tracker-shop") {
+    openTrackerView("shop", "rent");
     return;
   }
 
@@ -5013,7 +5379,12 @@ const getAllPendingMonths = (tenant) => {
 
       // Refresh data after delete
       const response = await axios.get(apiUrl);
-      setFormData(filterTenantsForTracker(response.data));
+      setFormData(
+        filterTenantsForTracker(
+          response.data,
+          Array.isArray(allRoomsData) ? allRoomsData : []
+        )
+      );
     } catch (error) {
       alert(
         "Failed to delete rent: " +
@@ -6155,6 +6526,11 @@ const handleSave = async () => {
     if (window.location.pathname === targetPath) return;
     window.location.assign(targetPath);
   }, [appBasePath, manageUnitsPath]);
+  const handleBackToDashboard = useCallback(() => {
+    const targetPath = `${appBasePath}/maindashboard`;
+    if (window.location.pathname === targetPath) return;
+    window.location.assign(targetPath);
+  }, [appBasePath]);
   const handleNavigation = (path) => {
     const shouldReplace = path === "/maindashboard" || path === "/maindashbaord";
     navigate(path, shouldReplace ? { replace: true } : undefined);
@@ -6255,6 +6631,60 @@ const upcomingRentEntries = useMemo(() => {
       return a.billMonth - b.billMonth;
     });
 }, [formData, roomsData, months]);
+
+const summaryCounts = useMemo(() => {
+  const units = Array.isArray(roomsData) ? roomsData : [];
+  const activeTenants = (formData || []).filter(
+    (tenant) => !hasLeaveDatePassed(tenant?.leaveDate)
+  );
+
+  if (trackerType === "bed") {
+    return {
+      total: units.reduce((sum, room) => sum + (room.beds?.length || 0), 0),
+      occupied: activeTenants.length,
+      vacant: vacantBedsList.length,
+    };
+  }
+
+  const totalUnits = new Set(
+    units
+      .map((room) =>
+        getTrackerRoomKey(
+          room?.roomNo,
+          getTrackerPropertyLabel(room)
+        )
+      )
+      .filter(Boolean)
+  ).size;
+
+  const occupiedUnits = new Set(
+    activeTenants
+      .map((tenant) =>
+        getTrackerRoomKey(
+          tenant?.roomNo,
+          getTrackerPropertyLabelForTenant(tenant)
+        )
+      )
+      .filter(Boolean)
+  ).size;
+
+  const vacantUnits = new Set(
+    vacantBedsList
+      .map((slot) =>
+        getTrackerRoomKey(
+          slot?.roomNo,
+          slot?.propertyLabel || slot?.category
+        )
+      )
+      .filter(Boolean)
+  ).size;
+
+  return {
+    total: totalUnits,
+    occupied: occupiedUnits,
+    vacant: vacantUnits,
+  };
+}, [formData, roomsData, trackerType, vacantBedsList]);
 
 
   if (loading) return <div className="text-center mt-5">Loading...</div>;
@@ -6435,6 +6865,7 @@ const isTodayOrFuture = (iso) => {
   {/* ----------------- NEW BUTTON ROW ----------------- */}
       <MobileSectionSidebar
         open={showMobileSections}
+        activeKey={mobileSidebarActiveKey}
         items={sectionItems}
         title="Sections"
         onSelect={handleMobileSectionSelect}
@@ -6650,27 +7081,26 @@ const isTodayOrFuture = (iso) => {
    {activeTab === "rent" && (
   <div className="table-responsive rent-table-wrapper">
 
-<div className="section-title mb-3 section-text1">
-  <span className="section-icon section-text1">
-    <FaThLarge />
-  </span>
-  <span className="section-text section-text1 ">
-    {trackerLabel} Rent and Deposit Tracker
-  </span>
-</div>
-<RentHeaderBar
-  eyebrow={`${trackerGroupLabel} Data`}
-  title={
-    trackerType === "shop"
-      ? "Other Property Shop Rent & Deposit Tracker"
-      : trackerType === "room"
-        ? "Other Property Room Rent & Deposit Tracker"
-        : "Hostel Rent & Deposit Tracker"
-  }
-  searchPlaceholder={trackerType === "bed" ? "Search room, bed, name, mobile..." : "Search room, tenant, mobile..."}
-  manageRoomsLabel={trackerType === "shop" ? "Manage Shops" : trackerType === "room" ? "Manage Rooms" : "Manage Rooms"}
-  addTenantLabel={trackerType === "shop" ? "Add Shop Tenant" : trackerType === "room" ? "Add Room Tenant" : "Add Tenant"}
-  notificationSlot={
+<div className="position-relative d-flex align-items-center justify-content-between gap-3 flex-wrap mb-3">
+  <button
+    type="button"
+    className="btn btn-outline-primary d-inline-flex align-items-center gap-2"
+    onClick={handleBackToDashboard}
+  >
+    <FaArrowLeft />
+    <span>Back</span>
+  </button>
+
+  <div className="section-title section-text1 mb-0 position-absolute start-50 translate-middle-x">
+    <span className="section-icon section-text1">
+      <FaThLarge />
+    </span>
+    <span className="section-text section-text1 ">
+      Rent and Deposit Tracker
+    </span>
+  </div>
+
+  <div className="d-flex align-items-center ms-auto">
     <NotificationBell
       apiUrl={apiUrl}
       onApproved={handleApprovedFromBell}
@@ -6682,7 +7112,20 @@ const isTodayOrFuture = (iso) => {
         refreshTenants();
       }}
     />
+  </div>
+</div>
+<RentHeaderBar
+  eyebrow={`${trackerGroupLabel} Data`}
+  title={
+    trackerType === "shop"
+      ? "Commercial Shop Rent & Deposit Tracker"
+      : trackerType === "room"
+        ? "Residential Rooms Rent & Deposit Tracker"
+        : "Hostel Rent & Deposit Tracker"
   }
+  searchPlaceholder={trackerType === "bed" ? "Search room, bed, name, mobile..." : "Search room, tenant, mobile..."}
+  manageRoomsLabel={trackerType === "shop" ? "Manage Shops" : trackerType === "room" ? "Manage Rooms" : "Manage Rooms"}
+  addTenantLabel={trackerType === "shop" ? "Add Shop Tenant" : trackerType === "room" ? "Add Room Tenant" : "Add Tenant"}
   selectedYear={selectedYear}
   years={years}
   searchText={searchText}
@@ -6695,24 +7138,24 @@ const isTodayOrFuture = (iso) => {
   isHistoryView={showLeavedHistoryView}
 />
 
-<div className="d-flex flex-wrap gap-2 mb-3">
+<div className="rent-tracker-tabs">
   {TRACKER_TYPES.map((type) => (
     <button
       key={type}
       type="button"
-      className={`btn btn-sm ${trackerType === type ? "btn-primary" : "btn-outline-primary"}`}
+      className={`rent-tracker-tab ${trackerType === type ? "is-active" : ""}`}
       onClick={() => openTrackerView(type)}
     >
-      {type === "shop" ? "Other Property Shop" : type === "room" ? "Other Property Room" : "Hostel Bed"}
+      {type === "shop" ? "Commercial Shop" : type === "room" ? "Residential Rooms" : "Hostel"}
     </button>
   ))}
 </div>
 
 {/* Rent-only summary cards */}
 <RentSummaryCards
-  totalBeds={(Array.isArray(roomsData) ? roomsData : []).reduce((sum, room) => sum + (room.beds?.length || 0), 0)}
-  occupiedBeds={formData.filter((d) => !hasLeaveDatePassed(d?.leaveDate)).length}
-  vacantBeds={vacantCount}
+  totalBeds={summaryCounts.total}
+  occupiedBeds={summaryCounts.occupied}
+  vacantBeds={summaryCounts.vacant}
   pendingRents={pendingRents}
   upcomingRents={upcomingRentEntries.length}
   trackerType={trackerType}
@@ -6916,497 +7359,93 @@ const isTodayOrFuture = (iso) => {
                     </td>
                   </tr>
                 )}
-                {/* Occupied + Vacant rows (room-wise flow) */}
-                {combinedRows
-                  ? combinedRows.map((row, rowIdx) => {
-                      const rowNumber = rowIdx + 1;
+                {(combinedRows || visibleTenants).map((row, rowIdx) => {
+                      const isStructuredRow = Boolean(combinedRows);
+                      const rowType = isStructuredRow ? row?.type : "tenant";
+                      const tenant = rowType === "tenant" ? (isStructuredRow ? row?.tenant : row) : null;
+                      const buildingLabel = getPropertyBuildingLabelForRow(row, isStructuredRow);
+                      const previousRow = rowIdx > 0 ? (combinedRows || visibleTenants)[rowIdx - 1] : null;
+                      const previousBuildingLabel = previousRow
+                        ? getPropertyBuildingLabelForRow(previousRow, isStructuredRow)
+                        : "";
+                      const showBuildingHeader =
+                        trackerType !== "bed" &&
+                        buildingLabel &&
+                        buildingLabel !== previousBuildingLabel;
                       const currentRoomNo =
-                        row.type === "tenant" ? row.tenant?.roomNo : row.slot?.roomNo;
-                      const nextRow = combinedRows[rowIdx + 1];
-                      const nextRoomNo = nextRow
-                        ? nextRow.type === "tenant"
-                          ? nextRow.tenant?.roomNo
-                          : nextRow.slot?.roomNo
+                        rowType === "tenant" ? tenant?.roomNo : row?.slot?.roomNo;
+                      const nextStructuredRow = combinedRows ? combinedRows[rowIdx + 1] : null;
+                      const nextRoomNo = nextStructuredRow
+                        ? nextStructuredRow.type === "tenant"
+                          ? nextStructuredRow.tenant?.roomNo
+                          : nextStructuredRow.slot?.roomNo
                         : null;
-                      const isRoomEnd =
-                        String(nextRoomNo ?? "") !== String(currentRoomNo ?? "");
-                      const rowClassName = isRoomEnd ? "room-separator" : undefined;
-                      if (row.type === "tenant") {
-                        const tenant = row.tenant;
-                        const rowKey = `tenant-${tenant._id}`;
-                        const rowVisibleMonths = getVisibleMonthsForRow(rowKey);
-                 const dueAmount = calculateDue(
-  tenant.rents,
-  tenant.joiningDate,
-  tenant,
-  roomsData
-  
-);
+                      const rowClassName =
+                        combinedRows &&
+                        String(nextRoomNo ?? "") !== String(currentRoomNo ?? "")
+                          ? "room-separator"
+                          : undefined;
 
-                  return (
-                    <tr key={tenant._id} className={rowClassName}>
-                      {/* Sr */}
-                   <td className="text-muted text-center">
-  {rowNumber}
-</td>
-
-
-                      {/* Name + meta */}
-  {/* Name + meta */}
-              <td>
-  <div className="tenant-cell">
-    {/* Shift Button */}
-    <button
-      className="btn btn-sm shift-btn mb-1"
-      onClick={(e) => {
-        e.stopPropagation();
-        openShiftTenantModal(tenant);
-      }}
-    >
-      <FaExchangeAlt className="me-1" />
-      {trackerType === "shop" ? "Shift Shop" : trackerType === "room" ? "Shift Room" : "Shift Bed"}
-    </button>
-
-    {/* CLICKABLE AREA */}
-    <div
-      className="tenant-open"
-      role="button"
-      tabIndex={0}
-      onClick={() => openAdmissionForm(tenant)}
-      onKeyDown={(e) => e.key === "Enter" && openAdmissionForm(tenant)}
-      title="Open Admission Form"
-      style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}
-    >
-      {/* PHOTO (only tenant photo) */}
-      {renderTenantPhoto(tenant)}
-
-      {/* TEXT INFO */}
-      <div>
-        <div className="tenant-name">{tenant.name}</div>
-<div className="tenant-meta"> Joining Date:
-          {tenant.joiningDate
-            ? new Date(tenant.joiningDate).toLocaleDateString("en-GB")
-            : "—"}
-        </div>
-        <div className="tenant-meta">
-          Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
-        </div>
-
-        <div className="tenant-meta">{tenant.phoneNo}</div>
-        {tenant.firstRentStatus === "ADVANCE_PAID" ? (
-          <div className="mt-1">
-            <span className="badge bg-info text-dark">Advance paid</span>
-          </div>
-        ) : null}
-        
-        <span className="room-pill">
-  {formatTrackerUnit(tenant.roomNo, tenant.bedNo || tenant.bed?.bedNo)}
-
-</span>
-
-      </div>
-    </div>
-  </div>
-</td>
-
-
-
-
-                      {/* Month cells */}
-                 {rowVisibleMonths.map((m, i) => {
-  const c = getMonthCell(tenant, m.y, m.m);
-  const extraNum = Number(c.extra || 0);
-
-  // ✅ show rent starting from NEXT month (first due month)
- const firstBillYM = getFirstBillYM(tenant);
-const cellYM = m.y * 12 + m.m;
-
-if (cellYM < firstBillYM) {
-  return (
-    <td
-      key={`${tenant._id}-${m.y}-${m.m}-${i}`}
-      className={`text-center text-muted rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
-        i === rowVisibleMonths.length - 1 ? "has-next-nav" : ""
-      }`}
-    >
-      {renderMonthWindowNav(i, rowKey, rowVisibleMonths)}
-      —
-    </td>
-  );
-}
-
-
-
-  // ✅ cycle range like: 15 Jan - 15 Feb
-const cycleIndex = cellYM - firstBillYM;
-const cycleRangeStr = getCycleRangeStr(tenant, cycleIndex);
-
-  return (
-    <td
-      key={`${tenant._id}-${m.y}-${m.m}-${i}`}
-      className={`text-center rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
-        i === rowVisibleMonths.length - 1 ? "has-next-nav" : ""
-      }`}
-    >
-      {renderMonthWindowNav(i, rowKey, rowVisibleMonths)}
-      <div
-        style={{ cursor: "pointer" }}
-        onClick={() => openEditForTenantMonth(tenant._id, m.m, m.y)}
-        title="Click to edit this tenant's rent"
-      >
-        {/* ✅ Status badge inline (Paid date inside badge) */}
-        {c.label ? (
-          <span
-            className="badge rounded-pill px-3 py-2 d-inline-flex flex-column align-items-center"
-            style={{
-              fontSize: 12,
-              fontWeight: 800,
-              backgroundColor:
-                c.label === "Paid"
-                  ? "#198754"
-                  : c.label === "Due"
-                  ? "#dc3545"
-                  : c.label === "Upcoming"
-                  ? "#ffb703"
-                  : c.label === "Pending"
-                  ? "#ffc107"
-                  : "#e9ecef",
-              color: c.label === "Paid" || c.label === "Due" ? "#fff" : "#111",
-              boxShadow: "0 6px 14px rgba(0,0,0,0.12)",
-              lineHeight: 1.05,
-            }}
-          >
-            <span>{c.label}</span>
-
-            {/* ✅ Paid date INSIDE green badge */}
-          {/* ✅ Date INSIDE badge for Paid / Due / Upcoming */}
-{(c.label === "Paid" || c.label === "Due" || c.label === "Upcoming" || c.label === "Pending") &&
-  c.dateStr && (
-    <span
-      style={{
-        fontSize: 11,
-        fontWeight: 700,
-        opacity: 0.95,
-        marginTop: 2,
-      }}
-    >
-      {c.dateStr}
-    </span>
-  )}
-
-          </span>
-        ) : (
-          <span className="text-muted">—</span>
-        )}
-
-        {/* ✅ Cycle range below badge (15 Jan - 15 Feb) */}
-        <div className="small text-muted mt-1" style={{ lineHeight: 1 }}>
-          {cycleRangeStr}
-        </div>
-
-        {/* 1) PAID */}
-        {c.label === "Paid" && (
-          <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
-            ₹{Number(c.amountPaid || 0).toLocaleString("en-IN")}
-          </div>
-        )}
-
-        {/* 2) PEND (partial / balance) */}
-        {c.label === "Pending" && (
-          <div className="small mt-1 fw-semibold" style={{ lineHeight: 1 }}>
-            ₹{Number(c.amountPaid || 0).toLocaleString("en-IN")}
-            <span className="text-muted" style={{ fontWeight: 600 }}>
-              {" "}
-              / ₹{Number(c.expected || 0).toLocaleString("en-IN")}
-            </span>
-
-            {Number(c.outstanding || 0) > 0 && (
-              <div
-                className={c.isPast ? "text-danger" : ""}
-                style={{
-                  lineHeight: 1,
-                  marginTop: 2,
-                  fontWeight: 700,
-                }}
-              >
-                {c.isPast ? "Due" : "Balance"}: ₹
-                {Number(c.outstanding || 0).toLocaleString("en-IN")}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 3) UPCOMING */}
-        {c.label === "Upcoming" && (
-          <div
-            className="small mt-1 fw-semibold "
-            style={{ lineHeight: 1, fontWeight: 800 }}
-          >
-            ₹
-            {Number(c.expected || 0).toLocaleString("en-IN")}
-          </div>
-        )}
-
-        {/* 4) DUE (past only) ✅ Always red */}
-        {c.label === "Due" && (
-          <div
-            className="small mt-1 fw-semibold "
-            style={{ lineHeight: 1, fontWeight: 800 }}
-          >
-            ₹
-            {Number(c.expected || 0).toLocaleString("en-IN")}
-          </div>
-        )}
-
-        {/* Extra charges */}
-        {extraNum !== 0 && (
-          <div
-            className="small mt-1 fw-semibold"
-            style={{
-              color: extraNum > 0 ? "#d63384" : "#198754",
-            }}
-          >
-            {extraNum > 0
-              ? `+₹${extraNum.toLocaleString("en-IN")}`
-              : `-₹${Math.abs(extraNum).toLocaleString("en-IN")}`}
-
-            {/* 📝 NOTE */}
-            {c.note && (
-              <div
-                className="small text-muted mt-1"
-                style={{ lineHeight: 1.1, fontStyle: "italic" }}
-              >
-                📝 {c.note}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </td>
-  );
-})}
-
-                      {/* Due total */}
-                     <td
-  style={{
-    cursor: "pointer",
-    color: dueAmount > 0 ? "red" : "inherit",
-  }}
-  onClick={() => {
-    openDueMonthsModal(tenant);
-  }}
->
-  ₹{dueAmount.toLocaleString("en-IN")}
-</td>
-
-
-                      {/* Overall status */}
-                      {/* <td>
-                        <span
-                          className={`badge rounded-pill px-3 py-2 ${
-                            dueAmount === 0
-                              ? "bg-success"
-                              : "bg-warning text-dark"
-                          }`}
-                          style={{
-                            cursor: dueAmount > 0 ? "pointer" : "default",
-                          }}
-                          onClick={() => {
-                            if (dueAmount > 0) {
-                              const pending = getPendingMonthsForStatus(
-                                tenant.rents,
-                                tenant.joiningDate
-                              );
-                              setStatusMonths(pending);
-                              setStatusTenantName(tenant.name);
-                              setShowStatusModal(true);
-                            }
-                          }}
-                        >
-                          {dueAmount === 0 ? "Paid" : "Pending"}
-                        </span>
-                      </td> */}
-                      {/* // Overall status */}
-{/* <td>
-  <span
-    className={`badge rounded-pill px-3 py-2 ${
-      dueAmount === 0 ? "bg-success" : "bg-warning text-dark"
-    }`}
-   
-   onClick={() => {
-  if (dueAmount === 0) return;
-  const dueList = getAllPendingMonths(tenant);
-  setDueMonths(dueList);
-  setSelectedTenantName(tenant.name);
-  setShowDueModal(true);
-}}
-style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
-   >
-    {dueAmount === 0 ? "Paid" : "Pending"}
-  </span>
-</td> */}
-
-                      {/* Actions */}
-                      <td>
-                      <button
-    className="action-btn action-edit"
-    onClick={() => {
-      setEditTenantData(tenant);
-      setEditSelfAadharFile(null);
-      setEditParentAadharFile(null);
-      setEditPhotoFile(null);
-      setEditDocMsg("");
-      setShowEditModal(true);
-    }}
-  >
-    <FaEdit />
-  </button>
-  {/* Shift Unit */}
-  {/* <button
-    className="btn btn-sm btn-outline-secondary me-2"
-    onClick={() => {
-      setShiftTenant(tenant);
-      setShiftTargetKey("");
-      setShowShiftModal(true);
-    }}
-    title="Shift to another vacant bed"
-  >
-    <FaExchangeAlt />
-  </button> */}
-
-                        {/* <button
-                          className="btn btn-sm"
-                          style={{ backgroundColor: "#3db7b1", color: "white" }}
-                          onClick={() => {
-                            setSelectedTenant(tenant);
-                            setShowDetailsModal(true);
-                          }}
-                        >
-                          <FaEye />
-                        </button> */}
-
-                      
-{/* Leave (schedule) */}
- <button
-    className="action-btn action-leave"
-    onClick={() => handleLeave(tenant)}
-  >
-    <FaSignOutAlt />
-  </button>
-
-{/* Cancel Leave (only show if a leave is scheduled for today or a future date) */}
-{leaveDates[tenant._id] && isTodayOrFuture(leaveDates[tenant._id]) && (
-  <button
-    className="btn btn-sm btn-warning me-2"
-    onClick={() => handleCancelLeave(tenant._id)}
-    title={`Cancel scheduled leave (${new Date(leaveDates[tenant._id]).toLocaleDateString("en-GB")})`}
-  >
-    <FaUndo />
-  </button>
-)}
-{/* 
-                        <button
-                          className="btn btn-sm btn-danger"
-                          onClick={() => openDeleteConfirmation(tenant._id)}
-                        >
-                          <FaTrash />
-                        </button> */}
-
-                        {leaveDates[tenant._id] && (
-                          <div
-                            className="text-danger mt-1"
-                            style={{ fontSize: 12 }}
-                          >
-                            Leave on{" "}
-                            {new Date(
-                              leaveDates[tenant._id]
-                            ).toLocaleDateString("en-GB", {
-                              day: "2-digit",
-                              month: "short",
-                              year: "numeric",
-                            })}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                    }
-
-                      if (row.type === "vacant") {
-                        const slot = row.slot;
-                        const key = `${slot.roomNo}-${slot.bedNo}`;
+                      if (rowType === "vacant") {
+                        const slot = row?.slot;
+                        const key = `${slot?.roomNo}-${slot?.bedNo || "unit"}`;
                         const rowKey = `vacant-${key}`;
                         const rowVisibleMonths = getVisibleMonthsForRow(rowKey);
+
                         return (
-                          <tr key={`vacant-${key}`} className={rowClassName}>
-                      <td className="text-muted">{rowNumber}</td>
-                      <td>
-                        <div>
-                          <div className="fw-semibold text-danger " >Empty</div>
-                          <div className="text-muted small">
-                            {formatTrackerUnit(slot.roomNo, slot.bedNo)}{" "}
-                            {slot.category ? `• ${slot.category}` : ""}
-                          </div>
-                          {toNum(slot.price) > 0 && (
-                            <small className="text-muted d-block">
-                              Base Rent: ₹
-                              {toNum(slot.price).toLocaleString("en-IN")}
-                            </small>
-                          )}
-                        </div>
-                      </td>
+                          <React.Fragment key={`vacant-block-${key}`}>
+                            {showBuildingHeader && (
+                              <tr className="tracker-property-group-row">
+                                <td colSpan={visibleMonths.length + 4} className="fw-bold text-start">
+                                  {buildingLabel}
+                                </td>
+                              </tr>
+                            )}
+                            <tr key={`vacant-${key}`} className={rowClassName}>
+                              <td className="text-muted text-center">{rowIdx + 1}</td>
+                              <td>
+                                <div>
+                                  <div className="fw-semibold text-danger">Empty</div>
+                                  <div className="text-muted small">
+                                    {formatTrackerUnit(slot?.roomNo, slot?.bedNo)}{" "}
+                                    {slot?.category ? `• ${slot.category}` : ""}
+                                  </div>
+                                  {toNum(slot?.price) > 0 && (
+                                    <small className="text-muted d-block">
+                                      Base Rent: ₹{toNum(slot.price).toLocaleString("en-IN")}
+                                    </small>
+                                  )}
+                                </div>
+                              </td>
 
-                      {/* {rowVisibleMonths.map((m, idx) => (
-                        <td
-                          key={`${key}-${m.y}-${m.m}-${idx}`}
-                          className="text-center"
-                        >
-                          <span className="badge rounded-pill px-3 py-2 bg-danger text-white">
-                            Due
-                          </span>
-                          {toNum(slot.price) > 0 && (
-                            <div
-                              className="small mt-1 fw-semibold"
-                              style={{ lineHeight: 1, color: "#dc3545" }}
-                            >
-                              ₹{toNum(slot.price).toLocaleString("en-IN")}
-                            </div>
-                          )}
-                        </td>
-                      ))} */}
-{rowVisibleMonths.map((m, idx) => (
-  <td
-    key={`${key}-${m.y}-${m.m}-${idx}`}
-    className={`text-center text-muted rent-month-window-cell ${idx === 0 ? "has-prev-nav" : ""} ${
-      idx === rowVisibleMonths.length - 1 ? "has-next-nav" : ""
-    }`}
-  >
-    {renderMonthWindowNav(idx, rowKey, rowVisibleMonths)}
-    —{/* vacant beds show no monthly status */}
-  </td>
-))}
+                              {rowVisibleMonths.map((m, i) => (
+                                <td
+                                  key={`${key}-${m.y}-${m.m}-${i}`}
+                                  className={`text-center text-muted rent-month-window-cell ${i === 0 ? "has-prev-nav" : ""} ${
+                                    i === rowVisibleMonths.length - 1 ? "has-next-nav" : ""
+                                  }`}
+                                >
+                                  {renderMonthWindowNav(i, rowKey, rowVisibleMonths)}
+                                  —
+                                </td>
+                              ))}
 
-                      <td>—</td>
-                      {/* <td>
-                        <span className="badge rounded-pill px-3 py-2 bg-secondary">
-                          Vacant
-                        </span>
-                      </td> */}
-                      <td>
-                        <button
-                          className="btn btn-sm"
-                          style={{ backgroundColor: "#3db7b1", color: "white" }}
-                          onClick={() => openAddForSlot(slot)}
-                        >
-                          <FaPlus className="me-1" /> Add Tenant
-                        </button>
-                      </td>
-                    </tr>
+                              <td>—</td>
+
+                              <td>
+                                <button
+                                  className="btn btn-sm"
+                                  style={{ backgroundColor: "#3db7b1", color: "white" }}
+                                  onClick={() => openAddForSlot(slot)}
+                                >
+                                  <FaPlus className="me-1" /> Add Tenant
+                                </button>
+                              </td>
+                            </tr>
+                          </React.Fragment>
                         );
                       }
-                      return null;
-                    })
-                  : visibleTenants.map((tenant, rowIdx) => {
+
                       const rowKey = `tenant-${tenant._id}`;
                       const rowVisibleMonths = getVisibleMonthsForRow(rowKey);
                       const dueAmount = calculateDue(
@@ -7417,63 +7456,71 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                       );
 
                       return (
-                        <tr key={tenant._id}>
-                          {/* Sr */}
-                          <td className="text-muted text-center">
-                            {rowIdx + 1}
-                          </td>
+                        <React.Fragment key={`tenant-block-${tenant._id}`}>
+                          {showBuildingHeader && (
+                            <tr className="tracker-property-group-row">
+                              <td colSpan={visibleMonths.length + 4} className="fw-bold text-start">
+                                {buildingLabel}
+                              </td>
+                            </tr>
+                          )}
+                          <tr key={tenant._id} className={rowClassName}>
+                            {/* Sr */}
+                            <td className="text-muted text-center">
+                              {rowIdx + 1}
+                            </td>
 
-                          {/* Name + meta */}
-                          <td>
-                            <div className="tenant-cell">
-                              {/* Shift Button */}
-                              <button
-                                className="btn btn-sm shift-btn mb-1"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openShiftTenantModal(tenant);
-                                }}
-                              >
-                                <FaExchangeAlt className="me-1" />
-                                {trackerType === "shop" ? "Shift Shop" : trackerType === "room" ? "Shift Room" : "Shift Bed"}
-                              </button>
+                            {/* Name + meta */}
+                            <td>
+                              <div className="tenant-cell">
+                                {/* Shift Button */}
+                                <button
+                                  className="btn btn-sm shift-btn mb-1"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openShiftTenantModal(tenant);
+                                  }}
+                                >
+                                  <FaExchangeAlt className="me-1" />
+                                  {trackerType === "shop" ? "Shift Shop" : trackerType === "room" ? "Shift Room" : "Shift Bed"}
+                                </button>
 
-                              {/* CLICKABLE AREA */}
-                              <div
-                                className="tenant-open"
-                                role="button"
-                                tabIndex={0}
-                                onClick={() => openAdmissionForm(tenant)}
-                                onKeyDown={(e) => e.key === "Enter" && openAdmissionForm(tenant)}
-                                title="Open Admission Form"
-                                style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}
-                              >
-                                  {/* PHOTO (only tenant photo) */}
-                                  {renderTenantPhoto(tenant)}
+                                {/* CLICKABLE AREA */}
+                                <div
+                                  className="tenant-open"
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={() => openAdmissionForm(tenant)}
+                                  onKeyDown={(e) => e.key === "Enter" && openAdmissionForm(tenant)}
+                                  title="Open Admission Form"
+                                  style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}
+                                >
+                                    {/* PHOTO (only tenant photo) */}
+                                    {renderTenantPhoto(tenant)}
 
-                                {/* TEXT INFO */}
-                                <div>
-                                  <div className="tenant-name">{tenant.name}</div>
+                                  {/* TEXT INFO */}
+                                  <div>
+                                    <div className="tenant-name">{tenant.name}</div>
 
-                                  <div className="tenant-meta">
-                                    Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
-                                  </div>
-
-                                  <div className="tenant-meta">{tenant.phoneNo}</div>
-                                  {tenant.firstRentStatus === "ADVANCE_PAID" ? (
-                                    <div className="mt-1">
-                                      <span className="badge bg-info text-dark">Advance paid</span>
+                                    <div className="tenant-meta">
+                                      Deposit: ₹{Number(tenant.depositAmount || 0).toLocaleString("en-IN")}
                                     </div>
-                                  ) : null}
 
-                                  <span className="room-pill">
-                                    {formatTrackerUnit(tenant.roomNo, tenant.bedNo || tenant.bed?.bedNo)}
+                                    <div className="tenant-meta">{tenant.phoneNo}</div>
+                                    {tenant.firstRentStatus === "ADVANCE_PAID" ? (
+                                      <div className="mt-1">
+                                        <span className="badge bg-info text-dark">Advance paid</span>
+                                      </div>
+                                    ) : null}
 
-                                  </span>
+                                    <span className="room-pill">
+                                      {formatTrackerUnit(tenant.roomNo, tenant.bedNo || tenant.bed?.bedNo)}
+
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
+                            </td>
 
                           {/* Month cells */}
                           {rowVisibleMonths.map((m, i) => {
@@ -7633,67 +7680,68 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                             );
                           })}
 
-                          <td
-                            style={{
-                              cursor: "pointer",
-                              color: dueAmount > 0 ? "red" : "inherit",
-                            }}
-                            onClick={() => {
-                              openDueMonthsModal(tenant);
-                            }}
-                          >
-                            ₹{dueAmount.toLocaleString("en-IN")}
-                          </td>
-
-                          <td>
-                            <button
-                              className="action-btn action-edit"
+                            <td
+                              style={{
+                                cursor: "pointer",
+                                color: dueAmount > 0 ? "red" : "inherit",
+                              }}
                               onClick={() => {
-                                setEditTenantData(tenant);
-                                setEditSelfAadharFile(null);
-                                setEditParentAadharFile(null);
-                                setEditPhotoFile(null);
-                                setEditDocMsg("");
-                                setShowEditModal(true);
+                                openDueMonthsModal(tenant);
                               }}
                             >
-                              <FaEdit />
-                            </button>
+                              ₹{dueAmount.toLocaleString("en-IN")}
+                            </td>
 
-                            <button
-                              className="action-btn action-leave"
-                              onClick={() => handleLeave(tenant)}
-                            >
-                              <FaSignOutAlt />
-                            </button>
-
-                            {leaveDates[tenant._id] && isTodayOrFuture(leaveDates[tenant._id]) && (
+                            <td>
                               <button
-                                className="btn btn-sm btn-warning me-2"
-                                onClick={() => handleCancelLeave(tenant._id)}
-                                title={`Cancel scheduled leave (${new Date(leaveDates[tenant._id]).toLocaleDateString("en-GB")})`}
+                                className="action-btn action-edit"
+                                onClick={() => {
+                                  setEditTenantData(tenant);
+                                  setEditSelfAadharFile(null);
+                                  setEditParentAadharFile(null);
+                                  setEditPhotoFile(null);
+                                  setEditDocMsg("");
+                                  setShowEditModal(true);
+                                }}
                               >
-                                <FaUndo />
+                                <FaEdit />
                               </button>
-                            )}
 
-                            {leaveDates[tenant._id] && (
-                              <div
-                                className="text-danger mt-1"
-                                style={{ fontSize: 12 }}
+                              <button
+                                className="action-btn action-leave"
+                                onClick={() => handleLeave(tenant)}
                               >
-                                Leave on{" "}
-                                {new Date(
-                                  leaveDates[tenant._id]
-                                ).toLocaleDateString("en-GB", {
-                                  day: "2-digit",
-                                  month: "short",
-                                  year: "numeric",
-                                })}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
+                                <FaSignOutAlt />
+                              </button>
+
+                              {leaveDates[tenant._id] && isTodayOrFuture(leaveDates[tenant._id]) && (
+                                <button
+                                  className="btn btn-sm btn-warning me-2"
+                                  onClick={() => handleCancelLeave(tenant._id)}
+                                  title={`Cancel scheduled leave (${new Date(leaveDates[tenant._id]).toLocaleDateString("en-GB")})`}
+                                >
+                                  <FaUndo />
+                                </button>
+                              )}
+
+                              {leaveDates[tenant._id] && (
+                                <div
+                                  className="text-danger mt-1"
+                                  style={{ fontSize: 12 }}
+                                >
+                                  Leave on{" "}
+                                  {new Date(
+                                    leaveDates[tenant._id]
+                                  ).toLocaleDateString("en-GB", {
+                                    day: "2-digit",
+                                    month: "short",
+                                    year: "numeric",
+                                  })}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        </React.Fragment>
                       );
                     })}
               </tbody>
@@ -8264,6 +8312,143 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
               </div>
 
              {/* Room + Bed */}
+{trackerType === "room" ? (
+  <>
+    <div className="col-12 col-md-6">
+      <label className="form-label">
+        Building <span className="text-danger">*</span>
+      </label>
+      <select
+        className="form-select"
+        value={newTenant.category || ""}
+        onChange={(e) =>
+          setNewTenant((prev) => ({
+            ...prev,
+            category: e.target.value,
+            wingName: "",
+            floorNo: "",
+            roomId: "",
+            roomNo: "",
+            flatType: "",
+            bedNo: "",
+            baseRent: "",
+            rentAmount: "",
+            bedPrice: "",
+          }))
+        }
+      >
+        <option value="">Select Building</option>
+        {residentialBuildingOptions.map((building) => (
+          <option key={`building-${building}`} value={building}>
+            {building}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    <div className="col-12 col-md-6">
+      <label className="form-label">
+        Wing {residentialWingOptions.length > 1 ? <span className="text-danger">*</span> : null}
+      </label>
+      <select
+        className="form-select"
+        value={residentialWingOptions.length <= 1 ? (residentialWingOptions[0] || "") : (newTenant.wingName || "")}
+        disabled={!newTenant.category || residentialWingOptions.length <= 1}
+        onChange={(e) =>
+          setNewTenant((prev) => ({
+            ...prev,
+            wingName: e.target.value,
+            floorNo: "",
+            roomId: "",
+            roomNo: "",
+            flatType: "",
+            bedNo: "",
+            baseRent: "",
+            rentAmount: "",
+            bedPrice: "",
+          }))
+        }
+      >
+        <option value="">
+          {!newTenant.category ? "Select building first" : "Select Wing"}
+        </option>
+        {residentialWingOptions.map((wing) => (
+          <option key={`wing-${wing || "no-wing"}`} value={wing}>
+            {formatWingOptionLabel(wing)}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    <div className="col-12 col-md-6">
+      <label className="form-label">
+        Floor <span className="text-danger">*</span>
+      </label>
+      <select
+        className="form-select"
+        value={newTenant.floorNo || ""}
+        disabled={
+          !newTenant.category ||
+          (residentialWingOptions.length > 1 && !newTenant.wingName)
+        }
+        onChange={(e) =>
+          setNewTenant((prev) => ({
+            ...prev,
+            floorNo: e.target.value,
+            roomId: "",
+            roomNo: "",
+            flatType: "",
+            bedNo: "",
+            baseRent: "",
+            rentAmount: "",
+            bedPrice: "",
+          }))
+        }
+      >
+        <option value="">
+          {!newTenant.category
+            ? "Select building first"
+            : residentialWingOptions.length > 1 && !newTenant.wingName
+            ? "Select wing first"
+            : "Select Floor"}
+        </option>
+        {residentialFloorOptions.map((floor) => (
+          <option key={`floor-${floor}`} value={floor}>
+            Floor {floor}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    <div className="col-12 col-md-6">
+      <label className="form-label">
+        Flat <span className="text-danger">*</span>
+      </label>
+      <select
+        className="form-select"
+        value={newTenant.roomId || ""}
+        disabled={!newTenant.floorNo}
+        onChange={(e) => {
+          const selectedRoom = residentialFlatOptions.find(
+            (room) => String(room._id) === String(e.target.value)
+          );
+          applySelectedTrackerRoom(selectedRoom);
+        }}
+      >
+        <option value="">
+          {newTenant.floorNo ? "Select Flat" : "Select floor first"}
+        </option>
+        {residentialFlatOptions.map((room) => (
+          <option key={`room-${room._id}`} value={room._id}>
+            {room.roomNo}
+            {room.flatType ? ` • ${room.flatType}` : ""}
+            {room.floorNo ? ` • Floor ${room.floorNo}` : ""}
+          </option>
+        ))}
+      </select>
+    </div>
+  </>
+) : (
 <div className="col-12 col-md-6">
   <label className="form-label">
     {trackerType === "shop" ? "Shop" : "Room"} <span className="text-danger">*</span>
@@ -8272,47 +8457,23 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
   <select
     className="form-select"
     value={newTenant.roomId || ""}
-   onChange={(e) => {
-  const roomId = e.target.value;
-  const selectedRoom = roomsData.find((r) => String(r._id) === String(roomId));
-  const autoSlot =
-    trackerType !== "bed"
-      ? (selectedRoom?.beds || []).find(
-          (bed) => !occupiedBeds.has(occKey(selectedRoom?.roomNo, bed.bedNo))
-        )
-      : null;
-
-  setNewTenant((prev) => ({
-    ...prev,
-    roomId,
-    roomNo: selectedRoom?.roomNo || "",
-    category: selectedRoom?.category || "",   // ✅ AUTO CATEGORY FROM ROOM
-    bedNo: autoSlot?.bedNo || "",
-    floorNo: selectedRoom?.floorNo || "",
-    baseRent: autoSlot?.price ?? "",
-    rentAmount: autoSlot?.price ?? "",
-    bedPrice: autoSlot?.price ?? "",
-    newBedNo: "",
-    newBedPrice: "",
-    newBedCategory: "",
-    __bedMsg: "",
-    __savingBed: false,
-  }));
-}}
-
+    onChange={(e) => {
+      const roomId = e.target.value;
+      const selectedRoom = roomsData.find((r) => String(r._id) === String(roomId));
+      applySelectedTrackerRoom(selectedRoom);
+    }}
   >
     <option value="">{trackerType === "shop" ? "Select Shop" : "Select Room"}</option>
-{roomsData
-  .filter(roomHasVacantBed) // ✅ only rooms with at least 1 vacant bed
-  .map((room) => (
-    <option key={`room-${room._id}`} value={room._id}>
-      {room.roomNo} • {room.category} • Floor {room.floorNo}
-    </option>
-  ))}
-
-
+    {roomsData
+      .filter(roomHasVacantBed)
+      .map((room) => (
+        <option key={`room-${room._id}`} value={room._id}>
+          {room.roomNo} • {room.category} • Floor {room.floorNo}
+        </option>
+      ))}
   </select>
 </div>
+)}
 
 {trackerType === "bed" && (
 <div className="col-12 col-md-6">
@@ -8419,7 +8580,12 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
 {/* ✅ NEW: Bed Price field (separate + update option) */}
 <div className="col-12 col-md-12">
   <label className="form-label">
-    Bed Price (Monthly Rent) <span className="text-danger">*</span>
+    {trackerType === "room"
+      ? "Flat / Room Price (Monthly Rent)"
+      : trackerType === "shop"
+      ? "Shop Price (Monthly Rent)"
+      : "Bed Price (Monthly Rent)"}{" "}
+    <span className="text-danger">*</span>
   </label>
 
   {/* ✅ make select + input in same row */}
@@ -8431,8 +8597,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
         value={newTenant.__priceMode || "current"}
         disabled={
           !newTenant.roomId ||
-          !newTenant.bedNo ||
-          newTenant.bedNo === "__other__"
+          (trackerType === "bed" &&
+            (!newTenant.bedNo || newTenant.bedNo === "__other__"))
         }
         onChange={(e) => {
           const mode = e.target.value;
@@ -8491,8 +8657,8 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
             disabled={
               newTenant.__savingPrice ||
               !newTenant.roomId ||
-              !newTenant.bedNo ||
-              newTenant.bedNo === "__other__" ||
+              (trackerType === "bed" &&
+                (!newTenant.bedNo || newTenant.bedNo === "__other__")) ||
               Number(newTenant.__newBedPriceEdit) < 0 ||
               Number.isNaN(Number(newTenant.__newBedPriceEdit))
             }
@@ -9421,50 +9587,158 @@ style={{ cursor: dueAmount === 0 ? "default" : "pointer" }}
                     </div>
                   ))}
 
-                  {/* Room No Dropdown */}
-                  <div className="col-md-6">
-                    <label className="form-label">Room No</label>
-                    <select
-                      className="form-control"
-                      value={newTenant.roomId || ""}
-                      onChange={(e) => {
-                        const roomId = e.target.value;
-                        const selectedRoom = roomsData.find(
-                          (room) => String(room._id) === String(roomId)
-                        );
-                        const autoSlot =
-                          trackerType !== "bed"
-                            ? (selectedRoom?.beds || []).find(
-                                (bed) =>
-                                  !occupiedBeds.has(
-                                    occKey(selectedRoom?.roomNo, bed.bedNo)
-                                  )
-                              )
-                            : null;
+                  {/* Room / Flat Dropdowns */}
+                  {trackerType === "room" ? (
+                    <>
+                      <div className="col-md-6">
+                        <label className="form-label">Building</label>
+                        <select
+                          className="form-control"
+                          value={newTenant.category || ""}
+                          onChange={(e) =>
+                            setNewTenant((prev) => ({
+                              ...prev,
+                              category: e.target.value,
+                              wingName: "",
+                              floorNo: "",
+                              roomId: "",
+                              roomNo: "",
+                              flatType: "",
+                              bedNo: "",
+                              baseRent: "",
+                              rentAmount: "",
+                              bedPrice: "",
+                            }))
+                          }
+                        >
+                          <option value="">Select Building</option>
+                          {residentialBuildingOptions.map((building) => (
+                            <option key={`mobile-building-${building}`} value={building}>
+                              {building}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                        setNewTenant((prev) => ({
-                          ...prev,
-                          roomId,
-                          roomNo: selectedRoom?.roomNo || "",
-                          category: selectedRoom?.category || prev.category || "",
-                          bedNo: autoSlot?.bedNo || "", // reset bed
-                          floorNo: selectedRoom?.floorNo || "",
-                          baseRent: autoSlot?.price ?? "", // reset base rent too
-                          rentAmount: autoSlot?.price ?? "", // reset rent
-                          newBedNo: "", // reset inline form fields (if any)
-                          newBedPrice: "",
-                        }));
-                      }}
-                    >
-                      <option value="">Select Room</option>
-                     {roomsData.map((room) => (
-  <option key={`room-${room._id || room.roomNo}`} value={room._id || room.roomNo}>
-    {room.roomNo} (Floor {room.floorNo})
-  </option>
-))}
+                      <div className="col-md-6">
+                        <label className="form-label">Wing</label>
+                        <select
+                          className="form-control"
+                          value={residentialWingOptions.length <= 1 ? (residentialWingOptions[0] || "") : (newTenant.wingName || "")}
+                          disabled={!newTenant.category || residentialWingOptions.length <= 1}
+                          onChange={(e) =>
+                            setNewTenant((prev) => ({
+                              ...prev,
+                              wingName: e.target.value,
+                              floorNo: "",
+                              roomId: "",
+                              roomNo: "",
+                              flatType: "",
+                              bedNo: "",
+                              baseRent: "",
+                              rentAmount: "",
+                              bedPrice: "",
+                            }))
+                          }
+                        >
+                          <option value="">
+                            {!newTenant.category ? "Select building first" : "Select Wing"}
+                          </option>
+                          {residentialWingOptions.map((wing) => (
+                            <option key={`mobile-wing-${wing || "no-wing"}`} value={wing}>
+                              {formatWingOptionLabel(wing)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
-                    </select>
-                  </div>
+                      <div className="col-md-6">
+                        <label className="form-label">Floor</label>
+                        <select
+                          className="form-control"
+                          value={newTenant.floorNo || ""}
+                          disabled={
+                            !newTenant.category ||
+                            (residentialWingOptions.length > 1 && !newTenant.wingName)
+                          }
+                          onChange={(e) =>
+                            setNewTenant((prev) => ({
+                              ...prev,
+                              floorNo: e.target.value,
+                              roomId: "",
+                              roomNo: "",
+                              flatType: "",
+                              bedNo: "",
+                              baseRent: "",
+                              rentAmount: "",
+                              bedPrice: "",
+                            }))
+                          }
+                        >
+                          <option value="">
+                            {!newTenant.category
+                              ? "Select building first"
+                              : residentialWingOptions.length > 1 && !newTenant.wingName
+                              ? "Select wing first"
+                              : "Select Floor"}
+                          </option>
+                          {residentialFloorOptions.map((floor) => (
+                            <option key={`mobile-floor-${floor}`} value={floor}>
+                              Floor {floor}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="col-md-6">
+                        <label className="form-label">Flat</label>
+                        <select
+                          className="form-control"
+                          value={newTenant.roomId || ""}
+                          disabled={!newTenant.floorNo}
+                          onChange={(e) => {
+                            const selectedRoom = residentialFlatOptions.find(
+                              (room) => String(room._id) === String(e.target.value)
+                            );
+                            applySelectedTrackerRoom(selectedRoom);
+                          }}
+                        >
+                          <option value="">
+                            {newTenant.floorNo ? "Select Flat" : "Select floor first"}
+                          </option>
+                          {residentialFlatOptions.map((room) => (
+                            <option key={`mobile-room-${room._id}`} value={room._id}>
+                              {room.roomNo}
+                              {room.flatType ? ` • ${room.flatType}` : ""}
+                              {room.floorNo ? ` • Floor ${room.floorNo}` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="col-md-6">
+                      <label className="form-label">Room No</label>
+                      <select
+                        className="form-control"
+                        value={newTenant.roomId || ""}
+                        onChange={(e) => {
+                          const roomId = e.target.value;
+                          const selectedRoom = roomsData.find(
+                            (room) => String(room._id) === String(roomId)
+                          );
+                          applySelectedTrackerRoom(selectedRoom);
+                        }}
+                      >
+                        <option value="">Select Room</option>
+                        {roomsData.map((room) => (
+                          <option key={`room-${room._id || room.roomNo}`} value={room._id || room.roomNo}>
+                            {room.roomNo} (Floor {room.floorNo})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {/* Bed No Dropdown + inline "Other" form (price optional) */}
                   {trackerType === "bed" && (

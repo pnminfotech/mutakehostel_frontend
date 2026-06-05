@@ -2,7 +2,7 @@
 // import axios from "axios";
 
 // export const api = axios.create({
-//   baseURL: "  https://hosteldemo-api.pnminfotech.com/", // <-- your backend URL
+//   baseURL: "  https://mutakehostel-api.pnminfotech.com", // <-- your backend URL
 // });
 
 
@@ -11,11 +11,12 @@
 import axios from "axios";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
-const DEFAULT_PROD_API_BASE = "https://hosteldemo-api.pnminfotech.com/api";
+const DEFAULT_LOCAL_API_BASE = "https://mutakehostel-api.pnminfotech.com/api";
+const DEFAULT_PROD_API_BASE = "https://mutakehostel-api.pnminfotech.com/api";
 
 function getDefaultApiBase() {
   if (typeof window !== "undefined" && LOCAL_HOSTS.has(window.location.hostname)) {
-    return DEFAULT_PROD_API_BASE;
+    return DEFAULT_LOCAL_API_BASE;
   }
 
   return DEFAULT_PROD_API_BASE;

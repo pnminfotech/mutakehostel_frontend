@@ -114,7 +114,7 @@ const LightBill = ({ embedded, propertyScope = null }) => {
 
   const fetchLightBills = async () => {
     try {
-      const res = await fetch("https://hosteldemo-api.pnminfotech.com//api/light-bill/all");
+      const res = await fetch("https://mutakehostel-api.pnminfotech.com/api/light-bill/all");
       const data = await res.json();
       setLightBills(
         Array.isArray(data)
@@ -339,7 +339,7 @@ const LightBill = ({ embedded, propertyScope = null }) => {
         date: formattedDate,
       };
 
-      const res = await fetch("https://hosteldemo-api.pnminfotech.com//api/light-bill", {
+      const res = await fetch("https://mutakehostel-api.pnminfotech.com/api/light-bill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bodyData),
@@ -388,7 +388,7 @@ const LightBill = ({ embedded, propertyScope = null }) => {
       };
 
       const res = await fetch(
-        `https://hosteldemo-api.pnminfotech.com//api/light-bill/${selectedBill._id}`,
+        `https://mutakehostel-api.pnminfotech.com/api/light-bill/${selectedBill._id}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -410,7 +410,7 @@ const LightBill = ({ embedded, propertyScope = null }) => {
     if (!window.confirm("Delete this bill?")) return;
 
     try {
-      const res = await fetch(`https://hosteldemo-api.pnminfotech.com//api/light-bill/${bill._id}`, {
+      const res = await fetch(`https://mutakehostel-api.pnminfotech.com/api/light-bill/${bill._id}`, {
         method: "DELETE",
       });
 
@@ -441,11 +441,6 @@ const LightBill = ({ embedded, propertyScope = null }) => {
   };
 
   const handleGoBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-      return;
-    }
-
     navigate("/maindashboard");
   };
 
@@ -551,30 +546,50 @@ const LightBill = ({ embedded, propertyScope = null }) => {
     <div className="container-fluid  light-bill-page">
       {!hideNav && (
         <div className="d-flex gap-2 mb-3 light-bill-top-nav">
-          <button
-            className="btn"
-            style={{ backgroundColor: "#3db7b1", color: "white" }}
-            onClick={() => navigate("/NewComponant")}
-          >
-            <HiHome className="me-1" />
-            Rent & Deposit
-          </button>
+            <button
+              className="btn"
+              style={{ backgroundColor: "#3db7b1", color: "white" }}
+              onClick={() => navigate("/NewComponant")}
+            >
+              <HiHome className="me-1" />
+              Rent & Deposit
+            </button>
 
-          <button
-            className="btn btn-dark"
-            onClick={handleGoBack}
-          >
-            <FaArrowLeft className="me-1" />
-            Back
-          </button>
+            <button
+              className="btn"
+              style={{ backgroundColor: "#2563eb", color: "white", borderRadius: "10px", padding: "8px 18px" }}
+              onClick={handleGoBack}
+            >
+              <FaArrowLeft className="me-1" />
+              Back
+            </button>
         </div>
       )}
 
       {/* DESKTOP / TABLE HEADER */}
       <div className="light-bill-desktop-view">
-        <div className="d-flex  align-items-center gap-2 mb-3">
-          <div className="section-icon">⚡</div>
-          <div className="section-text">{scopeLabel} Monthly Expense – Light Bill</div>
+        <div
+          className="d-flex align-items-center justify-content-between gap-2 mb-3"
+        >
+          {hideNav ? (
+            <button
+              className="btn"
+              style={{ backgroundColor: "#2563eb", color: "white", borderRadius: "10px", padding: "8px 18px" }}
+              onClick={handleGoBack}
+            >
+              <FaArrowLeft className="me-1" />
+              Back
+            </button>
+          ) : (
+            <div style={{ width: 108 }} />
+          )}
+
+          <div className="d-flex align-items-center justify-content-center gap-2 text-center flex-grow-1">
+            <div className="section-icon">⚡</div>
+            <div className="section-text">{scopeLabel} Monthly Expense – Light Bill</div>
+          </div>
+
+          <div style={{ width: 108 }} />
         </div>
 
         <div className="filter-bar mb-3">

@@ -61,7 +61,7 @@ const openAddModal = () => {
   setShowAddModal(true);
 };
 
-  const apiUrl = '  https://hosteldemo-api.pnminfotech.com//api/';
+  const apiUrl = '  https://mutakehostel-api.pnminfotech.com/api/';
 
   useEffect(() => {
     axios
